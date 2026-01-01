@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut } from 'lucide-react';
+import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -69,7 +69,14 @@ export default function BudgetTracker() {
   const [categoryRules, setCategoryRules] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [filter, setFilter] = useState({ category: 'all', month: 'all' });
+  const [filter, setFilter] = useState({ 
+    category: 'all', 
+    dateFilterType: 'all', // 'all', 'year', 'month', 'dateRange'
+    year: '',
+    month: '',
+    startDate: '',
+    endDate: ''
+  });
   const [showRules, setShowRules] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', category: '' });
 
@@ -397,12 +404,28 @@ export default function BudgetTracker() {
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
+      // Category filter
       if (filter.category !== 'all' && t.category !== filter.category) return false;
-      if (filter.month !== 'all') {
-        const [day, month, year] = t.date.split('/');
-        const txMonth = `${year}-${month}`;
+      
+      // Date filters
+      if (!t.date) return true; // Skip filtering if no date
+      const [day, month, year] = t.date.split('/');
+      
+      // Skip if date parts are missing
+      if (!year || !month || !day) return true;
+      
+      if (filter.dateFilterType === 'year' && filter.year) {
+        if (year !== filter.year) return false;
+      } else if (filter.dateFilterType === 'month' && filter.month) {
+        const txMonth = `${year}-${month.padStart(2, '0')}`;
         if (txMonth !== filter.month) return false;
+      } else if (filter.dateFilterType === 'dateRange' && filter.startDate && filter.endDate) {
+        const txDate = new Date(year, parseInt(month) - 1, parseInt(day));
+        const startDate = new Date(filter.startDate);
+        const endDate = new Date(filter.endDate);
+        if (txDate < startDate || txDate > endDate) return false;
       }
+      
       return true;
     });
   }, [transactions, filter]);
@@ -415,10 +438,26 @@ export default function BudgetTracker() {
     const monthSet = new Set();
     transactions.forEach(t => {
       const [day, month, year] = t.date.split('/');
-      if (year && month) monthSet.add(`${year}-${month}`);
+      if (year && month) monthSet.add(`${year}-${month.padStart(2, '0')}`);
     });
     return [...monthSet].sort().reverse();
   }, [transactions]);
+
+  const years = useMemo(() => {
+    const yearSet = new Set();
+    transactions.forEach(t => {
+      const [day, month, year] = t.date.split('/');
+      if (year) yearSet.add(year);
+    });
+    return [...yearSet].sort().reverse();
+  }, [transactions]);
+
+  // Helper function to format month as MMM-YYYY
+  const formatMonthDisplay = (monthStr) => {
+    const [year, month] = monthStr.split('-');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[parseInt(month) - 1]}-${year}`;
+  };
 
   const categoryData = useMemo(() => {
     const spending = {};
@@ -769,28 +808,96 @@ export default function BudgetTracker() {
                 </div>
               </div>
 
-              <div className="flex gap-4 mb-6 flex-wrap">
-                <select
-                  value={filter.category}
-                  onChange={(e) => setFilter({...filter, category: e.target.value})}
-                  className="px-4 py-2 border rounded-lg"
-                >
-                  <option value="all">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+              <div className="space-y-4 mb-6">
+                <div className="flex gap-4 flex-wrap items-center">
+                  <select
+                    value={filter.category}
+                    onChange={(e) => setFilter({...filter, category: e.target.value})}
+                    className="px-4 py-2 border rounded-lg"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
 
-                <select
-                  value={filter.month}
-                  onChange={(e) => setFilter({...filter, month: e.target.value})}
-                  className="px-4 py-2 border rounded-lg"
-                >
-                  <option value="all">All Months</option>
-                  {months.map(month => (
-                    <option key={month} value={month}>{month}</option>
-                  ))}
-                </select>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={20} className="text-gray-600" />
+                    <select
+                      value={filter.dateFilterType}
+                      onChange={(e) => setFilter({
+                        ...filter, 
+                        dateFilterType: e.target.value,
+                        year: '',
+                        month: '',
+                        startDate: '',
+                        endDate: ''
+                      })}
+                      className="px-4 py-2 border rounded-lg font-medium"
+                    >
+                      <option value="all">All Time</option>
+                      <option value="year">By Year</option>
+                      <option value="month">By Month</option>
+                      <option value="dateRange">Date Range</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Date Filter Options */}
+                {filter.dateFilterType === 'year' && (
+                  <div className="flex gap-2 items-center pl-8">
+                    <label className="text-sm font-medium text-gray-700">Year:</label>
+                    <select
+                      value={filter.year}
+                      onChange={(e) => setFilter({...filter, year: e.target.value})}
+                      className="px-4 py-2 border rounded-lg"
+                    >
+                      <option value="">Select Year</option>
+                      {years.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {filter.dateFilterType === 'month' && (
+                  <div className="flex gap-2 items-center pl-8">
+                    <label className="text-sm font-medium text-gray-700">Month:</label>
+                    <select
+                      value={filter.month}
+                      onChange={(e) => setFilter({...filter, month: e.target.value})}
+                      className="px-4 py-2 border rounded-lg"
+                    >
+                      <option value="">Select Month</option>
+                      {months.map(month => (
+                        <option key={month} value={month}>{formatMonthDisplay(month)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {filter.dateFilterType === 'dateRange' && (
+                  <div className="flex gap-4 items-center pl-8 flex-wrap">
+                    <div className="flex gap-2 items-center">
+                      <label className="text-sm font-medium text-gray-700">From:</label>
+                      <input
+                        type="date"
+                        value={filter.startDate}
+                        onChange={(e) => setFilter({...filter, startDate: e.target.value})}
+                        className="px-4 py-2 border rounded-lg"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-sm font-medium text-gray-700">To:</label>
+                      <input
+                        type="date"
+                        value={filter.endDate}
+                        onChange={(e) => setFilter({...filter, endDate: e.target.value})}
+                        className="px-4 py-2 border rounded-lg"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
