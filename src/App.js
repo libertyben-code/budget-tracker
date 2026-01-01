@@ -56,6 +56,15 @@ export default function BudgetTracker() {
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
 
+  // Multi-account state
+  const [accounts, setAccounts] = useState([{ id: 'default', name: 'Main Account' }]);
+  const [activeAccountId, setActiveAccountId] = useState('default');
+  const [isAddingAccount, setIsAddingAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [accountsData, setAccountsData] = useState({
+    'default': { transactions: [], categoryRules: {} }
+  });
+
   const [transactions, setTransactions] = useState([]);
   const [categoryRules, setCategoryRules] = useState({});
   const [editingId, setEditingId] = useState(null);
@@ -76,19 +85,39 @@ export default function BudgetTracker() {
     return unsubscribe;
   }, []);
 
-  // Auto-save data when transactions or rules change
+  // Auto-save data when transactions, rules, or accounts change
   useEffect(() => {
-    if (user && transactions.length > 0) {
+    if (user && (transactions.length > 0 || accounts.length > 1)) {
       saveUserData();
     }
-  }, [transactions, categoryRules]);
+  }, [transactions, categoryRules, accounts]);
 
   const loadUserData = async (userId) => {
     try {
       const data = await firebaseHelpers.loadData(userId);
       if (data) {
-        setTransactions(data.transactions || []);
-        setCategoryRules(data.categoryRules || {});
+        // Load accounts structure
+        if (data.accounts) {
+          setAccounts(data.accounts);
+        }
+        if (data.accountsData) {
+          setAccountsData(data.accountsData);
+          // Set active account data
+          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], categoryRules: {} };
+          setTransactions(activeData.transactions || []);
+          setCategoryRules(activeData.categoryRules || {});
+          setActiveAccountId(data.activeAccountId || 'default');
+        } else {
+          // Legacy support: migrate old data to new structure
+          setTransactions(data.transactions || []);
+          setCategoryRules(data.categoryRules || {});
+          setAccountsData({
+            'default': {
+              transactions: data.transactions || [],
+              categoryRules: data.categoryRules || {}
+            }
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -98,11 +127,23 @@ export default function BudgetTracker() {
   const saveUserData = async () => {
     if (!user) return;
     try {
+      // Update current account data
+      const updatedAccountsData = {
+        ...accountsData,
+        [activeAccountId]: {
+          transactions,
+          categoryRules
+        }
+      };
+      
       await firebaseHelpers.saveData(user.uid, {
-        transactions,
-        categoryRules,
+        accounts,
+        accountsData: updatedAccountsData,
+        activeAccountId,
         lastUpdated: new Date().toISOString()
       });
+      
+      setAccountsData(updatedAccountsData);
     } catch (error) {
       console.error('Error saving data:', error);
     }
@@ -130,8 +171,85 @@ export default function BudgetTracker() {
     await firebaseHelpers.signOut();
     setTransactions([]);
     setCategoryRules({});
+    setAccounts([{ id: 'default', name: 'Main Account' }]);
+    setActiveAccountId('default');
+    setAccountsData({ 'default': { transactions: [], categoryRules: {} } });
     setEmail('');
     setPassword('');
+  };
+
+  const switchAccount = (accountId) => {
+    // Save current account data before switching
+    const updatedAccountsData = {
+      ...accountsData,
+      [activeAccountId]: {
+        transactions,
+        categoryRules
+      }
+    };
+    setAccountsData(updatedAccountsData);
+
+    // Load new account data
+    const newAccountData = updatedAccountsData[accountId] || { transactions: [], categoryRules: {} };
+    setTransactions(newAccountData.transactions);
+    setCategoryRules(newAccountData.categoryRules);
+    setActiveAccountId(accountId);
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const addAccount = () => {
+    if (!newAccountName.trim()) return;
+    
+    const newAccountId = `account_${Date.now()}`;
+    const newAccount = { id: newAccountId, name: newAccountName.trim() };
+    
+    setAccounts([...accounts, newAccount]);
+    setAccountsData({
+      ...accountsData,
+      [newAccountId]: { transactions: [], categoryRules: {} }
+    });
+    
+    setNewAccountName('');
+    setIsAddingAccount(false);
+    switchAccount(newAccountId);
+  };
+
+  const deleteAccount = (accountId) => {
+    if (accountId === 'default') {
+      alert("Cannot delete the default account");
+      return;
+    }
+    
+    if (accounts.length <= 1) {
+      alert("Cannot delete the last account");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to delete this account? All transactions will be lost.")) {
+      return;
+    }
+
+    const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
+    const updatedAccountsData = { ...accountsData };
+    delete updatedAccountsData[accountId];
+
+    setAccounts(updatedAccounts);
+    setAccountsData(updatedAccountsData);
+
+    // Switch to default if deleting active account
+    if (activeAccountId === accountId) {
+      switchAccount('default');
+    }
+  };
+
+  const renameAccount = (accountId, newName) => {
+    if (!newName.trim()) return;
+    
+    const updatedAccounts = accounts.map(acc => 
+      acc.id === accountId ? { ...acc, name: newName.trim() } : acc
+    );
+    setAccounts(updatedAccounts);
   };
 
   const autoCategorizeTrans = (description) => {
@@ -432,7 +550,7 @@ export default function BudgetTracker() {
     );
   }
 
-  // Main App - (continuing in next message due to length...)
+  // Main App
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -449,6 +567,77 @@ export default function BudgetTracker() {
               <LogOut size={20} />
               Logout
             </button>
+          </div>
+          
+          {/* Account Tabs */}
+          <div className="mb-6 border-b border-gray-200">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              {accounts.map(account => (
+                <div key={account.id} className="group relative flex items-center">
+                  <button
+                    onClick={() => switchAccount(account.id)}
+                    className={`px-4 py-2 rounded-t-lg font-medium transition whitespace-nowrap ${
+                      activeAccountId === account.id
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {account.name}
+                    {accountsData[account.id] && (
+                      <span className="ml-2 text-xs opacity-75">
+                        ({accountsData[account.id].transactions?.length || 0})
+                      </span>
+                    )}
+                  </button>
+                  {account.id !== 'default' && (
+                    <button
+                      onClick={() => deleteAccount(account.id)}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                      title="Delete account"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              
+              {!isAddingAccount ? (
+                <button
+                  onClick={() => setIsAddingAccount(true)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-t-lg hover:bg-gray-200 transition flex items-center gap-1"
+                >
+                  <Plus size={16} />
+                  New Account
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addAccount()}
+                    placeholder="Account name"
+                    className="px-3 py-2 border rounded"
+                    autoFocus
+                  />
+                  <button
+                    onClick={addAccount}
+                    className="p-2 bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    <Save size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAddingAccount(false);
+                      setNewAccountName('');
+                    }}
+                    className="p-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex gap-4 mb-6 flex-wrap">
