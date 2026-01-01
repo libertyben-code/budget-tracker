@@ -70,7 +70,9 @@ export default function BudgetTracker() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [filter, setFilter] = useState({ 
-    category: 'all', 
+    categories: [], // Changed to array for multi-select
+    description: '',
+    categorySearch: '',
     dateFilterType: 'all', // 'all', 'year', 'month', 'dateRange'
     year: '',
     month: '',
@@ -79,6 +81,13 @@ export default function BudgetTracker() {
   });
   const [showRules, setShowRules] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', category: '' });
+  const [showGraphs, setShowGraphs] = useState(true);
+  
+  // Savings allocation state
+  const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
+  const [savingsAllocations, setSavingsAllocations] = useState({});
+  const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
 
   // Listen for auth state changes
   useEffect(() => {
@@ -92,12 +101,12 @@ export default function BudgetTracker() {
     return unsubscribe;
   }, []);
 
-  // Auto-save data when transactions, rules, or accounts change
+  // Auto-save data when transactions, rules, accounts, or savings allocations change
   useEffect(() => {
-    if (user && (transactions.length > 0 || accounts.length > 1)) {
+    if (user && (transactions.length > 0 || accounts.length > 1 || Object.keys(savingsAllocations).length > 0)) {
       saveUserData();
     }
-  }, [transactions, categoryRules, accounts]);
+  }, [transactions, categoryRules, accounts, savingsAllocations]);
 
   const loadUserData = async (userId) => {
     try {
@@ -110,9 +119,10 @@ export default function BudgetTracker() {
         if (data.accountsData) {
           setAccountsData(data.accountsData);
           // Set active account data
-          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], categoryRules: {} };
+          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], categoryRules: {}, savingsAllocations: {} };
           setTransactions(activeData.transactions || []);
           setCategoryRules(activeData.categoryRules || {});
+          setSavingsAllocations(activeData.savingsAllocations || {});
           setActiveAccountId(data.activeAccountId || 'default');
         } else {
           // Legacy support: migrate old data to new structure
@@ -139,7 +149,8 @@ export default function BudgetTracker() {
         ...accountsData,
         [activeAccountId]: {
           transactions,
-          categoryRules
+          categoryRules,
+          savingsAllocations
         }
       };
       
@@ -191,15 +202,17 @@ export default function BudgetTracker() {
       ...accountsData,
       [activeAccountId]: {
         transactions,
-        categoryRules
+        categoryRules,
+        savingsAllocations
       }
     };
     setAccountsData(updatedAccountsData);
 
     // Load new account data
-    const newAccountData = updatedAccountsData[accountId] || { transactions: [], categoryRules: {} };
+    const newAccountData = updatedAccountsData[accountId] || { transactions: [], categoryRules: {}, savingsAllocations: {} };
     setTransactions(newAccountData.transactions);
     setCategoryRules(newAccountData.categoryRules);
+    setSavingsAllocations(newAccountData.savingsAllocations || {});
     setActiveAccountId(accountId);
     setEditingId(null);
     setEditForm({});
@@ -257,6 +270,55 @@ export default function BudgetTracker() {
       acc.id === accountId ? { ...acc, name: newName.trim() } : acc
     );
     setAccounts(updatedAccounts);
+  };
+
+  // Savings allocation handlers
+  const openSavingsModal = (transaction) => {
+    setSelectedSavingsTransaction(transaction);
+    setShowSavingsModal(true);
+  };
+
+  const addSavingsAllocation = () => {
+    if (!newAllocation.purpose.trim() || newAllocation.amount <= 0) return;
+    
+    const transactionId = selectedSavingsTransaction.id;
+    const currentAllocations = savingsAllocations[transactionId] || [];
+    const currentTotal = currentAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+    const newTotal = currentTotal + newAllocation.amount;
+    
+    // Check if new allocation would exceed transaction amount
+    if (newTotal > selectedSavingsTransaction.amount) {
+      alert(`Cannot allocate €${newAllocation.amount.toFixed(2)}. Only €${(selectedSavingsTransaction.amount - currentTotal).toFixed(2)} remaining.`);
+      return;
+    }
+    
+    setSavingsAllocations({
+      ...savingsAllocations,
+      [transactionId]: [...currentAllocations, { ...newAllocation }]
+    });
+    
+    setNewAllocation({ purpose: '', amount: 0 });
+  };
+
+  const deleteSavingsAllocation = (transactionId, index) => {
+    const currentAllocations = savingsAllocations[transactionId] || [];
+    const updatedAllocations = currentAllocations.filter((_, i) => i !== index);
+    
+    if (updatedAllocations.length === 0) {
+      const updated = { ...savingsAllocations };
+      delete updated[transactionId];
+      setSavingsAllocations(updated);
+    } else {
+      setSavingsAllocations({
+        ...savingsAllocations,
+        [transactionId]: updatedAllocations
+      });
+    }
+  };
+
+  const getTotalAllocated = (transactionId) => {
+    const allocations = savingsAllocations[transactionId] || [];
+    return allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
   };
 
   const autoCategorizeTrans = (description) => {
@@ -404,8 +466,18 @@ export default function BudgetTracker() {
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      // Category filter
-      if (filter.category !== 'all' && t.category !== filter.category) return false;
+      // Category filter (multiple selection)
+      if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
+      
+      // Description filter (case-insensitive)
+      if (filter.description && !t.description.toLowerCase().includes(filter.description.toLowerCase())) {
+        return false;
+      }
+      
+      // Category search filter (case-insensitive)
+      if (filter.categorySearch && !t.category.toLowerCase().includes(filter.categorySearch.toLowerCase())) {
+        return false;
+      }
       
       // Date filters
       if (!t.date) return true; // Skip filtering if no date
@@ -459,6 +531,34 @@ export default function BudgetTracker() {
     return `${monthNames[parseInt(month) - 1]}-${year}`;
   };
 
+  // Savings breakdown data
+  const savingsBreakdownData = useMemo(() => {
+    const breakdown = {};
+    
+    // Get all savings transactions (categories containing "savings")
+    const savingsTransactions = filteredTransactions.filter(t => 
+      t.category.toLowerCase().includes('savings') && t.amount > 0
+    );
+    
+    savingsTransactions.forEach(t => {
+      const allocations = savingsAllocations[t.id] || [];
+      allocations.forEach(alloc => {
+        breakdown[alloc.purpose] = (breakdown[alloc.purpose] || 0) + alloc.amount;
+      });
+      
+      // Add unallocated amount if any
+      const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+      const unallocated = t.amount - totalAllocated;
+      if (unallocated > 0) {
+        breakdown['Unallocated'] = (breakdown['Unallocated'] || 0) + unallocated;
+      }
+    });
+    
+    return Object.entries(breakdown)
+      .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions, savingsAllocations]);
+
   const categoryData = useMemo(() => {
     const spending = {};
     filteredTransactions.forEach(t => {
@@ -473,7 +573,7 @@ export default function BudgetTracker() {
 
   const monthlyData = useMemo(() => {
     const monthly = {};
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       const [day, month, year] = t.date.split('/');
       if (year && month) {
         const key = `${year}-${month}`;
@@ -489,7 +589,7 @@ export default function BudgetTracker() {
         spending: parseFloat(m.spending.toFixed(2)),
         income: parseFloat(m.income.toFixed(2))
       }));
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   const stats = useMemo(() => {
     const total = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -696,14 +796,6 @@ export default function BudgetTracker() {
             </button>
 
             <button
-              onClick={handleAdd}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
-            >
-              <Plus size={20} />
-              Add Transaction
-            </button>
-
-            <button
               onClick={() => setShowRules(!showRules)}
               className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
             >
@@ -810,17 +902,6 @@ export default function BudgetTracker() {
 
               <div className="space-y-4 mb-6">
                 <div className="flex gap-4 flex-wrap items-center">
-                  <select
-                    value={filter.category}
-                    onChange={(e) => setFilter({...filter, category: e.target.value})}
-                    className="px-4 py-2 border rounded-lg"
-                  >
-                    <option value="all">All Categories</option>
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-
                   <div className="flex items-center gap-2">
                     <Calendar size={20} className="text-gray-600" />
                     <select
@@ -841,6 +922,24 @@ export default function BudgetTracker() {
                       <option value="dateRange">Date Range</option>
                     </select>
                   </div>
+                  
+                  {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all') && (
+                    <button
+                      onClick={() => setFilter({
+                        categories: [],
+                        description: '',
+                        categorySearch: '',
+                        dateFilterType: 'all',
+                        year: '',
+                        month: '',
+                        startDate: '',
+                        endDate: ''
+                      })}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
                 </div>
 
                 {/* Date Filter Options */}
@@ -904,40 +1003,91 @@ export default function BudgetTracker() {
         </div>
 
         {transactions.length > 0 && (
+          <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+            <button
+              onClick={() => setShowGraphs(!showGraphs)}
+              className="w-full flex items-center justify-center gap-2 px-6 py-2 text-gray-700 hover:bg-gray-50 transition rounded"
+            >
+              {showGraphs ? (
+                <>
+                  <span>▲</span>
+                  <span className="font-semibold">Reduce Graphs</span>
+                </>
+              ) : (
+                <>
+                  <span>▼</span>
+                  <span className="font-semibold">Expand Graphs</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {transactions.length > 0 && showGraphs && (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-bold mb-4">Spending by Category</h2>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={350}>
                   <PieChart>
                     <Pie
                       data={categoryData}
                       cx="50%"
                       cy="50%"
-                      labelLine={false}
-                      label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
+                      labelLine={true}
+                      label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                      outerRadius={100}
                       fill="#8884d8"
                       dataKey="value"
+                      animationBegin={0}
+                      animationDuration={800}
                     >
                       {categoryData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip 
+                      formatter={(value) => `€${value.toFixed(2)}`}
+                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
 
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-bold mb-4">Top Spending Categories</h2>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={categoryData.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#8884d8" />
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={categoryData.slice(0, 10)} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+                    <defs>
+                      <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#8884d8" stopOpacity={0.4}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                    <XAxis 
+                      dataKey="name" 
+                      angle={-45} 
+                      textAnchor="end" 
+                      height={100}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => `€${value}`}
+                    />
+                    <Tooltip 
+                      formatter={(value) => [`€${value.toFixed(2)}`, 'Spending']}
+                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }}
+                    />
+                    <Bar 
+                      dataKey="value" 
+                      fill="url(#colorBar)" 
+                      radius={[8, 8, 0, 0]}
+                      animationBegin={0}
+                      animationDuration={800}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -945,23 +1095,164 @@ export default function BudgetTracker() {
 
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4">Monthly Overview</h2>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="spending" stroke="#ef4444" strokeWidth={2} />
-                  <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={2} />
+              <ResponsiveContainer width="100%" height={350}>
+                <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                  <defs>
+                    <linearGradient id="colorSpending" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis 
+                    dataKey="month" 
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(value) => {
+                      const [year, month] = value.split('-');
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
+                    }}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(value) => `€${value}`}
+                  />
+                  <Tooltip 
+                    formatter={(value, name) => [`€${value.toFixed(2)}`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ paddingTop: '20px' }}
+                    iconType="line"
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="spending" 
+                    stroke="#ef4444" 
+                    strokeWidth={3}
+                    dot={{ fill: '#ef4444', r: 4 }}
+                    activeDot={{ r: 6 }}
+                    animationBegin={0}
+                    animationDuration={800}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="income" 
+                    stroke="#10b981" 
+                    strokeWidth={3}
+                    dot={{ fill: '#10b981', r: 4 }}
+                    activeDot={{ r: 6 }}
+                    animationBegin={0}
+                    animationDuration={800}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
+
+            {savingsBreakdownData.length > 0 && (
+              <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">Savings Breakdown</h2>
+                <ResponsiveContainer width="100%" height={350}>
+                  <PieChart>
+                    <Pie
+                      data={savingsBreakdownData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                      animationBegin={0}
+                      animationDuration={800}
+                    >
+                      {savingsBreakdownData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value) => `€${value.toFixed(2)}`}
+                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </>
         )}
 
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-bold mb-4">Transactions ({filteredTransactions.length})</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Transactions ({filteredTransactions.length})</h2>
+            <button
+              onClick={handleAdd}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
+            >
+              <Plus size={20} />
+              Add Transaction
+            </button>
+          </div>
+          
+          {/* Transaction Search Filters */}
+          <div className="mb-4 space-y-3">
+            <div className="flex gap-3 flex-wrap items-center">
+              <input
+                type="text"
+                placeholder="Search Description..."
+                value={filter.description}
+                onChange={(e) => setFilter({...filter, description: e.target.value})}
+                className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+              />
+              
+              <input
+                type="text"
+                placeholder="Search Category..."
+                value={filter.categorySearch}
+                onChange={(e) => setFilter({...filter, categorySearch: e.target.value})}
+                className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+              />
+            </div>
+            
+            {/* Multi-Category Selector */}
+            {categories.length > 0 && (
+              <div className="border rounded-lg p-3 bg-gray-50">
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  Filter by Categories {filter.categories.length > 0 && `(${filter.categories.length} selected)`}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => (
+                    <label
+                      key={cat}
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition ${
+                        filter.categories.includes(cat)
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filter.categories.includes(cat)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFilter({...filter, categories: [...filter.categories, cat]});
+                          } else {
+                            setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      <span className="text-sm">{cat}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -1054,6 +1345,15 @@ export default function BudgetTracker() {
                         </td>
                         <td className="py-2 px-2">
                           <div className="flex justify-center gap-2">
+                            {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
+                              <button
+                                onClick={() => openSavingsModal(transaction)}
+                                className="p-1 text-purple-600 hover:bg-purple-50 rounded"
+                                title="Allocate savings"
+                              >
+                                <Settings size={18} />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEdit(transaction)}
                               className="p-1 text-blue-600 hover:bg-blue-50 rounded"
@@ -1076,6 +1376,98 @@ export default function BudgetTracker() {
             </table>
           </div>
         </div>
+
+        {/* Savings Allocation Modal */}
+        {showSavingsModal && selectedSavingsTransaction && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold">Allocate Savings</h2>
+                  <button
+                    onClick={() => setShowSavingsModal(false)}
+                    className="text-gray-600 hover:bg-gray-100 p-2 rounded"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-gray-600">Transaction</p>
+                  <p className="font-semibold">{selectedSavingsTransaction.description}</p>
+                  <p className="text-lg font-bold text-green-600">€{selectedSavingsTransaction.amount.toFixed(2)}</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Allocated: €{getTotalAllocated(selectedSavingsTransaction.id).toFixed(2)} | 
+                    Remaining: €{(selectedSavingsTransaction.amount - getTotalAllocated(selectedSavingsTransaction.id)).toFixed(2)}
+                  </p>
+                </div>
+
+                {/* Current Allocations */}
+                {savingsAllocations[selectedSavingsTransaction.id]?.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold mb-3">Current Allocations</h3>
+                    <div className="space-y-2">
+                      {savingsAllocations[selectedSavingsTransaction.id].map((alloc, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">{alloc.purpose}</p>
+                            <p className="text-sm text-gray-600">€{alloc.amount.toFixed(2)}</p>
+                          </div>
+                          <button
+                            onClick={() => deleteSavingsAllocation(selectedSavingsTransaction.id, index)}
+                            className="text-red-600 hover:bg-red-50 p-2 rounded"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add New Allocation */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Add Allocation</h3>
+                  <div className="flex gap-3 flex-wrap">
+                    <input
+                      type="text"
+                      placeholder="Purpose (e.g., Traveling, Emergency Fund)"
+                      value={newAllocation.purpose}
+                      onChange={(e) => setNewAllocation({...newAllocation, purpose: e.target.value})}
+                      className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Amount"
+                      value={newAllocation.amount || ''}
+                      onChange={(e) => setNewAllocation({...newAllocation, amount: parseFloat(e.target.value) || 0})}
+                      className="w-32 px-4 py-2 border rounded-lg"
+                    />
+                    <button
+                      onClick={addSavingsAllocation}
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowSavingsModal(false);
+                      setNewAllocation({ purpose: '', amount: 0 });
+                    }}
+                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
