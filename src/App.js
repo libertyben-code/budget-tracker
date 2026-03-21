@@ -680,8 +680,8 @@ export default function BudgetTracker() {
               onClick={() => setAuthMode('login')}
               className={`flex-1 py-2 rounded-lg font-semibold transition ${
                 authMode === 'login' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white' 
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
               Login
@@ -690,8 +690,8 @@ export default function BudgetTracker() {
               onClick={() => setAuthMode('signup')}
               className={`flex-1 py-2 rounded-lg font-semibold transition ${
                 authMode === 'signup' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white' 
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
               Sign Up
@@ -823,12 +823,12 @@ export default function BudgetTracker() {
                     onChange={(e) => setNewAccountName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addAccount()}
                     placeholder="Account name"
-                    className="px-3 py-2 border rounded"
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                     autoFocus
                   />
                   <button
                     onClick={addAccount}
-                    className="p-2 bg-green-500 text-white rounded hover:bg-green-600"
+                    className="p-2 bg-green-500 dark:bg-green-600 text-white rounded hover:bg-green-600 dark:hover:bg-green-700"
                   >
                     <Save size={16} />
                   </button>
@@ -837,7 +837,7 @@ export default function BudgetTracker() {
                       setIsAddingAccount(false);
                       setNewAccountName('');
                     }}
-                    className="p-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                    className="p-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
                   >
                     <X size={16} />
                   </button>
@@ -872,7 +872,7 @@ export default function BudgetTracker() {
 
             <button
               onClick={() => setShowCategoryManager(!showCategoryManager)}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition"
+              className="flex items-center gap-2 px-4 py-2 bg-teal-500 dark:bg-teal-600 text-white rounded-lg hover:bg-teal-600 dark:hover:bg-teal-700 transition"
             >
               <Edit2 size={20} />
               Manage Categories ({categories.length})
@@ -953,26 +953,26 @@ export default function BudgetTracker() {
           )}
 
           {showCategoryManager && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-bold mb-4">Category Manager</h3>
-              <p className="text-sm text-gray-600 mb-4">
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h3 className="font-bold mb-4 dark:text-white">Category Manager</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Rename categories to update all transactions using that category.
               </p>
               
               <div className="max-h-60 overflow-y-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-100 sticky top-0">
+                  <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
                     <tr>
-                      <th className="text-left p-2">Category Name</th>
-                      <th className="text-center p-2">Count</th>
-                      <th className="text-center p-2">Actions</th>
+                      <th className="text-left p-2 dark:text-white">Category Name</th>
+                      <th className="text-center p-2 dark:text-white">Count</th>
+                      <th className="text-center p-2 dark:text-white">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {categories.map(category => {
                       const count = transactions.filter(t => t.category === category).length;
                       return (
-                        <tr key={category} className="border-t">
+                        <tr key={category} className="border-t border-gray-200 dark:border-gray-700">
                           <td className="p-2">
                             {editingCategory === category ? (
                               <input
@@ -985,23 +985,23 @@ export default function BudgetTracker() {
                                   }
                                 }}
                                 onBlur={() => handleRenameCategory(category, newCategoryName)}
-                                className="w-full px-2 py-1 border rounded"
+                                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                 autoFocus
                               />
                             ) : (
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
                                 {category}
                               </span>
                             )}
                           </td>
-                          <td className="p-2 text-center text-gray-600">{count}</td>
+                          <td className="p-2 text-center text-gray-600 dark:text-gray-400">{count}</td>
                           <td className="p-2 text-center">
                             <button
                               onClick={() => {
                                 setEditingCategory(category);
                                 setNewCategoryName(category);
                               }}
-                              className="text-blue-600 hover:bg-blue-50 p-1 rounded"
+                              className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
                               title="Rename category"
                             >
                               <Edit2 size={16} />
@@ -1072,7 +1072,7 @@ export default function BudgetTracker() {
                           setFilter({...filter, categories: [e.target.value]});
                         }
                       }}
-                      className="px-4 py-2 border rounded-lg font-medium"
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="">All Categories</option>
                       {categories.map(cat => (
