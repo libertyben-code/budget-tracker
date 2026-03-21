@@ -328,15 +328,6 @@ export default function BudgetTracker() {
     }
   };
 
-  const renameAccount = (accountId, newName) => {
-    if (!newName.trim()) return;
-    
-    const updatedAccounts = accounts.map(acc => 
-      acc.id === accountId ? { ...acc, name: newName.trim() } : acc
-    );
-    setAccounts(updatedAccounts);
-  };
-
   // Savings allocation handlers
   const openSavingsModal = (transaction) => {
     setSelectedSavingsTransaction(transaction);
