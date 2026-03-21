@@ -7,6 +7,33 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'];
 
+// Utility function to format date to dd/mm/yy
+const formatDateToDDMMYY = (date) => {
+  if (!date) return '';
+  
+  // If it's already in dd/mm/yy format (8 chars with slashes at positions 2 and 5)
+  if (typeof date === 'string' && date.length === 8 && date[2] === '/' && date[5] === '/') {
+    return date;
+  }
+  
+  // If it's in dd/mm/yyyy format
+  if (typeof date === 'string' && date.length === 10 && date[2] === '/' && date[5] === '/') {
+    const parts = date.split('/');
+    return `${parts[0]}/${parts[1]}/${parts[2].slice(-2)}`;
+  }
+  
+  // If it's a Date object or parseable string
+  try {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    const day = dateObj.getDate().toString().padStart(2, '0');
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const year = dateObj.getFullYear().toString().slice(-2);
+    return `${day}/${month}/${year}`;
+  } catch {
+    return date.toString();
+  }
+};
+
 // Your Firebase configuration - using environment variables for security
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -62,7 +89,7 @@ export default function BudgetTracker() {
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [accountsData, setAccountsData] = useState({
-    'default': { transactions: [], categoryRules: {} }
+    'default': { transactions: [] }
   });
 
   const [transactions, setTransactions] = useState([]);
@@ -81,19 +108,34 @@ export default function BudgetTracker() {
   });
   const [showRules, setShowRules] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', category: '' });
+  const [ruleFilter, setRuleFilter] = useState('');
+  const [selectedRules, setSelectedRules] = useState([]);
+  const [showBatchRuleEdit, setShowBatchRuleEdit] = useState(false);
+  const [batchRuleCategory, setBatchRuleCategory] = useState('');
   const [showGraphs, setShowGraphs] = useState(true);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [deletingCategory, setDeletingCategory] = useState(null);
+  const [replacementCategory, setReplacementCategory] = useState('Uncategorized');
+  const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
+  
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  
+  // Multi-select state
+  const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [showBatchEdit, setShowBatchEdit] = useState(false);
+  const [batchEditForm, setBatchEditForm] = useState({ description: '', category: '' });
+  
+  // Import error state
+  const [importErrors, setImportErrors] = useState(null);
   
   // Savings allocation state
   const [showSavingsModal, setShowSavingsModal] = useState(false);
   const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
   const [savingsAllocations, setSavingsAllocations] = useState({});
   const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
-  
-  // Chart interaction state
-  const [selectedCategoryForMonthly, setSelectedCategoryForMonthly] = useState(null);
   
   // Dark mode state
   const [darkMode, setDarkMode] = useState(() => {
@@ -134,6 +176,11 @@ export default function BudgetTracker() {
     try {
       const data = await firebaseHelpers.loadData(userId);
       if (data) {
+        // Load global category rules (shared across all accounts)
+        if (data.categoryRules) {
+          setCategoryRules(data.categoryRules);
+        }
+        
         // Load accounts structure
         if (data.accounts) {
           setAccounts(data.accounts);
@@ -141,19 +188,16 @@ export default function BudgetTracker() {
         if (data.accountsData) {
           setAccountsData(data.accountsData);
           // Set active account data
-          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], categoryRules: {}, savingsAllocations: {} };
+          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {} };
           setTransactions(activeData.transactions || []);
-          setCategoryRules(activeData.categoryRules || {});
           setSavingsAllocations(activeData.savingsAllocations || {});
           setActiveAccountId(data.activeAccountId || 'default');
         } else {
           // Legacy support: migrate old data to new structure
           setTransactions(data.transactions || []);
-          setCategoryRules(data.categoryRules || {});
           setAccountsData({
             'default': {
-              transactions: data.transactions || [],
-              categoryRules: data.categoryRules || {}
+              transactions: data.transactions || []
             }
           });
         }
@@ -166,12 +210,11 @@ export default function BudgetTracker() {
   const saveUserData = async () => {
     if (!user) return;
     try {
-      // Update current account data
+      // Update current account data (without categoryRules)
       const updatedAccountsData = {
         ...accountsData,
         [activeAccountId]: {
           transactions,
-          categoryRules,
           savingsAllocations
         }
       };
@@ -179,6 +222,7 @@ export default function BudgetTracker() {
       await firebaseHelpers.saveData(user.uid, {
         accounts,
         accountsData: updatedAccountsData,
+        categoryRules, // Global category rules for all accounts
         activeAccountId,
         lastUpdated: new Date().toISOString()
       });
@@ -213,31 +257,30 @@ export default function BudgetTracker() {
     setCategoryRules({});
     setAccounts([{ id: 'default', name: 'Main Account' }]);
     setActiveAccountId('default');
-    setAccountsData({ 'default': { transactions: [], categoryRules: {} } });
+    setAccountsData({ 'default': { transactions: [] } });
     setEmail('');
     setPassword('');
   };
 
   const switchAccount = (accountId) => {
-    // Save current account data before switching
+    // Save current account data before switching (without categoryRules - they're global)
     const updatedAccountsData = {
       ...accountsData,
       [activeAccountId]: {
         transactions,
-        categoryRules,
         savingsAllocations
       }
     };
     setAccountsData(updatedAccountsData);
 
-    // Load new account data
-    const newAccountData = updatedAccountsData[accountId] || { transactions: [], categoryRules: {}, savingsAllocations: {} };
+    // Load new account data (categoryRules stay the same - they're global)
+    const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAllocations: {} };
     setTransactions(newAccountData.transactions);
-    setCategoryRules(newAccountData.categoryRules);
     setSavingsAllocations(newAccountData.savingsAllocations || {});
     setActiveAccountId(accountId);
     setEditingId(null);
     setEditForm({});
+    setSelectedTransactions([]);
   };
 
   const addAccount = () => {
@@ -283,15 +326,6 @@ export default function BudgetTracker() {
     if (activeAccountId === accountId) {
       switchAccount('default');
     }
-  };
-
-  const renameAccount = (accountId, newName) => {
-    if (!newName.trim()) return;
-    
-    const updatedAccounts = accounts.map(acc => 
-      acc.id === accountId ? { ...acc, name: newName.trim() } : acc
-    );
-    setAccounts(updatedAccounts);
   };
 
   // Savings allocation handlers
@@ -374,9 +408,13 @@ export default function BudgetTracker() {
     const lines = text.split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
     
-    const parsed = lines.slice(1)
-      .filter(line => line.trim())
-      .map((line, idx) => {
+    const failedLines = [];
+    const parsed = [];
+    
+    lines.slice(1).forEach((line, idx) => {
+      if (!line.trim()) return;
+      
+      try {
         const values = line.split(',');
         const row = {};
         headers.forEach((header, i) => {
@@ -387,20 +425,49 @@ export default function BudgetTracker() {
         const existingCategory = row['Categories'] || row['Category'] || '';
         const autoCategory = autoCategorizeTrans(description);
         
-        return {
+        const transaction = {
           id: Date.now() + idx,
-          date: row['Started Date'] || row.Date || '',
+          date: formatDateToDDMMYY(row['Started Date'] || row.Date || ''),
           description: description,
           category: existingCategory || autoCategory,
           amount: parseFloat(row.Amount) || 0,
           type: row.Type || '',
           state: row.State || ''
         };
-      })
-      .filter(t => t.state !== 'REVERTED' && t.state !== 'PENDING');
+        
+        // Skip reverted and pending transactions
+        if (transaction.state === 'REVERTED' || transaction.state === 'PENDING') {
+          failedLines.push(idx + 2); // +2 because of 0-index and header row
+          return;
+        }
+        
+        // Validate that we have minimum required data
+        if (!transaction.description && transaction.amount === 0) {
+          failedLines.push(idx + 2);
+          return;
+        }
+        
+        parsed.push(transaction);
+      } catch (error) {
+        failedLines.push(idx + 2); // +2 because of 0-index and header row
+      }
+    });
 
     learnCategoryFromTransactions(parsed);
     setTransactions(parsed);
+    
+    // Set import error message
+    if (failedLines.length > 0) {
+      setImportErrors({
+        count: failedLines.length,
+        lines: failedLines
+      });
+    } else {
+      setImportErrors(null);
+    }
+    
+    // Clear the file input
+    e.target.value = '';
   };
 
   const handleEdit = (transaction) => {
@@ -433,7 +500,7 @@ export default function BudgetTracker() {
     const newId = Date.now();
     const newTransaction = {
       id: newId,
-      date: new Date().toLocaleDateString('en-GB'),
+      date: formatDateToDDMMYY(new Date()),
       description: '',
       category: 'Uncategorized',
       amount: 0,
@@ -461,6 +528,54 @@ export default function BudgetTracker() {
     setCategoryRules(updated);
   };
 
+  const toggleSelectRule = (pattern) => {
+    setSelectedRules(prev => 
+      prev.includes(pattern) ? prev.filter(p => p !== pattern) : [...prev, pattern]
+    );
+  };
+
+  const toggleSelectAllRules = (filteredRules) => {
+    const patterns = Object.keys(filteredRules);
+    if (selectedRules.length === patterns.length) {
+      setSelectedRules([]);
+    } else {
+      setSelectedRules(patterns);
+    }
+  };
+
+  const handleBatchRuleEdit = () => {
+    if (selectedRules.length === 0) return;
+    setShowBatchRuleEdit(true);
+    setBatchRuleCategory('');
+  };
+
+  const applyBatchRuleEdit = () => {
+    if (!batchRuleCategory.trim()) return;
+    
+    const updatedRules = {...categoryRules};
+    selectedRules.forEach(pattern => {
+      updatedRules[pattern] = batchRuleCategory.trim();
+    });
+    
+    setCategoryRules(updatedRules);
+    setSelectedRules([]);
+    setShowBatchRuleEdit(false);
+    setBatchRuleCategory('');
+  };
+
+  const handleBatchRuleDelete = () => {
+    if (selectedRules.length === 0) return;
+    
+    if (window.confirm(`Delete ${selectedRules.length} selected rule(s)?`)) {
+      const updatedRules = {...categoryRules};
+      selectedRules.forEach(pattern => {
+        delete updatedRules[pattern];
+      });
+      setCategoryRules(updatedRules);
+      setSelectedRules([]);
+    }
+  };
+
   const reapplyRules = () => {
     const updated = transactions.map(t => ({
       ...t,
@@ -482,9 +597,126 @@ export default function BudgetTracker() {
       category: t.category === oldName ? newName.trim() : t.category
     }));
     
+    // Update category rules that reference the old category name
+    const updatedRules = {};
+    Object.entries(categoryRules).forEach(([pattern, category]) => {
+      updatedRules[pattern] = category === oldName ? newName.trim() : category;
+    });
+    
     setTransactions(updatedTransactions);
+    setCategoryRules(updatedRules);
     setEditingCategory(null);
     setNewCategoryName('');
+  };
+
+  const handleDeleteCategory = (categoryToDelete) => {
+    const count = transactions.filter(t => t.category === categoryToDelete).length;
+    if (count > 0) {
+      // Show confirmation dialog
+      setDeletingCategory(categoryToDelete);
+      setReplacementCategory('Uncategorized');
+      setIsCreatingNewCategory(false);
+    } else {
+      // No transactions with this category, just close
+      setDeletingCategory(null);
+    }
+  };
+
+  const confirmDeleteCategory = () => {
+    if (!deletingCategory) return;
+    
+    let finalReplacementCategory = replacementCategory;
+    
+    // If creating new category, use the entered value
+    if (isCreatingNewCategory && replacementCategory.trim()) {
+      finalReplacementCategory = replacementCategory.trim();
+    }
+    
+    // Update all transactions with the deleted category
+    const updatedTransactions = transactions.map(t => ({
+      ...t,
+      category: t.category === deletingCategory ? finalReplacementCategory : t.category
+    }));
+    
+    // Update category rules that reference the deleted category
+    const updatedRules = {};
+    Object.entries(categoryRules).forEach(([pattern, category]) => {
+      updatedRules[pattern] = category === deletingCategory ? finalReplacementCategory : category;
+    });
+    
+    setTransactions(updatedTransactions);
+    setCategoryRules(updatedRules);
+    
+    // Close dialog
+    setDeletingCategory(null);
+    setReplacementCategory('Uncategorized');
+    setIsCreatingNewCategory(false);
+  };
+
+  const cancelDeleteCategory = () => {
+    setDeletingCategory(null);
+    setReplacementCategory('Uncategorized');
+    setIsCreatingNewCategory(false);
+  };
+
+  // Sorting function
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Multi-select functions
+  const toggleSelectTransaction = (id) => {
+    setSelectedTransactions(prev => 
+      prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTransactions.length === filteredTransactions.length) {
+      setSelectedTransactions([]);
+    } else {
+      setSelectedTransactions(filteredTransactions.map(t => t.id));
+    }
+  };
+
+  const handleBatchEdit = () => {
+    if (selectedTransactions.length === 0) return;
+    setShowBatchEdit(true);
+  };
+
+  const applyBatchEdit = () => {
+    const updatedTransactions = transactions.map(t => {
+      if (selectedTransactions.includes(t.id)) {
+        return {
+          ...t,
+          ...(batchEditForm.description && { description: batchEditForm.description }),
+          ...(batchEditForm.category && { category: batchEditForm.category })
+        };
+      }
+      return t;
+    });
+    setTransactions(updatedTransactions);
+    setSelectedTransactions([]);
+    setShowBatchEdit(false);
+    setBatchEditForm({ description: '', category: '' });
+  };
+
+  const cancelBatchEdit = () => {
+    setShowBatchEdit(false);
+    setBatchEditForm({ description: '', category: '' });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedTransactions.length === 0) return;
+    if (window.confirm(`Are you sure you want to delete ${selectedTransactions.length} transaction(s)?`)) {
+      const updatedTransactions = transactions.filter(t => !selectedTransactions.includes(t.id));
+      setTransactions(updatedTransactions);
+      setSelectedTransactions([]);
+    }
   };
 
   const exportCSV = () => {
@@ -505,7 +737,7 @@ export default function BudgetTracker() {
   };
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
+    let filtered = transactions.filter(t => {
       // Category filter (multiple selection)
       if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
       
@@ -540,7 +772,40 @@ export default function BudgetTracker() {
       
       return true;
     });
-  }, [transactions, filter]);
+
+    // Apply sorting
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aValue, bValue;
+
+        if (sortConfig.key === 'date') {
+          // Parse dates for comparison
+          const parseDate = (dateStr) => {
+            const [day, month, year] = dateStr.split('/');
+            return new Date(year, parseInt(month) - 1, parseInt(day));
+          };
+          aValue = parseDate(a.date);
+          bValue = parseDate(b.date);
+        } else if (sortConfig.key === 'amount') {
+          aValue = a.amount;
+          bValue = b.amount;
+        } else if (sortConfig.key === 'category') {
+          aValue = a.category.toLowerCase();
+          bValue = b.category.toLowerCase();
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [transactions, filter, sortConfig]);
 
   const categories = useMemo(() => 
     [...new Set(transactions.map(t => t.category))].sort()
@@ -611,14 +876,41 @@ export default function BudgetTracker() {
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
+  // New data for categories by month chart
+  const categoryByMonthData = useMemo(() => {
+    const monthlyByCategory = {};
+    
+    filteredTransactions.forEach(t => {
+      if (t.amount < 0) { // Only spending
+        const [day, month, year] = t.date.split('/');
+        if (year && month) {
+          const monthKey = `${year}-${month.padStart(2, '0')}`;
+          if (!monthlyByCategory[monthKey]) {
+            monthlyByCategory[monthKey] = { month: monthKey };
+          }
+          monthlyByCategory[monthKey][t.category] = 
+            (monthlyByCategory[monthKey][t.category] || 0) + Math.abs(t.amount);
+        }
+      }
+    });
+    
+    return Object.values(monthlyByCategory)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map(m => {
+        const formatted = { month: m.month };
+        Object.keys(m).forEach(key => {
+          if (key !== 'month') {
+            formatted[key] = parseFloat(m[key].toFixed(2));
+          }
+        });
+        return formatted;
+      });
+  }, [filteredTransactions]);
+
   const monthlyData = useMemo(() => {
     const monthly = {};
-    // Filter transactions by selected category if one is selected
-    const transactionsToProcess = selectedCategoryForMonthly
-      ? filteredTransactions.filter(t => t.category === selectedCategoryForMonthly)
-      : filteredTransactions;
     
-    transactionsToProcess.forEach(t => {
+    filteredTransactions.forEach(t => {
       const [day, month, year] = t.date.split('/');
       if (year && month) {
         const key = `${year}-${month}`;
@@ -634,7 +926,7 @@ export default function BudgetTracker() {
         spending: parseFloat(m.spending.toFixed(2)),
         income: parseFloat(m.income.toFixed(2))
       }));
-  }, [filteredTransactions, selectedCategoryForMonthly]);
+  }, [filteredTransactions]);
 
   const stats = useMemo(() => {
     const total = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -888,6 +1180,31 @@ export default function BudgetTracker() {
             )}
           </div>
 
+          {importErrors && (
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                    Import Warning: {importErrors.count} line{importErrors.count > 1 ? 's' : ''} not imported
+                  </h4>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
+                    The following lines were skipped (REVERTED, PENDING, or invalid data):
+                  </p>
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400 font-mono">
+                    Lines: {importErrors.lines.slice(0, 20).join(', ')}
+                    {importErrors.lines.length > 20 && ` ... and ${importErrors.lines.length - 20} more`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setImportErrors(null)}
+                  className="text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-800 p-1 rounded"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {showRules && (
             <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <h3 className="font-bold mb-4 dark:text-white">Category Auto-Assignment Rules</h3>
@@ -918,36 +1235,148 @@ export default function BudgetTracker() {
                 </button>
               </div>
 
-              <div className="max-h-60 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
-                    <tr>
-                      <th className="text-left p-2 dark:text-white">Pattern</th>
-                      <th className="text-left p-2 dark:text-white">Category</th>
-                      <th className="text-center p-2 dark:text-white">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(categoryRules).map(([pattern, category]) => (
-                      <tr key={pattern} className="border-t border-gray-200 dark:border-gray-700">
-                        <td className="p-2 font-mono text-xs dark:text-gray-300">{pattern}</td>
-                        <td className="p-2">
-                          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
-                            {category}
-                          </span>
-                        </td>
-                        <td className="p-2 text-center">
+              <div className="mb-4">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  Filter by Category:
+                </label>
+                <select
+                  value={ruleFilter}
+                  onChange={(e) => setRuleFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(() => {
+                const filteredRules = ruleFilter 
+                  ? Object.fromEntries(Object.entries(categoryRules).filter(([_, cat]) => cat === ruleFilter))
+                  : categoryRules;
+                
+                return (
+                  <>
+                    {selectedRules.length > 0 && (
+                      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg flex items-center justify-between">
+                        <span className="text-sm text-blue-700 dark:text-blue-300">
+                          {selectedRules.length} rule{selectedRules.length > 1 ? 's' : ''} selected
+                        </span>
+                        <div className="flex gap-2">
                           <button
-                            onClick={() => handleDeleteRule(pattern)}
-                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
+                            onClick={handleBatchRuleEdit}
+                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 text-sm"
                           >
-                            <Trash2 size={16} />
+                            <Edit2 size={14} />
+                            Change Category
                           </button>
-                        </td>
-                      </tr>
+                          <button
+                            onClick={handleBatchRuleDelete}
+                            className="flex items-center gap-1 px-3 py-1 bg-red-500 dark:bg-red-600 text-white rounded hover:bg-red-600 dark:hover:bg-red-700 text-sm"
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
+                          <tr>
+                            <th className="text-center py-2 px-2 dark:text-white w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedRules.length === Object.keys(filteredRules).length && Object.keys(filteredRules).length > 0}
+                                onChange={() => toggleSelectAllRules(filteredRules)}
+                                className="cursor-pointer"
+                              />
+                            </th>
+                            <th className="text-left p-2 dark:text-white">Pattern</th>
+                            <th className="text-left p-2 dark:text-white">Category</th>
+                            <th className="text-center p-2 dark:text-white">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(filteredRules).map(([pattern, category]) => (
+                            <tr key={pattern} className="border-t border-gray-200 dark:border-gray-700">
+                              <td className="text-center py-2 px-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRules.includes(pattern)}
+                                  onChange={() => toggleSelectRule(pattern)}
+                                  className="cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-2 font-mono text-xs dark:text-gray-300">{pattern}</td>
+                              <td className="p-2">
+                                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
+                                  {category}
+                                </span>
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  onClick={() => handleDeleteRule(pattern)}
+                                  className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {showBatchRuleEdit && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 className="text-xl font-bold mb-4 dark:text-white">Change Category for {selectedRules.length} Rule(s)</h3>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    New Category:
+                  </label>
+                  <input
+                    type="text"
+                    value={batchRuleCategory}
+                    onChange={(e) => setBatchRuleCategory(e.target.value)}
+                    placeholder="Enter category name"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    list="batch-rule-categories-list"
+                  />
+                  <datalist id="batch-rule-categories-list">
+                    {categories.map(cat => (
+                      <option key={cat} value={cat} />
                     ))}
-                  </tbody>
-                </table>
+                  </datalist>
+                </div>
+                
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      setShowBatchRuleEdit(false);
+                      setBatchRuleCategory('');
+                    }}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={applyBatchRuleEdit}
+                    disabled={!batchRuleCategory.trim()}
+                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Apply to {selectedRules.length} Rule(s)
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -996,22 +1425,102 @@ export default function BudgetTracker() {
                           </td>
                           <td className="p-2 text-center text-gray-600 dark:text-gray-400">{count}</td>
                           <td className="p-2 text-center">
-                            <button
-                              onClick={() => {
-                                setEditingCategory(category);
-                                setNewCategoryName(category);
-                              }}
-                              className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
-                              title="Rename category"
-                            >
-                              <Edit2 size={16} />
-                            </button>
+                            <div className="flex gap-2 justify-center">
+                              <button
+                                onClick={() => {
+                                  setEditingCategory(category);
+                                  setNewCategoryName(category);
+                                }}
+                                className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
+                                title="Rename category"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCategory(category)}
+                                className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
+                                title="Delete category"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {deletingCategory && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 className="text-xl font-bold mb-4 dark:text-white">Delete Category: {deletingCategory}</h3>
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  There are {transactions.filter(t => t.category === deletingCategory).length} transaction(s) with this category.
+                </p>
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  What would you like to do with these transactions?
+                </p>
+                
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={!isCreatingNewCategory}
+                      onChange={() => {
+                        setIsCreatingNewCategory(false);
+                        setReplacementCategory('Uncategorized');
+                      }}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-gray-700 dark:text-gray-300">Set to Uncategorized</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={isCreatingNewCategory}
+                      onChange={() => {
+                        setIsCreatingNewCategory(true);
+                        setReplacementCategory('');
+                      }}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-gray-700 dark:text-gray-300">Enter a new category</span>
+                  </label>
+                  
+                  {isCreatingNewCategory && (
+                    <div className="ml-6 mt-2">
+                      <input
+                        type="text"
+                        value={replacementCategory}
+                        onChange={(e) => setReplacementCategory(e.target.value)}
+                        placeholder="New category name"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={cancelDeleteCategory}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDeleteCategory}
+                    disabled={isCreatingNewCategory && !replacementCategory.trim()}
+                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Delete Category
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1062,23 +1571,47 @@ export default function BudgetTracker() {
                     </select>
                   </div>
                   
+                  {/* Category Filter - now multi-select with chips */}
                   <div className="flex items-center gap-2">
-                    <select
-                      value={filter.categories.length === 1 ? filter.categories[0] : ''}
-                      onChange={(e) => {
-                        if (e.target.value === '') {
-                          setFilter({...filter, categories: []});
-                        } else {
-                          setFilter({...filter, categories: [e.target.value]});
-                        }
-                      }}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    >
-                      <option value="">All Categories</option>
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <button
+                        onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex items-center gap-2 min-w-[150px] justify-between"
+                      >
+                        <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+                        <span>▼</span>
+                      </button>
+                      <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto min-w-[200px]">
+                        <div className="p-2">
+                          <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={filter.categories.length === 0}
+                              onChange={() => setFilter({...filter, categories: []})}
+                              className="cursor-pointer"
+                            />
+                            <span className="text-sm dark:text-white">All Categories</span>
+                          </label>
+                          {categories.map(cat => (
+                            <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={filter.categories.includes(cat)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFilter({...filter, categories: [...filter.categories, cat]});
+                                  } else {
+                                    setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                                  }
+                                }}
+                                className="cursor-pointer"
+                              />
+                              <span className="text-sm dark:text-white">{cat}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   
                   {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all') && (
@@ -1183,97 +1716,76 @@ export default function BudgetTracker() {
 
         {transactions.length > 0 && showGraphs && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
-                <ResponsiveContainer width="100%" height={350}>
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={true}
-                      label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                      animationBegin={0}
-                      animationDuration={800}
-                    >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      formatter={(value) => `€${value.toFixed(2)}`}
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+              <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
+              <ResponsiveContainer width="100%" height={350}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={true}
+                    label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                    animationBegin={0}
+                    animationDuration={800}
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value) => `€${value.toFixed(2)}`}
+                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold mb-4 dark:text-white">Top Spending Categories</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click on a bar to filter the monthly overview</p>
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={categoryData.slice(0, 10)} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                    <defs>
-                      <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#8884d8" stopOpacity={0.4}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                    <XAxis 
-                      dataKey="name" 
-                      angle={-45} 
-                      textAnchor="end" 
-                      height={100}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => `€${value}`}
-                    />
-                    <Tooltip 
-                      formatter={(value) => [`€${value.toFixed(2)}`, 'Spending']}
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                      cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }}
-                    />
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+              <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category per Month</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">View spending trends across categories over time</p>
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart data={categoryByMonthData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }} barCategoryGap="5%" barSize={60} barGap={0}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
+                  <XAxis 
+                    dataKey="month" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80}
+                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    tickFormatter={(value) => {
+                      const [year, month] = value.split('-');
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
+                    }}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    tickFormatter={(value) => `€${value}`}
+                  />
+                  <Tooltip 
+                    formatter={(value) => `€${value.toFixed(2)}`}
+                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                  />
+                  {categories.map((category, index) => (
                     <Bar 
-                      dataKey="value" 
-                      fill="url(#colorBar)"
-                      radius={[8, 8, 0, 0]}
+                      key={category}
+                      dataKey={category} 
+                      fill={COLORS[index % COLORS.length]}
                       animationBegin={0}
                       animationDuration={800}
-                      onClick={(data) => {
-                        if (selectedCategoryForMonthly === data.name) {
-                          setSelectedCategoryForMonthly(null);
-                        } else {
-                          setSelectedCategoryForMonthly(data.name);
-                        }
-                      }}
-                      cursor="pointer"
                     />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold dark:text-white">
-                  Monthly Overview{selectedCategoryForMonthly && ` - ${selectedCategoryForMonthly}`}
-                </h2>
-                {selectedCategoryForMonthly && (
-                  <button
-                    onClick={() => setSelectedCategoryForMonthly(null)}
-                    className="flex items-center gap-2 px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm"
-                  >
-                    <X size={16} />
-                    Clear Filter
-                  </button>
-                )}
+                <h2 className="text-xl font-bold dark:text-white">Monthly Overview</h2>
               </div>
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
@@ -1282,15 +1794,11 @@ export default function BudgetTracker() {
                       <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                     </linearGradient>
-                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
                   <XAxis 
                     dataKey="month" 
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => {
                       const [year, month] = value.split('-');
                       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1298,7 +1806,7 @@ export default function BudgetTracker() {
                     }}
                   />
                   <YAxis 
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => `€${value}`}
                   />
                   <Tooltip 
@@ -1315,16 +1823,6 @@ export default function BudgetTracker() {
                     stroke="#ef4444" 
                     strokeWidth={3}
                     dot={{ fill: '#ef4444', r: 4 }}
-                    activeDot={{ r: 6 }}
-                    animationBegin={0}
-                    animationDuration={800}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="income" 
-                    stroke="#10b981" 
-                    strokeWidth={3}
-                    dot={{ fill: '#10b981', r: 4 }}
                     activeDot={{ r: 6 }}
                     animationBegin={0}
                     animationDuration={800}
@@ -1433,20 +1931,95 @@ export default function BudgetTracker() {
             )}
           </div>
           
+          {/* Batch Edit Controls */}
+          {selectedTransactions.length > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {selectedTransactions.length} transaction(s) selected
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleBatchEdit}
+                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition text-sm"
+                >
+                  Batch Edit
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
+                >
+                  Delete Selected
+                </button>
+                <button
+                  onClick={() => setSelectedTransactions([])}
+                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition text-sm"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
+          )}
+          
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-2 px-2 dark:text-gray-300">Date</th>
+                  <th className="text-center py-2 px-2 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactions.length === filteredTransactions.length && filteredTransactions.length > 0}
+                      onChange={toggleSelectAll}
+                      className="cursor-pointer"
+                    />
+                  </th>
+                  <th 
+                    className="text-left py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
+                    onClick={() => handleSort('date')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Date
+                      {sortConfig.key === 'date' && (
+                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </div>
+                  </th>
                   <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
-                  <th className="text-left py-2 px-2 dark:text-gray-300">Category</th>
-                  <th className="text-right py-2 px-2 dark:text-gray-300">Amount</th>
+                  <th 
+                    className="text-left py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
+                    onClick={() => handleSort('category')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Category
+                      {sortConfig.key === 'category' && (
+                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    className="text-right py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
+                    onClick={() => handleSort('amount')}
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      Amount
+                      {sortConfig.key === 'amount' && (
+                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </div>
+                  </th>
                   <th className="text-center py-2 px-2 dark:text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTransactions.map(transaction => (
                   <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="text-center py-2 px-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedTransactions.includes(transaction.id)}
+                        onChange={() => toggleSelectTransaction(transaction.id)}
+                        className="cursor-pointer"
+                      />
+                    </td>
                     {editingId === transaction.id ? (
                       <>
                         <td className="py-2 px-2">
@@ -1507,7 +2080,7 @@ export default function BudgetTracker() {
                       </>
                     ) : (
                       <>
-                        <td className="py-2 px-2 text-sm dark:text-gray-300">{transaction.date}</td>
+                        <td className="py-2 px-2 text-sm dark:text-gray-300">{formatDateToDDMMYY(transaction.date)}</td>
                         <td className="py-2 px-2 text-sm dark:text-gray-300">{transaction.description}</td>
                         <td className="py-2 px-2 text-sm">
                           <span className={`px-2 py-1 rounded-full text-xs ${
@@ -1642,6 +2215,91 @@ export default function BudgetTracker() {
                     className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition"
                   >
                     Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Batch Edit Modal */}
+        {showBatchEdit && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold dark:text-white">Batch Edit Transactions</h2>
+                  <button
+                    onClick={cancelBatchEdit}
+                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Editing {selectedTransactions.length} transaction(s)
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                    Leave fields empty to keep existing values
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Description (optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="New description for all selected"
+                      value={batchEditForm.description}
+                      onChange={(e) => setBatchEditForm({...batchEditForm, description: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Category (optional)
+                    </label>
+                    <select
+                      value={batchEditForm.category}
+                      onChange={(e) => setBatchEditForm({...batchEditForm, category: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="">-- Keep existing categories --</option>
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__new__">+ Create New Category</option>
+                    </select>
+                    {batchEditForm.category === '__new__' && (
+                      <input
+                        type="text"
+                        placeholder="Enter new category name"
+                        onChange={(e) => setBatchEditForm({...batchEditForm, category: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 mt-2"
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={cancelBatchEdit}
+                    className="px-6 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={applyBatchEdit}
+                    disabled={!batchEditForm.description && !batchEditForm.category}
+                    className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                    Apply Changes
                   </button>
                 </div>
               </div>
