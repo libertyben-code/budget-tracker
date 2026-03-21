@@ -88,6 +88,9 @@ export default function BudgetTracker() {
   const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
   const [savingsAllocations, setSavingsAllocations] = useState({});
   const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
+  
+  // Chart interaction state
+  const [selectedCategoryForMonthly, setSelectedCategoryForMonthly] = useState(null);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -573,7 +576,12 @@ export default function BudgetTracker() {
 
   const monthlyData = useMemo(() => {
     const monthly = {};
-    filteredTransactions.forEach(t => {
+    // Filter transactions by selected category if one is selected
+    const transactionsToProcess = selectedCategoryForMonthly
+      ? filteredTransactions.filter(t => t.category === selectedCategoryForMonthly)
+      : filteredTransactions;
+    
+    transactionsToProcess.forEach(t => {
       const [day, month, year] = t.date.split('/');
       if (year && month) {
         const key = `${year}-${month}`;
@@ -589,7 +597,7 @@ export default function BudgetTracker() {
         spending: parseFloat(m.spending.toFixed(2)),
         income: parseFloat(m.income.toFixed(2))
       }));
-  }, [filteredTransactions]);
+  }, [filteredTransactions, selectedCategoryForMonthly]);
 
   const stats = useMemo(() => {
     const total = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -1056,6 +1064,7 @@ export default function BudgetTracker() {
 
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-bold mb-4">Top Spending Categories</h2>
+                <p className="text-sm text-gray-600 mb-3">Click on a bar to filter the monthly overview</p>
                 <ResponsiveContainer width="100%" height={350}>
                   <BarChart data={categoryData.slice(0, 10)} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
                     <defs>
@@ -1083,10 +1092,18 @@ export default function BudgetTracker() {
                     />
                     <Bar 
                       dataKey="value" 
-                      fill="url(#colorBar)" 
+                      fill="url(#colorBar)"
                       radius={[8, 8, 0, 0]}
                       animationBegin={0}
                       animationDuration={800}
+                      onClick={(data) => {
+                        if (selectedCategoryForMonthly === data.name) {
+                          setSelectedCategoryForMonthly(null);
+                        } else {
+                          setSelectedCategoryForMonthly(data.name);
+                        }
+                      }}
+                      cursor="pointer"
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1094,7 +1111,20 @@ export default function BudgetTracker() {
             </div>
 
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Monthly Overview</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">
+                  Monthly Overview{selectedCategoryForMonthly && ` - ${selectedCategoryForMonthly}`}
+                </h2>
+                {selectedCategoryForMonthly && (
+                  <button
+                    onClick={() => setSelectedCategoryForMonthly(null)}
+                    className="flex items-center gap-2 px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm"
+                  >
+                    <X size={16} />
+                    Clear Filter
+                  </button>
+                )}
+              </div>
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
                   <defs>
