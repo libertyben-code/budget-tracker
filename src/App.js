@@ -7,14 +7,14 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'];
 
-// Your Firebase configuration
+// Your Firebase configuration - using environment variables for security
 const firebaseConfig = {
-  apiKey: "AIzaSyBodHwDZ-U8evpumw9vE7-nsfq_auwRZX0",
-  authDomain: "boo2-budget.firebaseapp.com",
-  projectId: "boo2-budget",
-  storageBucket: "boo2-budget.firebasestorage.app",
-  messagingSenderId: "504106724059",
-  appId: "1:504106724059:web:d632c1732d856bb50ebafe"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
@@ -82,6 +82,9 @@ export default function BudgetTracker() {
   const [showRules, setShowRules] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', category: '' });
   const [showGraphs, setShowGraphs] = useState(true);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
   
   // Savings allocation state
   const [showSavingsModal, setShowSavingsModal] = useState(false);
@@ -450,6 +453,24 @@ export default function BudgetTracker() {
     setTransactions(updated);
   };
 
+  const handleRenameCategory = (oldName, newName) => {
+    if (!newName.trim() || oldName === newName) {
+      setEditingCategory(null);
+      setNewCategoryName('');
+      return;
+    }
+    
+    // Update all transactions with the old category name
+    const updatedTransactions = transactions.map(t => ({
+      ...t,
+      category: t.category === oldName ? newName.trim() : t.category
+    }));
+    
+    setTransactions(updatedTransactions);
+    setEditingCategory(null);
+    setNewCategoryName('');
+  };
+
   const exportCSV = () => {
     const headers = ['Date', 'Description', 'Category', 'Amount', 'Type', 'State'];
     const csv = [
@@ -811,6 +832,14 @@ export default function BudgetTracker() {
               Category Rules ({Object.keys(categoryRules).length})
             </button>
 
+            <button
+              onClick={() => setShowCategoryManager(!showCategoryManager)}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition"
+            >
+              <Edit2 size={20} />
+              Manage Categories ({categories.length})
+            </button>
+
             {transactions.length > 0 && (
               <button
                 onClick={reapplyRules}
@@ -885,6 +914,70 @@ export default function BudgetTracker() {
             </div>
           )}
 
+          {showCategoryManager && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-bold mb-4">Category Manager</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Rename categories to update all transactions using that category.
+              </p>
+              
+              <div className="max-h-60 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2">Category Name</th>
+                      <th className="text-center p-2">Count</th>
+                      <th className="text-center p-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map(category => {
+                      const count = transactions.filter(t => t.category === category).length;
+                      return (
+                        <tr key={category} className="border-t">
+                          <td className="p-2">
+                            {editingCategory === category ? (
+                              <input
+                                type="text"
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleRenameCategory(category, newCategoryName);
+                                  }
+                                }}
+                                onBlur={() => handleRenameCategory(category, newCategoryName)}
+                                className="w-full px-2 py-1 border rounded"
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                                {category}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center text-gray-600">{count}</td>
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() => {
+                                setEditingCategory(category);
+                                setNewCategoryName(category);
+                              }}
+                              className="text-blue-600 hover:bg-blue-50 p-1 rounded"
+                              title="Rename category"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {transactions.length > 0 && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -928,6 +1021,25 @@ export default function BudgetTracker() {
                       <option value="year">By Year</option>
                       <option value="month">By Month</option>
                       <option value="dateRange">Date Range</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={filter.categories.length === 1 ? filter.categories[0] : ''}
+                      onChange={(e) => {
+                        if (e.target.value === '') {
+                          setFilter({...filter, categories: []});
+                        } else {
+                          setFilter({...filter, categories: [e.target.value]});
+                        }
+                      }}
+                      className="px-4 py-2 border rounded-lg font-medium"
+                    >
+                      <option value="">All Categories</option>
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
                   
