@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar } from 'lucide-react';
+import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar, Moon, Sun } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -91,6 +91,22 @@ export default function BudgetTracker() {
   
   // Chart interaction state
   const [selectedCategoryForMonthly, setSelectedCategoryForMonthly] = useState(null);
+  
+  // Dark mode state
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  // Toggle dark mode
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -622,11 +638,20 @@ export default function BudgetTracker() {
   // Login Screen
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8 w-full max-w-md relative">
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="absolute top-4 right-4 p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            title="Toggle dark mode"
+          >
+            {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
+          </button>
+          
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Budget Tracker</h1>
-            <p className="text-gray-600">Sign in to access your budget</p>
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Budget Tracker</h1>
+            <p className="text-gray-600 dark:text-gray-300">Sign in to access your budget</p>
           </div>
           
           <div className="flex gap-2 mb-6">
@@ -654,24 +679,24 @@ export default function BudgetTracker() {
 
           <form onSubmit={handleAuth} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="your@email.com"
                 required
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="••••••••"
                 required
                 minLength={6}
@@ -679,7 +704,7 @@ export default function BudgetTracker() {
             </div>
             
             {authError && (
-              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm border border-red-200 dark:border-red-800">
                 {authError}
               </div>
             )}
@@ -687,7 +712,7 @@ export default function BudgetTracker() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 transition disabled:bg-gray-400"
+              className="w-full bg-blue-500 dark:bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-700 transition disabled:bg-gray-400 dark:disabled:bg-gray-600"
             >
               {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
             </button>
@@ -699,34 +724,44 @@ export default function BudgetTracker() {
 
   // Main App
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Budget Tracker</h1>
-              <p className="text-sm text-gray-500 mt-1">Logged in as: {user.email}</p>
+              <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Budget Tracker</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Logged in as: {user.email}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-            >
-              <LogOut size={20} />
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                title="Toggle dark mode"
+              >
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+                {darkMode ? 'Light' : 'Dark'}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition"
+              >
+                <LogOut size={20} />
+                Logout
+              </button>
+            </div>
           </div>
           
           {/* Account Tabs */}
-          <div className="mb-6 border-b border-gray-200">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-3">
               {accounts.map(account => (
-                <div key={account.id} className="group relative flex items-center">
+                <div key={account.id} className="group relative">
                   <button
                     onClick={() => switchAccount(account.id)}
                     className={`px-4 py-2 rounded-t-lg font-medium transition whitespace-nowrap ${
                       activeAccountId === account.id
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
                   >
                     {account.name}
@@ -738,11 +773,14 @@ export default function BudgetTracker() {
                   </button>
                   {account.id !== 'default' && (
                     <button
-                      onClick={() => deleteAccount(account.id)}
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAccount(account.id);
+                      }}
+                      className="absolute -top-2 -right-2 bg-red-500 dark:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
                       title="Delete account"
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
                   )}
                 </div>
@@ -751,7 +789,7 @@ export default function BudgetTracker() {
               {!isAddingAccount ? (
                 <button
                   onClick={() => setIsAddingAccount(true)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-t-lg hover:bg-gray-200 transition flex items-center gap-1"
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1"
                 >
                   <Plus size={16} />
                   New Account
@@ -788,7 +826,7 @@ export default function BudgetTracker() {
           </div>
           
           <div className="flex gap-4 mb-6 flex-wrap">
-            <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition">
+            <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-600 dark:hover:bg-blue-700 transition">
               <Upload size={20} />
               Import CSV
               <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
@@ -797,7 +835,7 @@ export default function BudgetTracker() {
             <button
               onClick={exportCSV}
               disabled={transactions.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:bg-gray-300"
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition disabled:bg-gray-300 dark:disabled:bg-gray-600"
             >
               <Download size={20} />
               Export CSV
@@ -805,7 +843,7 @@ export default function BudgetTracker() {
 
             <button
               onClick={() => setShowRules(!showRules)}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 dark:bg-orange-600 text-white rounded-lg hover:bg-orange-600 dark:hover:bg-orange-700 transition"
             >
               <Settings size={20} />
               Category Rules ({Object.keys(categoryRules).length})
@@ -814,7 +852,7 @@ export default function BudgetTracker() {
             {transactions.length > 0 && (
               <button
                 onClick={reapplyRules}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-500 dark:bg-indigo-600 text-white rounded-lg hover:bg-indigo-600 dark:hover:bg-indigo-700 transition"
               >
                 Auto-Categorize
               </button>
@@ -822,9 +860,9 @@ export default function BudgetTracker() {
           </div>
 
           {showRules && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-bold mb-4">Category Auto-Assignment Rules</h3>
-              <p className="text-sm text-gray-600 mb-4">
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h3 className="font-bold mb-4 dark:text-white">Category Auto-Assignment Rules</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Rules are automatically learned when you set categories.
               </p>
               
@@ -834,18 +872,18 @@ export default function BudgetTracker() {
                   placeholder="Description pattern"
                   value={newRule.pattern}
                   onChange={(e) => setNewRule({...newRule, pattern: e.target.value})}
-                  className="flex-1 px-3 py-2 border rounded"
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
                 <input
                   type="text"
                   placeholder="Category"
                   value={newRule.category}
                   onChange={(e) => setNewRule({...newRule, category: e.target.value})}
-                  className="flex-1 px-3 py-2 border rounded"
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
                 <button
                   onClick={handleAddRule}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700"
                 >
                   Add Rule
                 </button>
@@ -853,26 +891,26 @@ export default function BudgetTracker() {
 
               <div className="max-h-60 overflow-y-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-100 sticky top-0">
+                  <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
                     <tr>
-                      <th className="text-left p-2">Pattern</th>
-                      <th className="text-left p-2">Category</th>
-                      <th className="text-center p-2">Actions</th>
+                      <th className="text-left p-2 dark:text-white">Pattern</th>
+                      <th className="text-left p-2 dark:text-white">Category</th>
+                      <th className="text-center p-2 dark:text-white">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(categoryRules).map(([pattern, category]) => (
-                      <tr key={pattern} className="border-t">
-                        <td className="p-2 font-mono text-xs">{pattern}</td>
+                      <tr key={pattern} className="border-t border-gray-200 dark:border-gray-700">
+                        <td className="p-2 font-mono text-xs dark:text-gray-300">{pattern}</td>
                         <td className="p-2">
-                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
                             {category}
                           </span>
                         </td>
                         <td className="p-2 text-center">
                           <button
                             onClick={() => handleDeleteRule(pattern)}
-                            className="text-red-600 hover:bg-red-50 p-1 rounded"
+                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
                           >
                             <Trash2 size={16} />
                           </button>
@@ -888,21 +926,21 @@ export default function BudgetTracker() {
           {transactions.length > 0 && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Total Balance</div>
-                  <div className={`text-2xl font-bold ${stats.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Balance</div>
+                  <div className={`text-2xl font-bold ${stats.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     €{stats.total.toFixed(2)}
                   </div>
                 </div>
-                <div className="bg-red-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Total Spending</div>
-                  <div className="text-2xl font-bold text-red-600">
+                <div className="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Spending</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                     €{stats.spending.toFixed(2)}
                   </div>
                 </div>
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Total Income</div>
-                  <div className="text-2xl font-bold text-green-600">
+                <div className="bg-green-50 dark:bg-green-900/30 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Income</div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                     €{stats.income.toFixed(2)}
                   </div>
                 </div>
@@ -911,7 +949,7 @@ export default function BudgetTracker() {
               <div className="space-y-4 mb-6">
                 <div className="flex gap-4 flex-wrap items-center">
                   <div className="flex items-center gap-2">
-                    <Calendar size={20} className="text-gray-600" />
+                    <Calendar size={20} className="text-gray-600 dark:text-gray-400" />
                     <select
                       value={filter.dateFilterType}
                       onChange={(e) => setFilter({
@@ -922,7 +960,7 @@ export default function BudgetTracker() {
                         startDate: '',
                         endDate: ''
                       })}
-                      className="px-4 py-2 border rounded-lg font-medium"
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="all">All Time</option>
                       <option value="year">By Year</option>
@@ -943,7 +981,7 @@ export default function BudgetTracker() {
                         startDate: '',
                         endDate: ''
                       })}
-                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
+                      className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
                     >
                       Clear Filters
                     </button>
@@ -953,11 +991,11 @@ export default function BudgetTracker() {
                 {/* Date Filter Options */}
                 {filter.dateFilterType === 'year' && (
                   <div className="flex gap-2 items-center pl-8">
-                    <label className="text-sm font-medium text-gray-700">Year:</label>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Year:</label>
                     <select
                       value={filter.year}
                       onChange={(e) => setFilter({...filter, year: e.target.value})}
-                      className="px-4 py-2 border rounded-lg"
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="">Select Year</option>
                       {years.map(year => (
@@ -969,11 +1007,11 @@ export default function BudgetTracker() {
 
                 {filter.dateFilterType === 'month' && (
                   <div className="flex gap-2 items-center pl-8">
-                    <label className="text-sm font-medium text-gray-700">Month:</label>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Month:</label>
                     <select
                       value={filter.month}
                       onChange={(e) => setFilter({...filter, month: e.target.value})}
-                      className="px-4 py-2 border rounded-lg"
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="">Select Month</option>
                       {months.map(month => (
@@ -986,21 +1024,21 @@ export default function BudgetTracker() {
                 {filter.dateFilterType === 'dateRange' && (
                   <div className="flex gap-4 items-center pl-8 flex-wrap">
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700">From:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
                       <input
                         type="date"
                         value={filter.startDate}
                         onChange={(e) => setFilter({...filter, startDate: e.target.value})}
-                        className="px-4 py-2 border rounded-lg"
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       />
                     </div>
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700">To:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
                       <input
                         type="date"
                         value={filter.endDate}
                         onChange={(e) => setFilter({...filter, endDate: e.target.value})}
-                        className="px-4 py-2 border rounded-lg"
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       />
                     </div>
                   </div>
@@ -1011,10 +1049,10 @@ export default function BudgetTracker() {
         </div>
 
         {transactions.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
             <button
               onClick={() => setShowGraphs(!showGraphs)}
-              className="w-full flex items-center justify-center gap-2 px-6 py-2 text-gray-700 hover:bg-gray-50 transition rounded"
+              className="w-full flex items-center justify-center gap-2 px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition rounded"
             >
               {showGraphs ? (
                 <>
@@ -1034,8 +1072,8 @@ export default function BudgetTracker() {
         {transactions.length > 0 && showGraphs && (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold mb-4">Spending by Category</h2>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
                 <ResponsiveContainer width="100%" height={350}>
                   <PieChart>
                     <Pie
@@ -1056,15 +1094,15 @@ export default function BudgetTracker() {
                     </Pie>
                     <Tooltip 
                       formatter={(value) => `€${value.toFixed(2)}`}
-                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold mb-4">Top Spending Categories</h2>
-                <p className="text-sm text-gray-600 mb-3">Click on a bar to filter the monthly overview</p>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-bold mb-4 dark:text-white">Top Spending Categories</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click on a bar to filter the monthly overview</p>
                 <ResponsiveContainer width="100%" height={350}>
                   <BarChart data={categoryData.slice(0, 10)} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
                     <defs>
@@ -1087,7 +1125,7 @@ export default function BudgetTracker() {
                     />
                     <Tooltip 
                       formatter={(value) => [`€${value.toFixed(2)}`, 'Spending']}
-                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                       cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }}
                     />
                     <Bar 
@@ -1110,15 +1148,15 @@ export default function BudgetTracker() {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">
+                <h2 className="text-xl font-bold dark:text-white">
                   Monthly Overview{selectedCategoryForMonthly && ` - ${selectedCategoryForMonthly}`}
                 </h2>
                 {selectedCategoryForMonthly && (
                   <button
                     onClick={() => setSelectedCategoryForMonthly(null)}
-                    className="flex items-center gap-2 px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm"
+                    className="flex items-center gap-2 px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm"
                   >
                     <X size={16} />
                     Clear Filter
@@ -1153,7 +1191,7 @@ export default function BudgetTracker() {
                   />
                   <Tooltip 
                     formatter={(value, name) => [`€${value.toFixed(2)}`, name.charAt(0).toUpperCase() + name.slice(1)]}
-                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                   />
                   <Legend 
                     wrapperStyle={{ paddingTop: '20px' }}
@@ -1184,8 +1222,8 @@ export default function BudgetTracker() {
             </div>
 
             {savingsBreakdownData.length > 0 && (
-              <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 className="text-xl font-bold mb-4">Savings Breakdown</h2>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4 dark:text-white">Savings Breakdown</h2>
                 <ResponsiveContainer width="100%" height={350}>
                   <PieChart>
                     <Pie
@@ -1206,7 +1244,7 @@ export default function BudgetTracker() {
                     </Pie>
                     <Tooltip 
                       formatter={(value) => `€${value.toFixed(2)}`}
-                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -1215,12 +1253,12 @@ export default function BudgetTracker() {
           </>
         )}
 
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Transactions ({filteredTransactions.length})</h2>
+            <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
             <button
               onClick={handleAdd}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition"
             >
               <Plus size={20} />
               Add Transaction
@@ -1235,7 +1273,7 @@ export default function BudgetTracker() {
                 placeholder="Search Description..."
                 value={filter.description}
                 onChange={(e) => setFilter({...filter, description: e.target.value})}
-                className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+                className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
               />
               
               <input
@@ -1243,14 +1281,14 @@ export default function BudgetTracker() {
                 placeholder="Search Category..."
                 value={filter.categorySearch}
                 onChange={(e) => setFilter({...filter, categorySearch: e.target.value})}
-                className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+                className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
               />
             </div>
             
             {/* Multi-Category Selector */}
             {categories.length > 0 && (
-              <div className="border rounded-lg p-3 bg-gray-50">
-                <div className="text-sm font-medium text-gray-700 mb-2">
+              <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-700">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Filter by Categories {filter.categories.length > 0 && `(${filter.categories.length} selected)`}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1259,8 +1297,8 @@ export default function BudgetTracker() {
                       key={cat}
                       className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition ${
                         filter.categories.includes(cat)
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                          ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                          : 'bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-500'
                       }`}
                     >
                       <input
@@ -1286,17 +1324,17 @@ export default function BudgetTracker() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 px-2">Date</th>
-                  <th className="text-left py-2 px-2">Description</th>
-                  <th className="text-left py-2 px-2">Category</th>
-                  <th className="text-right py-2 px-2">Amount</th>
-                  <th className="text-center py-2 px-2">Actions</th>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-2 px-2 dark:text-gray-300">Date</th>
+                  <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
+                  <th className="text-left py-2 px-2 dark:text-gray-300">Category</th>
+                  <th className="text-right py-2 px-2 dark:text-gray-300">Amount</th>
+                  <th className="text-center py-2 px-2 dark:text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTransactions.map(transaction => (
-                  <tr key={transaction.id} className="border-b hover:bg-gray-50">
+                  <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     {editingId === transaction.id ? (
                       <>
                         <td className="py-2 px-2">
@@ -1304,7 +1342,7 @@ export default function BudgetTracker() {
                             type="text"
                             value={editForm.date}
                             onChange={(e) => setEditForm({...editForm, date: e.target.value})}
-                            className="w-full px-2 py-1 border rounded"
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                           />
                         </td>
                         <td className="py-2 px-2">
@@ -1312,7 +1350,7 @@ export default function BudgetTracker() {
                             type="text"
                             value={editForm.description}
                             onChange={(e) => setEditForm({...editForm, description: e.target.value})}
-                            className="w-full px-2 py-1 border rounded"
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                           />
                         </td>
                         <td className="py-2 px-2">
@@ -1320,7 +1358,7 @@ export default function BudgetTracker() {
                             type="text"
                             value={editForm.category}
                             onChange={(e) => setEditForm({...editForm, category: e.target.value})}
-                            className="w-full px-2 py-1 border rounded"
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             list="categories-list"
                           />
                           <datalist id="categories-list">
@@ -1335,20 +1373,20 @@ export default function BudgetTracker() {
                             step="0.01"
                             value={editForm.amount}
                             onChange={(e) => setEditForm({...editForm, amount: parseFloat(e.target.value)})}
-                            className="w-full px-2 py-1 border rounded text-right"
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-right bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                           />
                         </td>
                         <td className="py-2 px-2">
                           <div className="flex justify-center gap-2">
                             <button
                               onClick={handleSave}
-                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                              className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900 rounded"
                             >
                               <Save size={18} />
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
-                              className="p-1 text-gray-600 hover:bg-gray-50 rounded"
+                              className="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
                             >
                               <X size={18} />
                             </button>
@@ -1357,19 +1395,19 @@ export default function BudgetTracker() {
                       </>
                     ) : (
                       <>
-                        <td className="py-2 px-2 text-sm">{transaction.date}</td>
-                        <td className="py-2 px-2 text-sm">{transaction.description}</td>
+                        <td className="py-2 px-2 text-sm dark:text-gray-300">{transaction.date}</td>
+                        <td className="py-2 px-2 text-sm dark:text-gray-300">{transaction.description}</td>
                         <td className="py-2 px-2 text-sm">
                           <span className={`px-2 py-1 rounded-full text-xs ${
                             transaction.category === 'Uncategorized' 
-                              ? 'bg-gray-100 text-gray-800' 
-                              : 'bg-blue-100 text-blue-800'
+                              ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300' 
+                              : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
                           }`}>
                             {transaction.category}
                           </span>
                         </td>
                         <td className={`py-2 px-2 text-sm text-right font-semibold ${
-                          transaction.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                          transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         }`}>
                           €{transaction.amount.toFixed(2)}
                         </td>
@@ -1378,7 +1416,7 @@ export default function BudgetTracker() {
                             {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
                               <button
                                 onClick={() => openSavingsModal(transaction)}
-                                className="p-1 text-purple-600 hover:bg-purple-50 rounded"
+                                className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
                                 title="Allocate savings"
                               >
                                 <Settings size={18} />
@@ -1386,13 +1424,13 @@ export default function BudgetTracker() {
                             )}
                             <button
                               onClick={() => handleEdit(transaction)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                              className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
                             >
                               <Edit2 size={18} />
                             </button>
                             <button
                               onClick={() => handleDelete(transaction.id)}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                              className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -1410,23 +1448,23 @@ export default function BudgetTracker() {
         {/* Savings Allocation Modal */}
         {showSavingsModal && selectedSavingsTransaction && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">Allocate Savings</h2>
+                  <h2 className="text-2xl font-bold dark:text-white">Allocate Savings</h2>
                   <button
                     onClick={() => setShowSavingsModal(false)}
-                    className="text-gray-600 hover:bg-gray-100 p-2 rounded"
+                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
                   >
                     <X size={24} />
                   </button>
                 </div>
 
-                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Transaction</p>
-                  <p className="font-semibold">{selectedSavingsTransaction.description}</p>
-                  <p className="text-lg font-bold text-green-600">€{selectedSavingsTransaction.amount.toFixed(2)}</p>
-                  <p className="text-sm text-gray-600 mt-2">
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Transaction</p>
+                  <p className="font-semibold dark:text-white">{selectedSavingsTransaction.description}</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">€{selectedSavingsTransaction.amount.toFixed(2)}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                     Allocated: €{getTotalAllocated(selectedSavingsTransaction.id).toFixed(2)} | 
                     Remaining: €{(selectedSavingsTransaction.amount - getTotalAllocated(selectedSavingsTransaction.id)).toFixed(2)}
                   </p>
@@ -1435,17 +1473,17 @@ export default function BudgetTracker() {
                 {/* Current Allocations */}
                 {savingsAllocations[selectedSavingsTransaction.id]?.length > 0 && (
                   <div className="mb-6">
-                    <h3 className="font-semibold mb-3">Current Allocations</h3>
+                    <h3 className="font-semibold mb-3 dark:text-white">Current Allocations</h3>
                     <div className="space-y-2">
                       {savingsAllocations[selectedSavingsTransaction.id].map((alloc, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                           <div>
-                            <p className="font-medium">{alloc.purpose}</p>
-                            <p className="text-sm text-gray-600">€{alloc.amount.toFixed(2)}</p>
+                            <p className="font-medium dark:text-white">{alloc.purpose}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">€{alloc.amount.toFixed(2)}</p>
                           </div>
                           <button
                             onClick={() => deleteSavingsAllocation(selectedSavingsTransaction.id, index)}
-                            className="text-red-600 hover:bg-red-50 p-2 rounded"
+                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-2 rounded"
                           >
                             <Trash2 size={18} />
                           </button>
@@ -1457,14 +1495,14 @@ export default function BudgetTracker() {
 
                 {/* Add New Allocation */}
                 <div className="space-y-4">
-                  <h3 className="font-semibold">Add Allocation</h3>
+                  <h3 className="font-semibold dark:text-white">Add Allocation</h3>
                   <div className="flex gap-3 flex-wrap">
                     <input
                       type="text"
                       placeholder="Purpose (e.g., Traveling, Emergency Fund)"
                       value={newAllocation.purpose}
                       onChange={(e) => setNewAllocation({...newAllocation, purpose: e.target.value})}
-                      className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+                      className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                     />
                     <input
                       type="number"
@@ -1472,11 +1510,11 @@ export default function BudgetTracker() {
                       placeholder="Amount"
                       value={newAllocation.amount || ''}
                       onChange={(e) => setNewAllocation({...newAllocation, amount: parseFloat(e.target.value) || 0})}
-                      className="w-32 px-4 py-2 border rounded-lg"
+                      className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                     />
                     <button
                       onClick={addSavingsAllocation}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                      className="px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition"
                     >
                       Add
                     </button>
@@ -1489,7 +1527,7 @@ export default function BudgetTracker() {
                       setShowSavingsModal(false);
                       setNewAllocation({ purpose: '', amount: 0 });
                     }}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                    className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition"
                   >
                     Done
                   </button>
