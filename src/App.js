@@ -135,6 +135,7 @@ export default function BudgetTracker() {
   const [jointTargetAmount, setJointTargetAmount] = useState('2100');
   const [activeMainTab, setActiveMainTab] = useState('dashboard');
   const [isMobileChart, setIsMobileChart] = useState(() => window.innerWidth < 640);
+  const [categoryChartMode, setCategoryChartMode] = useState('stacked');
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
@@ -2134,7 +2135,7 @@ export default function BudgetTracker() {
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
-              <ResponsiveContainer width="100%" height={isMobileChart ? 280 : 350}>
+              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
                 <PieChart>
                   <Pie
                     data={categoryData}
@@ -2142,7 +2143,7 @@ export default function BudgetTracker() {
                     cy="50%"
                     labelLine={!isMobileChart}
                     label={isMobileChart ? false : ({ name }) => name}
-                    outerRadius={isMobileChart ? 75 : 100}
+                    outerRadius={isMobileChart ? 90 : 120}
                     fill="#8884d8"
                     dataKey="value"
                     animationBegin={0}
@@ -2171,56 +2172,91 @@ export default function BudgetTracker() {
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category per Month</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                <h2 className="text-xl font-bold dark:text-white">Spending by Category per Month</h2>
+                <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden self-start sm:self-auto">
+                  <button
+                    onClick={() => setCategoryChartMode('stacked')}
+                    className={`px-3 py-1.5 text-sm font-medium transition ${
+                      categoryChartMode === 'stacked'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Stacked (Recommended)
+                  </button>
+                  <button
+                    onClick={() => setCategoryChartMode('grouped')}
+                    className={`px-3 py-1.5 text-sm font-medium transition border-l border-gray-300 dark:border-gray-600 ${
+                      categoryChartMode === 'grouped'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Grouped
+                  </button>
+                </div>
+              </div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">View spending trends across categories over time</p>
-              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 400}>
-                <BarChart
-                  data={categoryByMonthData}
-                  margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: isMobileChart ? 25 : 60 }}
-                  barCategoryGap={categoryByMonthData.length === 1 ? '0%' : '3%'}
-                  barSize={categoryByMonthData.length === 1 ? (isMobileChart ? 38 : 78) : (isMobileChart ? 28 : 60)}
-                  barGap={0}
+              <div className="overflow-x-auto">
+                <div
+                  style={{
+                    minWidth: `${Math.max(640, categoryByMonthData.length * (isMobileChart ? 140 : 120))}px`,
+                    height: isMobileChart ? 360 : 440,
+                  }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
-                  <XAxis 
-                    dataKey="month" 
-                    angle={isMobileChart ? -25 : -45}
-                    textAnchor="end" 
-                    height={isMobileChart ? 50 : 80}
-                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                    tickFormatter={(value) => {
-                      const [year, month] = value.split('-');
-                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                      return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
-                    }}
-                  />
-                  <YAxis 
-                    width={isMobileChart ? 42 : 60}
-                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                    tickFormatter={(value) => `€${value}`}
-                  />
-                  <Tooltip 
-                    formatter={(value) => `€${value.toFixed(2)}`}
-                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                  />
-                  {categories.map((category, index) => (
-                    <Bar 
-                      key={category}
-                      dataKey={category} 
-                      fill={COLORS[index % COLORS.length]}
-                      animationBegin={0}
-                      animationDuration={800}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={categoryByMonthData}
+                      margin={{ top: 20, right: 20, left: 10, bottom: 65 }}
+                      barCategoryGap={categoryChartMode === 'stacked' ? '8%' : (categoryByMonthData.length === 1 ? '0%' : '3%')}
+                      barSize={categoryChartMode === 'stacked' ? undefined : (categoryByMonthData.length === 1 ? (isMobileChart ? 38 : 78) : (isMobileChart ? 26 : 46))}
+                      barGap={0}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
+                      <XAxis
+                        dataKey="month"
+                        angle={-35}
+                        textAnchor="end"
+                        height={70}
+                        tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                        tickFormatter={(value) => {
+                          const [year, month] = value.split('-');
+                          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                          return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
+                        }}
+                      />
+                      <YAxis
+                        width={64}
+                        tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                        tickFormatter={(value) => `€${value}`}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [`€${value.toFixed(2)}`, name]}
+                        contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px' }} />
+                      {categories.map((category, index) => (
+                        <Bar
+                          key={category}
+                          dataKey={category}
+                          fill={COLORS[index % COLORS.length]}
+                          stackId={categoryChartMode === 'stacked' ? 'total' : undefined}
+                          animationBegin={0}
+                          animationDuration={800}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold dark:text-white">Monthly Overview</h2>
               </div>
-              <ResponsiveContainer width="100%" height={isMobileChart ? 300 : 350}>
+              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
                 <LineChart data={monthlyData} margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: 20 }}>
                   <defs>
                     <linearGradient id="colorSpending" x1="0" y1="0" x2="0" y2="1">
@@ -2268,7 +2304,7 @@ export default function BudgetTracker() {
             {savingsBreakdownData.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
                 <h2 className="text-xl font-bold mb-4 dark:text-white">Savings Breakdown</h2>
-                <ResponsiveContainer width="100%" height={isMobileChart ? 280 : 350}>
+                <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
                   <PieChart>
                     <Pie
                       data={savingsBreakdownData}
@@ -2276,7 +2312,7 @@ export default function BudgetTracker() {
                       cy="50%"
                       labelLine={!isMobileChart}
                       label={isMobileChart ? false : ({ name }) => name}
-                      outerRadius={isMobileChart ? 75 : 100}
+                      outerRadius={isMobileChart ? 90 : 120}
                       fill="#8884d8"
                       dataKey="value"
                       animationBegin={0}
