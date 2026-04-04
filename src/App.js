@@ -142,11 +142,13 @@ export default function BudgetTracker() {
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
   
-  // Savings allocation state
-  const [showSavingsModal, setShowSavingsModal] = useState(false);
-  const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
-  const [savingsAllocations, setSavingsAllocations] = useState({});
-  const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
+  // Savings transaction form state
+  const [newSavingsTransaction, setNewSavingsTransaction] = useState({ selectedAccountId: '', type: 'deposit', amount: '' });
+  const [savingsAccounts, setSavingsAccounts] = useState([]);
+  const [newSavingsAccount, setNewSavingsAccount] = useState({ name: '', balance: '' });
+  const [editingSavingsId, setEditingSavingsId] = useState(null);
+  const [editingSavingsForm, setEditingSavingsForm] = useState({ name: '', balance: '' });
+  const [savingsTransactionHistory, setSavingsTransactionHistory] = useState({});
   
   // Dark mode state
   const [darkMode, setDarkMode] = useState(() => {
@@ -230,9 +232,10 @@ export default function BudgetTracker() {
         if (data.accountsData) {
           setAccountsData(data.accountsData);
           // Set active account data
-          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {} };
+          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {}, savingsAccounts: [] };
           setTransactions(activeData.transactions || []);
-          setSavingsAllocations(activeData.savingsAllocations || {});
+          setSavingsTransactionHistory(activeData.savingsTransactionHistory || {});
+          setSavingsAccounts(activeData.savingsAccounts || []);
           setSalaryInputs(activeData.salaryInputs || { person1: '', person2: '' });
           setJointTargetAmount(activeData.jointTargetAmount || '2100');
           setActiveAccountId(data.activeAccountId || 'default');
@@ -242,7 +245,8 @@ export default function BudgetTracker() {
           setAccountsData({
             'default': {
               transactions: data.transactions || [],
-              savingsAllocations: {},
+              savingsTransactionHistory: {},
+              savingsAccounts: [],
               salaryInputs: { person1: '', person2: '' },
               jointTargetAmount: '2100'
             }
@@ -262,7 +266,8 @@ export default function BudgetTracker() {
         ...accountsData,
         [activeAccountId]: {
           transactions,
-          savingsAllocations,
+          savingsAccounts,
+          savingsTransactionHistory,
           salaryInputs,
           jointTargetAmount
         }
@@ -278,7 +283,7 @@ export default function BudgetTracker() {
     } catch (error) {
       console.error('Error saving data:', error);
     }
-  }, [user, accountsData, activeAccountId, transactions, savingsAllocations, salaryInputs, jointTargetAmount, accounts, categoryRules]);
+  }, [user, accountsData, activeAccountId, transactions, savingsAccounts, savingsTransactionHistory, salaryInputs, jointTargetAmount, accounts, categoryRules]);
 
   // Auto-save data when transactions, rules, accounts, or savings allocations change
   useEffect(() => {
@@ -290,7 +295,7 @@ export default function BudgetTracker() {
       if (
         transactions.length > 0 ||
         accounts.length > 1 ||
-        Object.keys(savingsAllocations).length > 0 ||
+        savingsAccounts.length > 0 ||
         salaryInputs.person1 ||
         salaryInputs.person2 ||
         jointTargetAmount
@@ -298,7 +303,7 @@ export default function BudgetTracker() {
         saveUserData();
       }
     }
-  }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount, saveUserData]);
+  }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAccounts, savingsTransactionHistory, salaryInputs, jointTargetAmount, saveUserData]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -326,6 +331,8 @@ export default function BudgetTracker() {
     setAccounts([{ id: 'default', name: 'Main Account' }]);
     setActiveAccountId('default');
     setAccountsData({ 'default': { transactions: [] } });
+    setSavingsAccounts([]);
+    setSavingsTransactionHistory({});
     setSalaryInputs({ person1: '', person2: '' });
     setJointTargetAmount('2100');
     setEmail('');
@@ -338,7 +345,8 @@ export default function BudgetTracker() {
       ...accountsData,
       [activeAccountId]: {
         transactions,
-        savingsAllocations,
+        savingsAccounts,
+        savingsTransactionHistory,
         salaryInputs,
         jointTargetAmount
       }
@@ -346,9 +354,10 @@ export default function BudgetTracker() {
     setAccountsData(updatedAccountsData);
 
     // Load new account data (categoryRules stay the same - they're global)
-    const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAllocations: {} };
+    const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAccounts: [], savingsTransactionHistory: {} };
     setTransactions(newAccountData.transactions);
-    setSavingsAllocations(newAccountData.savingsAllocations || {});
+    setSavingsAccounts(newAccountData.savingsAccounts || []);
+    setSavingsTransactionHistory(newAccountData.savingsTransactionHistory || {});
     setSalaryInputs(newAccountData.salaryInputs || { person1: '', person2: '' });
     setJointTargetAmount(newAccountData.jointTargetAmount || '2100');
     setActiveAccountId(accountId);
@@ -368,7 +377,8 @@ export default function BudgetTracker() {
       ...accountsData,
       [newAccountId]: {
         transactions: [],
-        savingsAllocations: {},
+        savingsAccounts: [],
+        savingsTransactionHistory: {},
         salaryInputs: { person1: '', person2: '' },
         jointTargetAmount: '2100'
       }
@@ -407,53 +417,92 @@ export default function BudgetTracker() {
     }
   };
 
-  // Savings allocation handlers
-  const openSavingsModal = (transaction) => {
-    setSelectedSavingsTransaction(transaction);
-    setShowSavingsModal(true);
+  // Number formatter with space separator
+  const formatCurrency = (amount) => {
+    return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   };
 
-  const addSavingsAllocation = () => {
-    if (!newAllocation.purpose.trim() || newAllocation.amount <= 0) return;
+  // Savings transaction handlers
+  const addSavingsTransaction = () => {
+    if (!newSavingsTransaction.selectedAccountId || !newSavingsTransaction.amount || parseFloat(newSavingsTransaction.amount) <= 0) return;
     
-    const transactionId = selectedSavingsTransaction.id;
-    const currentAllocations = savingsAllocations[transactionId] || [];
-    const currentTotal = currentAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-    const newTotal = currentTotal + newAllocation.amount;
+    const accountId = newSavingsTransaction.selectedAccountId;
+    const amount = parseFloat(newSavingsTransaction.amount);
+    const type = newSavingsTransaction.type;
     
-    // Check if new allocation would exceed transaction amount
-    if (newTotal > selectedSavingsTransaction.amount) {
-      alert(`Cannot allocate €${newAllocation.amount.toFixed(2)}. Only €${(selectedSavingsTransaction.amount - currentTotal).toFixed(2)} remaining.`);
-      return;
-    }
+    // Update account balance
+    setSavingsAccounts(savingsAccounts.map(account => {
+      if (account.id === accountId) {
+        const newBalance = type === 'deposit' 
+          ? account.balance + amount 
+          : Math.max(0, account.balance - amount);
+        return { ...account, balance: parseFloat(newBalance.toFixed(2)) };
+      }
+      return account;
+    }));
     
-    setSavingsAllocations({
-      ...savingsAllocations,
-      [transactionId]: [...currentAllocations, { ...newAllocation }]
+    // Add to transaction history
+    const transaction = {
+      id: `tx_${Date.now()}`,
+      date: formatDateToDDMMYY(new Date()),
+      type,
+      amount: parseFloat(amount.toFixed(2)),
+      timestamp: new Date().getTime()
+    };
+    
+    setSavingsTransactionHistory({
+      ...savingsTransactionHistory,
+      [accountId]: [...(savingsTransactionHistory[accountId] || []), transaction]
     });
     
-    setNewAllocation({ purpose: '', amount: 0 });
+    setNewSavingsTransaction({ selectedAccountId: '', type: 'deposit', amount: '' });
   };
 
-  const deleteSavingsAllocation = (transactionId, index) => {
-    const currentAllocations = savingsAllocations[transactionId] || [];
-    const updatedAllocations = currentAllocations.filter((_, i) => i !== index);
-    
-    if (updatedAllocations.length === 0) {
-      const updated = { ...savingsAllocations };
-      delete updated[transactionId];
-      setSavingsAllocations(updated);
-    } else {
-      setSavingsAllocations({
-        ...savingsAllocations,
-        [transactionId]: updatedAllocations
-      });
-    }
+  const addSavingsAccount = () => {
+    const name = newSavingsAccount.name.trim();
+    const balance = parseFloat(newSavingsAccount.balance);
+
+    if (!name || Number.isNaN(balance) || balance < 0) return;
+
+    setSavingsAccounts([
+      ...savingsAccounts,
+      {
+        id: `savings_${Date.now()}`,
+        name,
+        balance: parseFloat(balance.toFixed(2))
+      }
+    ]);
+    setNewSavingsAccount({ name: '', balance: '' });
   };
 
-  const getTotalAllocated = (transactionId) => {
-    const allocations = savingsAllocations[transactionId] || [];
-    return allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+  const startEditSavingsAccount = (account) => {
+    setEditingSavingsId(account.id);
+    setEditingSavingsForm({ name: account.name, balance: account.balance.toString() });
+  };
+
+  const saveSavingsAccount = () => {
+    const name = editingSavingsForm.name.trim();
+    const balance = parseFloat(editingSavingsForm.balance);
+
+    if (!name || Number.isNaN(balance) || balance < 0) return;
+
+    setSavingsAccounts(savingsAccounts.map(account => (
+      account.id === editingSavingsId
+        ? { ...account, name, balance: parseFloat(balance.toFixed(2)) }
+        : account
+    )));
+    setEditingSavingsId(null);
+    setEditingSavingsForm({ name: '', balance: '' });
+  };
+
+  const cancelEditSavingsAccount = () => {
+    setEditingSavingsId(null);
+    setEditingSavingsForm({ name: '', balance: '' });
+  };
+
+  const deleteSavingsAccount = (accountId) => {
+    if (!window.confirm('Delete this savings account from the overview?')) return;
+    setSavingsAccounts(savingsAccounts.filter(account => account.id !== accountId));
   };
 
   const autoCategorizeTrans = (description) => {
@@ -986,32 +1035,18 @@ export default function BudgetTracker() {
   };
 
   // Savings breakdown data
-  const savingsBreakdownData = useMemo(() => {
-    const breakdown = {};
-    
-    // Get all savings transactions (categories containing "savings")
-    const savingsTransactions = filteredTransactions.filter(t => 
-      t.category.toLowerCase().includes('savings') && t.amount > 0
-    );
-    
-    savingsTransactions.forEach(t => {
-      const allocations = savingsAllocations[t.id] || [];
-      allocations.forEach(alloc => {
-        breakdown[alloc.purpose] = (breakdown[alloc.purpose] || 0) + alloc.amount;
-      });
-      
-      // Add unallocated amount if any
-      const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-      const unallocated = t.amount - totalAllocated;
-      if (unallocated > 0) {
-        breakdown['Unallocated'] = (breakdown['Unallocated'] || 0) + unallocated;
-      }
-    });
-    
-    return Object.entries(breakdown)
-      .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions, savingsAllocations]);
+
+
+  const savingsAccountsTotal = useMemo(() => (
+    savingsAccounts.reduce((sum, account) => sum + account.balance, 0)
+  ), [savingsAccounts]);
+
+  const savingsAccountsChartData = useMemo(() => (
+    savingsAccounts
+      .filter(account => account.balance > 0)
+      .map(account => ({ name: account.name, value: account.balance }))
+      .sort((a, b) => b.value - a.value)
+  ), [savingsAccounts]);
 
   const categoryData = useMemo(() => {
     const spending = {};
@@ -1390,10 +1425,10 @@ export default function BudgetTracker() {
             </div>
           </div>
           
-          <div className="mb-6 flex gap-2">
+          <div className="mb-6 flex flex-wrap gap-2">
             <button
               onClick={() => setActiveMainTab('dashboard')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-4 py-2 rounded-lg font-medium transition whitespace-nowrap text-sm sm:text-base ${
                 activeMainTab === 'dashboard'
                   ? 'bg-blue-500 dark:bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -1403,7 +1438,7 @@ export default function BudgetTracker() {
             </button>
             <button
               onClick={() => setActiveMainTab('joint')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-4 py-2 rounded-lg font-medium transition whitespace-nowrap text-sm sm:text-base ${
                 activeMainTab === 'joint'
                   ? 'bg-blue-500 dark:bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -1412,8 +1447,18 @@ export default function BudgetTracker() {
               Joint Split
             </button>
             <button
+              onClick={() => setActiveMainTab('savings')}
+              className={`px-4 py-2 rounded-lg font-medium transition whitespace-nowrap text-sm sm:text-base ${
+                activeMainTab === 'savings'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Savings
+            </button>
+            <button
               onClick={() => setActiveMainTab('graphs')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-4 py-2 rounded-lg font-medium transition whitespace-nowrap text-sm sm:text-base ${
                 activeMainTab === 'graphs'
                   ? 'bg-blue-500 dark:bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -2173,6 +2218,231 @@ export default function BudgetTracker() {
           </div>
         )}
 
+        {activeMainTab === 'savings' && (
+          <>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Savings Overview</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                This section is independent from CSV transactions. Manage your savings accounts and balances directly.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Saved</div>
+                  <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                    €{formatCurrency(savingsAccountsTotal)}
+                  </div>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Savings Accounts</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                    {savingsAccounts.length}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Savings Account Name</label>
+                    <input
+                      type="text"
+                      value={newSavingsAccount.name}
+                      onChange={(e) => setNewSavingsAccount({ ...newSavingsAccount, name: e.target.value })}
+                      placeholder="e.g. Emergency Fund"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Initial Balance</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newSavingsAccount.balance}
+                      onChange={(e) => setNewSavingsAccount({ ...newSavingsAccount, balance: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={addSavingsAccount}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition h-10 whitespace-nowrap"
+                >
+                  Add Account
+                </button>
+              </div>
+            </div>
+
+            {savingsAccounts.length > 0 ? (
+              <>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
+                  <h3 className="text-xl font-bold mb-4 dark:text-white">Split by Savings Account</h3>
+                  <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 360}>
+                    <PieChart>
+                      <Pie
+                        data={savingsAccountsChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={!isMobileChart}
+                        label={isMobileChart ? false : ({ name }) => name}
+                        outerRadius={isMobileChart ? 90 : 120}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {savingsAccountsChartData.map((entry, index) => (
+                          <Cell key={`savings-account-cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, name, item) => {
+                          const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
+                          return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
+                        }}
+                        contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                      />
+                      {isMobileChart && (
+                        <Legend
+                          verticalAlign="bottom"
+                          height={36}
+                          wrapperStyle={{ fontSize: '11px' }}
+                        />
+                      )}
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
+                  <h3 className="text-xl font-bold mb-4 dark:text-white">Add/Withdraw</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_120px_auto] gap-3 items-end mb-6">
+                    <select
+                      value={newSavingsTransaction.selectedAccountId}
+                      onChange={(e) => setNewSavingsTransaction({ ...newSavingsTransaction, selectedAccountId: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="">Select Account</option>
+                      {savingsAccounts.map(account => (
+                        <option key={account.id} value={account.id}>{account.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={newSavingsTransaction.type}
+                      onChange={(e) => setNewSavingsTransaction({ ...newSavingsTransaction, type: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="deposit">Deposit</option>
+                      <option value="withdrawal">Withdraw</option>
+                    </select>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newSavingsTransaction.amount}
+                      onChange={(e) => setNewSavingsTransaction({ ...newSavingsTransaction, amount: e.target.value })}
+                      placeholder="Amount"
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                    <button
+                      onClick={addSavingsTransaction}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition whitespace-nowrap"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
+                  <h3 className="text-xl font-bold mb-4 dark:text-white">Savings Accounts</h3>
+                  <div className="space-y-3">
+                    {savingsAccounts.map((account) => (
+                      <div key={account.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 sm:p-4">
+                        {editingSavingsId === account.id ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 items-end">
+                            <div>
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Name</label>
+                              <input
+                                type="text"
+                                value={editingSavingsForm.name}
+                                onChange={(e) => setEditingSavingsForm({ ...editingSavingsForm, name: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Balance</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editingSavingsForm.balance}
+                                onChange={(e) => setEditingSavingsForm({ ...editingSavingsForm, balance: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={saveSavingsAccount}
+                                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={cancelEditSavingsAccount}
+                                className="px-3 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 whitespace-nowrap"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400">{account.name}</div>
+                              <div className="text-lg font-bold text-gray-900 dark:text-white">€{formatCurrency(account.balance)}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                {savingsAccountsTotal > 0 ? `${((account.balance / savingsAccountsTotal) * 100).toFixed(1)}% of total savings` : '0.0% of total savings'}
+                              </div>
+                              {savingsTransactionHistory[account.id]?.length > 0 && (
+                                <details className="mt-3 text-sm">
+                                  <summary className="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline">Show transaction history ({savingsTransactionHistory[account.id].length})</summary>
+                                  <div className="mt-2 space-y-1 pl-4 border-l border-gray-300 dark:border-gray-600">
+                                    {[...savingsTransactionHistory[account.id]].reverse().map((tx) => (
+                                      <div key={tx.id} className="flex justify-between text-xs">
+                                        <span className="text-gray-600 dark:text-gray-400">{tx.date}</span>
+                                        <span className={tx.type === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                          {tx.type === 'deposit' ? '+' : '-'}€{formatCurrency(tx.amount)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => startEditSavingsAccount(account)}
+                                className="px-3 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 whitespace-nowrap"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteSavingsAccount(account.id)}
+                                className="px-3 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 whitespace-nowrap"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+
         {activeMainTab === 'dashboard' && transactions.length > 0 && (
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
@@ -2382,45 +2652,7 @@ export default function BudgetTracker() {
               </ResponsiveContainer>
             </div>
 
-            {savingsBreakdownData.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-                <h2 className="text-xl font-bold mb-4 dark:text-white">Savings Breakdown</h2>
-                <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
-                  <PieChart>
-                    <Pie
-                      data={savingsBreakdownData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={!isMobileChart}
-                      label={isMobileChart ? false : ({ name }) => name}
-                      outerRadius={isMobileChart ? 90 : 120}
-                      fill="#8884d8"
-                      dataKey="value"
-                      animationBegin={0}
-                      animationDuration={800}
-                    >
-                      {savingsBreakdownData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, name, item) => {
-                        const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
-                        return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
-                      }}
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                    />
-                    {isMobileChart && (
-                      <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        wrapperStyle={{ fontSize: '11px' }}
-                      />
-                    )}
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+
           </>
         )}
 
@@ -2550,15 +2782,6 @@ export default function BudgetTracker() {
                     </span>
                   </div>
                   <div className="flex justify-center gap-2 flex-shrink-0">
-                    {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
-                      <button
-                        onClick={() => openSavingsModal(transaction)}
-                        className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
-                        title="Allocate savings"
-                      >
-                        <Settings size={18} />
-                      </button>
-                    )}
                     <button
                       onClick={() => handleEdit(transaction)}
                       className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
@@ -2715,15 +2938,7 @@ export default function BudgetTracker() {
                         </td>
                         <td className="py-2 px-2">
                           <div className="flex justify-center gap-2">
-                            {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
-                              <button
-                                onClick={() => openSavingsModal(transaction)}
-                                className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
-                                title="Allocate savings"
-                              >
-                                <Settings size={18} />
-                              </button>
-                            )}
+
                             <button
                               onClick={() => handleEdit(transaction)}
                               className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
@@ -2748,97 +2963,7 @@ export default function BudgetTracker() {
         </div>
         )}
 
-        {/* Savings Allocation Modal */}
-        {showSavingsModal && selectedSavingsTransaction && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold dark:text-white">Allocate Savings</h2>
-                  <button
-                    onClick={() => setShowSavingsModal(false)}
-                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
-                  >
-                    <X size={24} />
-                  </button>
-                </div>
 
-                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Transaction</p>
-                  <p className="font-semibold dark:text-white">{selectedSavingsTransaction.description}</p>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">€{selectedSavingsTransaction.amount.toFixed(2)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                    Allocated: €{getTotalAllocated(selectedSavingsTransaction.id).toFixed(2)} | 
-                    Remaining: €{(selectedSavingsTransaction.amount - getTotalAllocated(selectedSavingsTransaction.id)).toFixed(2)}
-                  </p>
-                </div>
-
-                {/* Current Allocations */}
-                {savingsAllocations[selectedSavingsTransaction.id]?.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="font-semibold mb-3 dark:text-white">Current Allocations</h3>
-                    <div className="space-y-2">
-                      {savingsAllocations[selectedSavingsTransaction.id].map((alloc, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <div>
-                            <p className="font-medium dark:text-white">{alloc.purpose}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">€{alloc.amount.toFixed(2)}</p>
-                          </div>
-                          <button
-                            onClick={() => deleteSavingsAllocation(selectedSavingsTransaction.id, index)}
-                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-2 rounded"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Add New Allocation */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold dark:text-white">Add Allocation</h3>
-                  <div className="flex gap-3 flex-wrap">
-                    <input
-                      type="text"
-                      placeholder="Purpose (e.g., Traveling, Emergency Fund)"
-                      value={newAllocation.purpose}
-                      onChange={(e) => setNewAllocation({...newAllocation, purpose: e.target.value})}
-                      className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Amount"
-                      value={newAllocation.amount || ''}
-                      onChange={(e) => setNewAllocation({...newAllocation, amount: parseFloat(e.target.value) || 0})}
-                      className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    />
-                    <button
-                      onClick={addSavingsAllocation}
-                      className="px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setShowSavingsModal(false);
-                      setNewAllocation({ purpose: '', amount: 0 });
-                    }}
-                    className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Batch Edit Modal */}
         {showBatchEdit && (
