@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, dedicated Dashboard, Joint Split, and Graphs tabs, dark mode, sortable tables, batch operations, responsive mobile layouts, and cloud synchronization through Firebase.
+This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, dedicated Dashboard, Joint Split, Savings, and Transactions tabs, dark mode, sortable tables, batch operations, responsive mobile layouts, and cloud synchronization through Firebase.
 
 ## Setup Instructions
 
@@ -127,12 +127,21 @@ npm start
   - Desktop table layout on larger screens
   - Close button in panel header
 
-### 8. **Savings Management**
-- **Savings Allocation**: Break down savings deposits by purpose (e.g., Emergency Fund, Vacation, House)
-- **Visual Breakdown**: Dedicated pie chart showing allocation by purpose
-- **Per-Transaction Tracking**: Allocate specific amounts from each savings transaction
-- **Unallocated Tracking**: Automatically tracks unallocated savings amounts
-- Account-specific savings goals and allocations
+### 8. **Standalone Savings Management**
+- **Independent from Transactions**: Savings accounts operate separately from CSV upload/transaction system
+- **Account Management**: Create, edit, and delete multiple savings accounts (e.g., Emergency Fund, Vacation, House Down Payment)
+- **Real-Time Balance Tracking**: Track current balance for each savings account
+- **Deposit & Withdrawal**: Add or withdraw funds from accounts with transaction history
+- **Transaction History**: Per-account transaction log showing:
+  - Date of transaction (dd/mm/yy format)
+  - Type (deposit or withdrawal)
+  - Amount with space-separated currency formatting (e.g., "1 234.56€")
+  - Collapsible details showing all historical transactions
+- **Visual Breakdown**: Pie chart showing distribution of savings across all accounts
+- **Account Distribution**: Each account card displays percentage of total savings
+- **Responsive Buttons**: Responsive Edit/Delete action buttons with space-aware layout
+- **Space-Separated Currency**: All amounts formatted with space separators for better readability
+- **Dark Mode Support**: Full dark mode integration for all savings features
 
 ### 9. **Advanced Data Visualization**
 Charts are available in the dedicated **Graphs** tab using Recharts:
@@ -161,7 +170,7 @@ Multiple filter options working in combination:
   - View all transactions (no date filter)
 - Real-time statistics that update based on filtered data
 - Clear filters button for quick reset
-- Shared stats and date filter controls are available on Dashboard, Joint Split, and Graphs tabs
+- Shared stats and date filter controls are available on Dashboard and Joint Split tabs
 
 ### 11. **Real-time Statistics**
 Dynamic statistics display that updates based on filters:
@@ -200,7 +209,7 @@ const [activeAccountId, setActiveAccountId] = useState('default');
 const [isAddingAccount, setIsAddingAccount] = useState(false);
 const [newAccountName, setNewAccountName] = useState('');
 const [accountsData, setAccountsData] = useState({
-  'default': { transactions: [], savingsAllocations: {} }
+  'default': { transactions: [], savingsAccounts: [], savingsTransactionHistory: {} }
 });
 
 // Transaction State
@@ -246,10 +255,12 @@ const settingsMenuRef = useRef(null);
 const [importErrors, setImportErrors] = useState(null);
 
 // Savings State
-const [showSavingsModal, setShowSavingsModal] = useState(false);
-const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
-const [savingsAllocations, setSavingsAllocations] = useState({});
-const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
+const [savingsAccounts, setSavingsAccounts] = useState([]);
+const [savingsTransactionHistory, setSavingsTransactionHistory] = useState({});
+const [newSavingsAccount, setNewSavingsAccount] = useState({ name: '', balance: '' });
+const [newSavingsTransaction, setNewSavingsTransaction] = useState({ selectedAccountId: '', type: 'deposit', amount: '' });
+const [editingSavingsId, setEditingSavingsId] = useState(null);
+const [editingSavingsForm, setEditingSavingsForm] = useState({ name: '', balance: '' });
 
 // Dark Mode State
 const [darkMode, setDarkMode] = useState(() => {
@@ -359,21 +370,41 @@ const learnCategoryFromTransactions = (transactions) => {
 
 **Note**: Category rules are now global (user-level), shared across all accounts.
 
-#### Savings Allocations Object
+#### Savings Accounts Array
+```javascript
+[
+  { 
+    id: "savings_1712250000000", 
+    name: "Emergency Fund", 
+    balance: 1500.00 
+  },
+  { 
+    id: "savings_1712250003456", 
+    name: "Vacation Fund", 
+    balance: 750.50 
+  }
+]
+```
+- Array of savings accounts per account
+- Each account has unique ID (timestamp-based), name, and current balance
+- Stored in `accountsData[accountId].savingsAccounts`
+
+#### Savings Transaction History Object
 ```javascript
 {
-  "transaction_id_123": [
-    { purpose: "Emergency Fund", amount: 500 },
-    { purpose: "Vacation", amount: 300 }
+  "savings_1712250000000": [
+    { id: "tx_1712250001000", date: "04/04/26", type: "deposit", amount: 500.00, timestamp: 1712250001000 },
+    { id: "tx_1712250002000", date: "05/04/26", type: "withdrawal", amount: 100.00, timestamp: 1712250002000 }
   ],
-  "transaction_id_456": [
-    { purpose: "House Down Payment", amount: 1000 }
+  "savings_1712250003456": [
+    { id: "tx_1712250003000", date: "04/04/26", type: "deposit", amount: 750.50, timestamp: 1712250003000 }
   ]
 }
 ```
-- Maps transaction IDs to arrays of allocations
-- Each allocation has a purpose and amount
-- Unallocated amounts are automatically calculated and tracked
+- Maps account IDs to arrays of transactions
+- Each transaction has ID, date (dd/mm/yy), type (deposit/withdrawal), amount, and timestamp
+- Stored in `accountsData[accountId].savingsTransactionHistory`
+- Tracks all deposits and withdrawals for each account
 
 ### Firebase Integration
 
@@ -393,7 +424,8 @@ users/
       ├─ accountsData: Object               // Data for each account
       │   └─ {accountId}: {
       │       ├─ transactions: Array
-      │       └─ savingsAllocations: Object
+      │       ├─ savingsAccounts: Array
+      │       └─ savingsTransactionHistory: Object
       │   }
       ├─ categoryRules: Object              // Global rules (user-level)
       ├─ activeAccountId: String            // Currently active account
@@ -410,7 +442,8 @@ const filteredTransactions = useMemo(() => {...}, [transactions, filter]);
 const categories = useMemo(() => {...}, [transactions]);
 const months = useMemo(() => {...}, [transactions]);
 const years = useMemo(() => {...}, [transactions]);
-const savingsBreakdownData = useMemo(() => {...}, [filteredTransactions, savingsAllocations]);
+const savingsAccountsChartData = useMemo(() => {...}, [savingsAccounts]);
+const savingsAccountsTotal = useMemo(() => {...}, [savingsAccounts]);
 const categoryData = useMemo(() => {...}, [filteredTransactions]);
 const monthlyData = useMemo(() => {...}, [filteredTransactions]);
 const stats = useMemo(() => {...}, [filteredTransactions]);
@@ -423,6 +456,36 @@ const stats = useMemo(() => {...}, [filteredTransactions]);
 - Multi-category selection uses array inclusion checking
 
 ## User Interface
+
+### Main Navigation Tabs
+
+The app features four main tabs accessible from the top navigation:
+
+1. **Dashboard Tab**: 
+   - Main view for transaction management, filtering, and analysis
+   - Displays statistics, charts, and transaction tables
+   - Access to CSV import/export, manual entry, and auto-categorization
+   - Includes category rules and category manager panels
+
+2. **Joint Split Tab**:
+   - Plan shared expenses between two people
+   - Automatically includes current-month bill category transactions
+   - Pro-rata split calculation based on salaries
+   - Visual transaction list and contribution breakdown
+
+3. **Savings Tab**:
+   - Independent savings account management
+   - Create and manage multiple savings accounts
+   - Track deposits and withdrawals per account
+   - View transaction history and visual breakdown by account
+   - Separate from transaction-based system
+
+4. **Transactions Tab** (Graphs):
+   - Advanced data visualizations and charts
+   - Spending by category pie chart
+   - Monthly spending trends line chart
+   - Category breakdown bar chart
+   - Full transaction table with all features
 
 ### Login Screen
 - Email/password login only (administrator-managed accounts)
@@ -541,13 +604,54 @@ const stats = useMemo(() => {...}, [filteredTransactions]);
 - Input field for custom replacement category
 - Transaction count display
 
-**Savings Allocation Modal**:
+### Savings Tab
 
-- Triggered from savings transactions
-- Add multiple allocations per transaction
-- Shows total allocated vs. available amount
-- Purpose and amount fields
-- Visual validation to prevent over-allocation
+**Savings Overview Card**:
+
+- Displays total saved amount with space-separated formatting
+- Shows count of savings accounts
+- Grid layout with color-coded cards (emerald for total, blue for account count)
+
+**Create Account Form**:
+
+- Input field for savings account name (e.g., "Emergency Fund")
+- Input field for initial balance
+- "Add Account" button with responsive layout
+- Responsive grid on mobile and desktop
+
+**Add/Withdraw Section**:
+
+- Account selection dropdown
+- Type selector (Deposit or Withdrawal)
+- Amount input field
+- "Apply" button with whitespace-nowrap styling
+- Responsive grid layout
+
+**Savings Accounts List**:
+
+- Individual card for each account with:
+  - Account name and current balance (space-separated currency)
+  - Percentage of total savings calculated dynamically
+  - Collapsible transaction history showing all deposits/withdrawals
+  - Edit and Delete action buttons
+- Edit mode for updating account name and balance
+- Save and Cancel buttons in edit mode
+- Color-coded transaction indicators (green for deposits, red for withdrawals)
+- Transaction dates in dd/mm/yy format
+
+**Savings Breakdown Chart**:
+
+- Pie chart showing distribution across all accounts
+- Tooltip with percentages and amounts
+- Responsive sizing for mobile and desktop
+- Legend display on mobile devices
+
+**Responsive Design**:
+
+- Mobile card layout for accounts
+- Desktop responsive grid with proper spacing
+- Touch-friendly button sizes and spacing
+- Proper text sizing for different screen sizes (text-sm, sm:text-base for buttons)
 
 ## CSV Import Format
 
