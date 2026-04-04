@@ -2141,7 +2141,7 @@ export default function BudgetTracker() {
                     cx="50%"
                     cy="50%"
                     labelLine={!isMobileChart}
-                    label={isMobileChart ? false : ({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                    label={isMobileChart ? false : ({ name }) => name}
                     outerRadius={isMobileChart ? 75 : 100}
                     fill="#8884d8"
                     dataKey="value"
@@ -2152,15 +2152,20 @@ export default function BudgetTracker() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    formatter={(value) => `€${value.toFixed(2)}`}
+                  <Tooltip
+                    formatter={(value, name, item) => {
+                      const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
+                      return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
+                    }}
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                   />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    wrapperStyle={{ fontSize: isMobileChart ? '11px' : '12px' }}
-                  />
+                  {isMobileChart && (
+                    <Legend
+                      verticalAlign="bottom"
+                      height={36}
+                      wrapperStyle={{ fontSize: '11px' }}
+                    />
+                  )}
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -2169,7 +2174,13 @@ export default function BudgetTracker() {
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category per Month</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">View spending trends across categories over time</p>
               <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 400}>
-                <BarChart data={categoryByMonthData} margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: isMobileChart ? 25 : 60 }} barCategoryGap="5%" barSize={isMobileChart ? 28 : 60} barGap={0}>
+                <BarChart
+                  data={categoryByMonthData}
+                  margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: isMobileChart ? 25 : 60 }}
+                  barCategoryGap={categoryByMonthData.length === 1 ? '0%' : '3%'}
+                  barSize={categoryByMonthData.length === 1 ? (isMobileChart ? 38 : 78) : (isMobileChart ? 28 : 60)}
+                  barGap={0}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
                   <XAxis 
                     dataKey="month" 
@@ -2264,7 +2275,7 @@ export default function BudgetTracker() {
                       cx="50%"
                       cy="50%"
                       labelLine={!isMobileChart}
-                      label={isMobileChart ? false : ({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                      label={isMobileChart ? false : ({ name }) => name}
                       outerRadius={isMobileChart ? 75 : 100}
                       fill="#8884d8"
                       dataKey="value"
@@ -2275,15 +2286,20 @@ export default function BudgetTracker() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip 
-                      formatter={(value) => `€${value.toFixed(2)}`}
+                    <Tooltip
+                      formatter={(value, name, item) => {
+                        const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
+                        return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
+                      }}
                       contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                     />
-                    <Legend
-                      verticalAlign="bottom"
-                      height={36}
-                      wrapperStyle={{ fontSize: isMobileChart ? '11px' : '12px' }}
-                    />
+                    {isMobileChart && (
+                      <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        wrapperStyle={{ fontSize: '11px' }}
+                      />
+                    )}
                   </PieChart>
                 </ResponsiveContainer>
               </div>
