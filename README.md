@@ -590,12 +590,12 @@ Started Date,Description,Categories,Amount,Type,State
 
 ## Security Notes
 
-⚠️ **Important**: The Firebase configuration is hardcoded in the source. In production, these should be environment variables.
-
+- Firebase configuration is loaded from environment variables (`.env`) — never committed to Git
 - User data is isolated by `userId`
 - Authentication required for all data access
 - No data sharing between users
 - Auto-save ensures data isn't lost
+- The `.env` file is in `.gitignore` and must never be committed
 
 ## Performance Optimizations
 
