@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar, Moon, Sun } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -82,6 +82,7 @@ export default function BudgetTracker() {
   const [authError, setAuthError] = useState('');
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [userDataLoaded, setUserDataLoaded] = useState(false);
 
   // Multi-account state
   const [accounts, setAccounts] = useState([{ id: 'default', name: 'Main Account' }]);
@@ -173,32 +174,25 @@ export default function BudgetTracker() {
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setInitializing(false);
-      if (user) {
-        loadUserData(user.uid);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      const syncAuthState = async () => {
+        setUser(nextUser);
+
+        if (nextUser) {
+          setUserDataLoaded(false);
+          await loadUserData(nextUser.uid);
+          setUserDataLoaded(true);
+        } else {
+          setUserDataLoaded(false);
+        }
+
+        setInitializing(false);
+      };
+
+      syncAuthState();
     });
     return unsubscribe;
   }, []);
-
-  // Auto-save data when transactions, rules, accounts, or savings allocations change
-  useEffect(() => {
-    if (
-      user &&
-      (
-        transactions.length > 0 ||
-        accounts.length > 1 ||
-        Object.keys(savingsAllocations).length > 0 ||
-        salaryInputs.person1 ||
-        salaryInputs.person2 ||
-        jointTargetAmount
-      )
-    ) {
-      saveUserData();
-    }
-  }, [transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount]);
 
   const loadUserData = async (userId) => {
     try {
@@ -240,7 +234,7 @@ export default function BudgetTracker() {
     }
   };
 
-  const saveUserData = async () => {
+  const saveUserData = useCallback(async () => {
     if (!user) return;
     try {
       // Update current account data (without categoryRules)
@@ -266,7 +260,25 @@ export default function BudgetTracker() {
     } catch (error) {
       console.error('Error saving data:', error);
     }
-  };
+  }, [user, accountsData, activeAccountId, transactions, savingsAllocations, salaryInputs, jointTargetAmount, accounts, categoryRules]);
+
+  // Auto-save data when transactions, rules, accounts, or savings allocations change
+  useEffect(() => {
+    if (
+      user &&
+      userDataLoaded &&
+      (
+        transactions.length > 0 ||
+        accounts.length > 1 ||
+        Object.keys(savingsAllocations).length > 0 ||
+        salaryInputs.person1 ||
+        salaryInputs.person2 ||
+        jointTargetAmount
+      )
+    ) {
+      saveUserData();
+    }
+  }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount, saveUserData]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -288,6 +300,7 @@ export default function BudgetTracker() {
 
   const handleLogout = async () => {
     await firebaseHelpers.signOut();
+    setUserDataLoaded(false);
     setTransactions([]);
     setCategoryRules({});
     setAccounts([{ id: 'default', name: 'Main Account' }]);
@@ -879,7 +892,7 @@ export default function BudgetTracker() {
   const months = useMemo(() => {
     const monthSet = new Set();
     transactions.forEach(t => {
-      const [day, month, year] = t.date.split('/');
+      const [, month, year] = t.date.split('/');
       if (year && month) monthSet.add(`${year}-${month.padStart(2, '0')}`);
     });
     return [...monthSet].sort().reverse();
@@ -888,7 +901,7 @@ export default function BudgetTracker() {
   const years = useMemo(() => {
     const yearSet = new Set();
     transactions.forEach(t => {
-      const [day, month, year] = t.date.split('/');
+      const [, , year] = t.date.split('/');
       if (year) yearSet.add(year);
     });
     return [...yearSet].sort().reverse();
@@ -947,7 +960,7 @@ export default function BudgetTracker() {
     
     filteredTransactions.forEach(t => {
       if (t.amount < 0) { // Only spending
-        const [day, month, year] = t.date.split('/');
+        const [, month, year] = t.date.split('/');
         if (year && month) {
           const monthKey = `${year}-${month.padStart(2, '0')}`;
           if (!monthlyByCategory[monthKey]) {
@@ -976,7 +989,7 @@ export default function BudgetTracker() {
     const monthly = {};
     
     filteredTransactions.forEach(t => {
-      const [day, month, year] = t.date.split('/');
+      const [, month, year] = t.date.split('/');
       if (year && month) {
         const key = `${year}-${month}`;
         if (!monthly[key]) monthly[key] = { month: key, spending: 0, income: 0 };
