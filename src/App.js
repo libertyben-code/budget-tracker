@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar, Moon, Sun } from 'lucide-react';
+import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Moon, Sun } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -137,6 +137,7 @@ export default function BudgetTracker() {
   const [activeMainTab, setActiveMainTab] = useState('dashboard');
   const [isMobileChart, setIsMobileChart] = useState(() => window.innerWidth < 640);
   const [categoryChartMode, setCategoryChartMode] = useState('stacked');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
@@ -185,6 +186,10 @@ export default function BudgetTracker() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    setShowCategoryDropdown(false);
+  }, [activeMainTab]);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -1867,7 +1872,7 @@ export default function BudgetTracker() {
 
           {transactions.length > 0 && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
                   <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Balance</div>
                   <div className={`text-2xl font-bold ${stats.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -1880,12 +1885,6 @@ export default function BudgetTracker() {
                     €{stats.spending.toFixed(2)}
                   </div>
                 </div>
-                <div className="bg-green-50 dark:bg-green-900/30 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Income</div>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    €{stats.income.toFixed(2)}
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-3 mb-6">
@@ -1894,7 +1893,6 @@ export default function BudgetTracker() {
                   <div className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
                     {/* Date type button group */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <Calendar size={18} className="text-gray-600 dark:text-gray-400 shrink-0" />
                       <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden shrink-0">
                         {[
                           { value: 'all', label: 'All' },
@@ -1950,25 +1948,6 @@ export default function BudgetTracker() {
                       Current Month
                     </button>
                   </div>
-
-                  {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all' || !filter.currentMonth) && (
-                    <button
-                      onClick={() => setFilter({
-                        categories: [],
-                        description: '',
-                        categorySearch: '',
-                        currentMonth: true,
-                        dateFilterType: 'all',
-                        year: '',
-                        month: '',
-                        startDate: '',
-                        endDate: ''
-                      })}
-                      className="px-3 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm font-medium"
-                    >
-                      Clear Filters
-                    </button>
-                  )}
                 </div>
 
                 {/* Row 2: Date sub-filters */}
@@ -2052,48 +2031,6 @@ export default function BudgetTracker() {
                   </div>
                 )}
 
-                {/* Row 3: Full-width category filter aligned with All button start */}
-                <div className="pl-[26px]">
-                  <div className="relative w-full">
-                    <button
-                      onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
-                    >
-                      <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
-                      <span>▼</span>
-                    </button>
-                    <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
-                      <div className="p-2">
-                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={filter.categories.length === 0}
-                            onChange={() => setFilter({...filter, categories: []})}
-                            className="cursor-pointer"
-                          />
-                          <span className="text-sm dark:text-white">All Categories</span>
-                        </label>
-                        {categories.map(cat => (
-                          <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={filter.categories.includes(cat)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setFilter({...filter, categories: [...filter.categories, cat]});
-                                } else {
-                                  setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                                }
-                              }}
-                              className="cursor-pointer"
-                            />
-                            <span className="text-sm dark:text-white">{cat}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </>
           )}
@@ -2239,6 +2176,45 @@ export default function BudgetTracker() {
         {activeMainTab === 'dashboard' && transactions.length > 0 && (
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
+              <div className="relative w-full mb-4">
+                <button
+                  onClick={() => setShowCategoryDropdown(prev => !prev)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
+                >
+                  <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+                  <span>▼</span>
+                </button>
+                <div className={`${showCategoryDropdown ? 'block' : 'hidden'} absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto`}>
+                  <div className="p-2">
+                    <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={filter.categories.length === 0}
+                        onChange={() => setFilter({...filter, categories: []})}
+                        className="cursor-pointer"
+                      />
+                      <span className="text-sm dark:text-white">All Categories</span>
+                    </label>
+                    {categories.map(cat => (
+                      <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filter.categories.includes(cat)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFilter({...filter, categories: [...filter.categories, cat]});
+                            } else {
+                              setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                            }
+                          }}
+                          className="cursor-pointer"
+                        />
+                        <span className="text-sm dark:text-white">{cat}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
               <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
                 <PieChart>
@@ -2463,6 +2439,45 @@ export default function BudgetTracker() {
           
           {/* Transaction Search Filters */}
           <div className="mb-4 space-y-3">
+            <div className="relative w-full">
+              <button
+                onClick={() => setShowCategoryDropdown(prev => !prev)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
+              >
+                <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+                <span>▼</span>
+              </button>
+              <div className={`${showCategoryDropdown ? 'block' : 'hidden'} absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto`}>
+                <div className="p-2">
+                  <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filter.categories.length === 0}
+                      onChange={() => setFilter({...filter, categories: []})}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-sm dark:text-white">All Categories</span>
+                  </label>
+                  {categories.map(cat => (
+                    <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={filter.categories.includes(cat)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFilter({...filter, categories: [...filter.categories, cat]});
+                          } else {
+                            setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <span className="text-sm dark:text-white">{cat}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input
                 type="text"
