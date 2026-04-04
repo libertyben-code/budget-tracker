@@ -101,6 +101,7 @@ export default function BudgetTracker() {
     categories: [], // Changed to array for multi-select
     description: '',
     categorySearch: '',
+    currentMonth: true,
     dateFilterType: 'all', // 'all', 'year', 'month', 'dateRange'
     year: '',
     month: '',
@@ -814,6 +815,29 @@ export default function BudgetTracker() {
     return monthNum === currentMonthNum && transactionYearShort === currentYearShort;
   };
 
+  const parseTransactionDate = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') return null;
+
+    const parts = dateString.trim().split('/').map(part => part.trim());
+    if (parts.length !== 3) return null;
+
+    const [dayRaw, monthRaw, yearRaw] = parts;
+    const day = parseInt(dayRaw, 10);
+    const month = parseInt(monthRaw, 10);
+    const year = parseInt(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw, 10);
+
+    if (Number.isNaN(day) || Number.isNaN(month) || Number.isNaN(year)) return null;
+
+    return new Date(year, month - 1, day);
+  };
+
+  const getRelativeMonthBounds = (monthCount) => {
+    const now = new Date();
+    const endMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startMonth = new Date(now.getFullYear(), now.getMonth() - (monthCount - 1), 1);
+    return { startMonth, endMonth };
+  };
+
   const exportCSV = () => {
     const headers = ['Date', 'Description', 'Category', 'Amount', 'Type', 'State'];
     const csv = [
@@ -847,19 +871,42 @@ export default function BudgetTracker() {
       }
       
       // Date filters
-      if (!t.date) return true; // Skip filtering if no date
-      const [day, month, year] = t.date.split('/');
-      
-      // Skip if date parts are missing
-      if (!year || !month || !day) return true;
+      const txDate = parseTransactionDate(t.date);
+      if (!txDate) return !filter.currentMonth;
+
+      if (filter.currentMonth) {
+        const now = new Date();
+        if (txDate.getMonth() !== now.getMonth() || txDate.getFullYear() !== now.getFullYear()) {
+          return false;
+        }
+      }
       
       if (filter.dateFilterType === 'year' && filter.year) {
-        if (year !== filter.year.slice(-2)) return false;
+        const txYear = txDate.getFullYear().toString();
+        if (txYear !== filter.year) return false;
       } else if (filter.dateFilterType === 'month' && filter.month) {
-        const txMonth = `${year}-${month.padStart(2, '0')}`;
-        if (txMonth !== filter.month) return false;
+        const txMonthStart = new Date(txDate.getFullYear(), txDate.getMonth(), 1);
+
+        if (filter.month === '__last_month__') {
+          const now = new Date();
+          const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          if (
+            txMonthStart.getMonth() !== lastMonth.getMonth() ||
+            txMonthStart.getFullYear() !== lastMonth.getFullYear()
+          ) {
+            return false;
+          }
+        } else if (filter.month === '__last_3_months__') {
+          const { startMonth, endMonth } = getRelativeMonthBounds(3);
+          if (txMonthStart < startMonth || txMonthStart > endMonth) return false;
+        } else if (filter.month === '__last_6_months__') {
+          const { startMonth, endMonth } = getRelativeMonthBounds(6);
+          if (txMonthStart < startMonth || txMonthStart > endMonth) return false;
+        } else {
+          const txMonth = `${txDate.getFullYear()}-${(txDate.getMonth() + 1).toString().padStart(2, '0')}`;
+          if (txMonth !== filter.month) return false;
+        }
       } else if (filter.dateFilterType === 'dateRange' && filter.startDate && filter.endDate) {
-        const txDate = new Date(year, parseInt(month) - 1, parseInt(day));
         const startDate = new Date(filter.startDate);
         const endDate = new Date(filter.endDate);
         if (txDate < startDate || txDate > endDate) return false;
@@ -909,8 +956,10 @@ export default function BudgetTracker() {
   const months = useMemo(() => {
     const monthSet = new Set();
     transactions.forEach(t => {
-      const [, month, year] = t.date.split('/');
-      if (year && month) monthSet.add(`${year}-${month.padStart(2, '0')}`);
+      const txDate = parseTransactionDate(t.date);
+      if (!txDate) return;
+      const monthKey = `${txDate.getFullYear()}-${(txDate.getMonth() + 1).toString().padStart(2, '0')}`;
+      monthSet.add(monthKey);
     });
     return [...monthSet].sort().reverse();
   }, [transactions]);
@@ -918,8 +967,8 @@ export default function BudgetTracker() {
   const years = useMemo(() => {
     const yearSet = new Set();
     transactions.forEach(t => {
-      const [, , year] = t.date.split('/');
-      if (year) yearSet.add('20' + year.padStart(2, '0'));
+      const txDate = parseTransactionDate(t.date);
+      if (txDate) yearSet.add(txDate.getFullYear().toString());
     });
     return [...yearSet].sort().reverse();
   }, [transactions]);
@@ -1840,87 +1889,75 @@ export default function BudgetTracker() {
               </div>
 
               <div className="space-y-3 mb-6">
-                {/* Row 1: Date buttons + Category filter + Clear */}
+                {/* Row 1: Date buttons + Current month + Clear */}
                 <div className="flex flex-wrap gap-3 items-center">
-                  {/* Date type button group */}
-                  <div className="flex items-center gap-2">
-                    <Calendar size={18} className="text-gray-600 dark:text-gray-400 shrink-0" />
-                    <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                      {[
-                        { value: 'all', label: 'All' },
-                        { value: 'year', label: 'Year' },
-                        { value: 'month', label: 'Month' },
-                        { value: 'dateRange', label: 'Range' },
-                      ].map(({ value, label }) => (
-                        <button
-                          key={value}
-                          onClick={() => setFilter({
-                            ...filter,
-                            dateFilterType: value,
-                            year: '',
-                            month: '',
-                            startDate: '',
-                            endDate: ''
-                          })}
-                          className={`px-3 py-2 text-sm font-medium transition-colors border-r border-gray-300 dark:border-gray-600 last:border-r-0 ${
-                            filter.dateFilterType === value
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <div className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
+                    {/* Date type button group */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Calendar size={18} className="text-gray-600 dark:text-gray-400 shrink-0" />
+                      <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden shrink-0">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'year', label: 'Year' },
+                          { value: 'month', label: 'Month' },
+                          { value: 'dateRange', label: 'Range' },
+                          ].map(({ value, label }) => {
+                            const isActive = value === 'all'
+                              ? filter.dateFilterType === 'all' && !filter.currentMonth
+                              : filter.dateFilterType === value;
 
-                  {/* Category Filter */}
-                  <div className="relative">
-                    <button
-                      onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
-                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center gap-2 min-w-[150px]"
-                    >
-                      <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
-                      <span>▼</span>
-                    </button>
-                    <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto min-w-[200px]">
-                      <div className="p-2">
-                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={filter.categories.length === 0}
-                            onChange={() => setFilter({...filter, categories: []})}
-                            className="cursor-pointer"
-                          />
-                          <span className="text-sm dark:text-white">All Categories</span>
-                        </label>
-                        {categories.map(cat => (
-                          <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={filter.categories.includes(cat)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setFilter({...filter, categories: [...filter.categories, cat]});
-                                } else {
-                                  setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                                }
-                              }}
-                              className="cursor-pointer"
-                            />
-                            <span className="text-sm dark:text-white">{cat}</span>
-                          </label>
-                        ))}
+                            return (
+                              <button
+                                key={value}
+                                onClick={() => setFilter({
+                                  ...filter,
+                                  currentMonth: false,
+                                  dateFilterType: value,
+                                  year: '',
+                                  month: '',
+                                  startDate: '',
+                                  endDate: ''
+                                })}
+                                className={`px-3 py-2 text-sm font-medium transition-colors border-r border-gray-300 dark:border-gray-600 last:border-r-0 ${
+                                  isActive
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => setFilter({
+                        ...filter,
+                        currentMonth: true,
+                        dateFilterType: 'all',
+                        year: '',
+                        month: '',
+                        startDate: '',
+                        endDate: ''
+                      })}
+                      className={`px-3 py-2 text-sm font-medium transition-colors rounded-lg border border-gray-300 dark:border-gray-600 shrink-0 ${
+                        filter.currentMonth
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Current Month
+                    </button>
                   </div>
 
-                  {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all') && (
+                  {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all' || !filter.currentMonth) && (
                     <button
                       onClick={() => setFilter({
                         categories: [],
                         description: '',
                         categorySearch: '',
+                        currentMonth: true,
                         dateFilterType: 'all',
                         year: '',
                         month: '',
@@ -1952,18 +1989,43 @@ export default function BudgetTracker() {
                 )}
 
                 {filter.dateFilterType === 'month' && (
-                  <div className="flex gap-2 items-center">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Month:</label>
-                    <select
-                      value={filter.month}
-                      onChange={(e) => setFilter({...filter, month: e.target.value})}
-                      className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                    >
-                      <option value="">Select Month</option>
-                      {months.map(month => (
-                        <option key={month} value={month}>{formatMonthDisplay(month)}</option>
-                      ))}
-                    </select>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <div className="flex gap-2 items-center w-full sm:w-auto">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Month:</label>
+                      <select
+                        value={filter.month.startsWith('__') ? '' : filter.month}
+                        onChange={(e) => setFilter({...filter, currentMonth: false, month: e.target.value})}
+                        className="flex-1 min-w-[170px] sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="">Select Month</option>
+                        {months.map(month => (
+                          <option key={month} value={month}>{formatMonthDisplay(month)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      {[
+                        { value: '__last_month__', label: 'Last Month' },
+                        { value: '__last_3_months__', label: 'Last 3 Months' },
+                        { value: '__last_6_months__', label: 'Last 6 Months' },
+                      ].map(({ value, label }) => {
+                        const isActive = !filter.currentMonth && filter.month === value;
+
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setFilter({ ...filter, currentMonth: false, month: value })}
+                            className={`px-3 py-2 text-sm font-medium transition-colors rounded-lg border border-gray-300 dark:border-gray-600 whitespace-nowrap ${
+                              isActive
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -1989,6 +2051,49 @@ export default function BudgetTracker() {
                     </div>
                   </div>
                 )}
+
+                {/* Row 3: Full-width category filter aligned with All button start */}
+                <div className="pl-[26px]">
+                  <div className="relative w-full">
+                    <button
+                      onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
+                    >
+                      <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+                      <span>▼</span>
+                    </button>
+                    <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                      <div className="p-2">
+                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filter.categories.length === 0}
+                            onChange={() => setFilter({...filter, categories: []})}
+                            className="cursor-pointer"
+                          />
+                          <span className="text-sm dark:text-white">All Categories</span>
+                        </label>
+                        {categories.map(cat => (
+                          <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={filter.categories.includes(cat)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFilter({...filter, categories: [...filter.categories, cat]});
+                                } else {
+                                  setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                                }
+                              }}
+                              className="cursor-pointer"
+                            />
+                            <span className="text-sm dark:text-white">{cat}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           )}
