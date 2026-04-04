@@ -130,6 +130,7 @@ export default function BudgetTracker() {
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [batchEditForm, setBatchEditForm] = useState({ description: '', category: '' });
+  const [newBatchCategoryName, setNewBatchCategoryName] = useState('');
   const [salaryInputs, setSalaryInputs] = useState({ person1: '', person2: '' });
   const [jointTargetAmount, setJointTargetAmount] = useState('2100');
   const [activeMainTab, setActiveMainTab] = useState('dashboard');
@@ -751,12 +752,13 @@ export default function BudgetTracker() {
   };
 
   const applyBatchEdit = () => {
+    const resolvedCategory = batchEditForm.category === '__new__' ? newBatchCategoryName : batchEditForm.category;
     const updatedTransactions = transactions.map(t => {
       if (selectedTransactions.includes(t.id)) {
         return {
           ...t,
           ...(batchEditForm.description && { description: batchEditForm.description }),
-          ...(batchEditForm.category && { category: batchEditForm.category })
+          ...(resolvedCategory && { category: resolvedCategory })
         };
       }
       return t;
@@ -765,11 +767,13 @@ export default function BudgetTracker() {
     setSelectedTransactions([]);
     setShowBatchEdit(false);
     setBatchEditForm({ description: '', category: '' });
+    setNewBatchCategoryName('');
   };
 
   const cancelBatchEdit = () => {
     setShowBatchEdit(false);
     setBatchEditForm({ description: '', category: '' });
+    setNewBatchCategoryName('');
   };
 
   const handleBatchDelete = () => {
@@ -1863,7 +1867,7 @@ export default function BudgetTracker() {
                   <div className="relative">
                     <button
                       onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
-                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex items-center gap-2 w-full sm:w-auto justify-between sm:min-w-[150px]"
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center gap-2 min-w-[150px]"
                     >
                       <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
                       <span>▼</span>
@@ -1912,7 +1916,7 @@ export default function BudgetTracker() {
                         startDate: '',
                         endDate: ''
                       })}
-                      className="px-3 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
+                      className="px-3 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm font-medium"
                     >
                       Clear Filters
                     </button>
@@ -2699,7 +2703,8 @@ export default function BudgetTracker() {
                       <input
                         type="text"
                         placeholder="Enter new category name"
-                        onChange={(e) => setBatchEditForm({...batchEditForm, category: e.target.value})}
+                        value={newBatchCategoryName}
+                        onChange={(e) => setNewBatchCategoryName(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 mt-2"
                         autoFocus
                       />
@@ -2716,7 +2721,7 @@ export default function BudgetTracker() {
                   </button>
                   <button
                     onClick={applyBatchEdit}
-                    disabled={!batchEditForm.description && !batchEditForm.category}
+                    disabled={!batchEditForm.description && (batchEditForm.category === '__new__' ? !newBatchCategoryName : !batchEditForm.category)}
                     className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
                   >
                     Apply Changes
