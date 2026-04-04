@@ -1354,7 +1354,7 @@ export default function BudgetTracker() {
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
-              Graphs
+              Transactions
             </button>
           </div>
 
@@ -2120,7 +2120,7 @@ export default function BudgetTracker() {
           </div>
         )}
 
-        {activeMainTab === 'graphs' && transactions.length > 0 && (
+        {activeMainTab === 'dashboard' && transactions.length > 0 && (
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
@@ -2269,7 +2269,7 @@ export default function BudgetTracker() {
           </>
         )}
 
-        {activeMainTab === 'dashboard' && (
+        {activeMainTab === 'graphs' && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
