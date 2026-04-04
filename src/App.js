@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Calendar, Moon, Sun } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -112,13 +112,14 @@ export default function BudgetTracker() {
   const [selectedRules, setSelectedRules] = useState([]);
   const [showBatchRuleEdit, setShowBatchRuleEdit] = useState(false);
   const [batchRuleCategory, setBatchRuleCategory] = useState('');
-  const [showGraphs, setShowGraphs] = useState(true);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [deletingCategory, setDeletingCategory] = useState(null);
   const [replacementCategory, setReplacementCategory] = useState('Uncategorized');
   const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
+  const settingsMenuRef = useRef(null);
   
   // Sorting state
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -155,6 +156,20 @@ export default function BudgetTracker() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+        setShowSettingsMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -1114,29 +1129,105 @@ export default function BudgetTracker() {
 
   // Main App
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-2 sm:p-6 transition-colors">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Budget Tracker</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Logged in as: {user.email}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6 mb-6">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-6">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-3xl font-bold text-gray-800 dark:text-white">Budget Tracker</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[200px] sm:max-w-none">Logged in as: {user.email}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
                 title="Toggle dark mode"
               >
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-                {darkMode ? 'Light' : 'Dark'}
+                <span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span>
               </button>
+              <div ref={settingsMenuRef} className="relative">
+                <button
+                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                  title="Open settings menu"
+                >
+                  <Settings size={20} />
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+
+                {showSettingsMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
+                    <div className="p-2 space-y-1">
+                      <label className="flex items-center gap-3 w-full px-3 py-2 rounded-lg cursor-pointer text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                        <Upload size={18} />
+                        <span>Import CSV</span>
+                        <input
+                          type="file"
+                          accept=".csv"
+                          onChange={(e) => {
+                            handleFileUpload(e);
+                            setShowSettingsMenu(false);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        onClick={() => {
+                          exportCSV();
+                          setShowSettingsMenu(false);
+                        }}
+                        disabled={transactions.length === 0}
+                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Download size={18} />
+                        <span>Export CSV</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowRules(!showRules);
+                          setShowSettingsMenu(false);
+                        }}
+                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                      >
+                        <Settings size={18} />
+                        <span>Category Rules ({Object.keys(categoryRules).length})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowCategoryManager(!showCategoryManager);
+                          setShowSettingsMenu(false);
+                        }}
+                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                      >
+                        <Edit2 size={18} />
+                        <span>Manage Categories ({categories.length})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          reapplyRules();
+                          setShowSettingsMenu(false);
+                        }}
+                        disabled={transactions.length === 0}
+                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Save size={18} />
+                        <span>Auto-Categorize</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition"
+                className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition"
               >
                 <LogOut size={20} />
-                Logout
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -1215,48 +1306,6 @@ export default function BudgetTracker() {
             </div>
           </div>
           
-          <div className="flex gap-4 mb-6 flex-wrap">
-            <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-600 dark:hover:bg-blue-700 transition">
-              <Upload size={20} />
-              Import CSV
-              <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
-            </label>
-            
-            <button
-              onClick={exportCSV}
-              disabled={transactions.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition disabled:bg-gray-300 dark:disabled:bg-gray-600"
-            >
-              <Download size={20} />
-              Export CSV
-            </button>
-
-            <button
-              onClick={() => setShowRules(!showRules)}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-500 dark:bg-orange-600 text-white rounded-lg hover:bg-orange-600 dark:hover:bg-orange-700 transition"
-            >
-              <Settings size={20} />
-              Category Rules ({Object.keys(categoryRules).length})
-            </button>
-
-            <button
-              onClick={() => setShowCategoryManager(!showCategoryManager)}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-500 dark:bg-teal-600 text-white rounded-lg hover:bg-teal-600 dark:hover:bg-teal-700 transition"
-            >
-              <Edit2 size={20} />
-              Manage Categories ({categories.length})
-            </button>
-
-            {transactions.length > 0 && (
-              <button
-                onClick={reapplyRules}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-500 dark:bg-indigo-600 text-white rounded-lg hover:bg-indigo-600 dark:hover:bg-indigo-700 transition"
-              >
-                Auto-Categorize
-              </button>
-            )}
-          </div>
-
           <div className="mb-6 flex gap-2">
             <button
               onClick={() => setActiveMainTab('dashboard')}
@@ -1277,6 +1326,16 @@ export default function BudgetTracker() {
               }`}
             >
               Joint Split
+            </button>
+            <button
+              onClick={() => setActiveMainTab('graphs')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                activeMainTab === 'graphs'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Graphs
             </button>
           </div>
 
@@ -1307,12 +1366,21 @@ export default function BudgetTracker() {
 
           {showRules && (
             <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <h3 className="font-bold mb-4 dark:text-white">Category Auto-Assignment Rules</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold dark:text-white">Category Auto-Assignment Rules</h3>
+                <button
+                  onClick={() => setShowRules(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1 rounded"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Rules are automatically learned when you set categories.
               </p>
               
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <input
                   type="text"
                   placeholder="Description pattern"
@@ -1329,7 +1397,7 @@ export default function BudgetTracker() {
                 />
                 <button
                   onClick={handleAddRule}
-                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700"
+                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 w-full sm:w-auto"
                 >
                   Add Rule
                 </button>
@@ -1342,7 +1410,7 @@ export default function BudgetTracker() {
                 <select
                   value={ruleFilter}
                   onChange={(e) => setRuleFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Categories</option>
                   {categories.map(cat => (
@@ -1359,21 +1427,21 @@ export default function BudgetTracker() {
                 return (
                   <>
                     {selectedRules.length > 0 && (
-                      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg flex items-center justify-between">
+                      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                         <span className="text-sm text-blue-700 dark:text-blue-300">
                           {selectedRules.length} rule{selectedRules.length > 1 ? 's' : ''} selected
                         </span>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                           <button
                             onClick={handleBatchRuleEdit}
-                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 text-sm"
+                            className="flex items-center justify-center gap-1 px-3 py-1 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 text-sm w-full sm:w-auto"
                           >
                             <Edit2 size={14} />
                             Change Category
                           </button>
                           <button
                             onClick={handleBatchRuleDelete}
-                            className="flex items-center gap-1 px-3 py-1 bg-red-500 dark:bg-red-600 text-white rounded hover:bg-red-600 dark:hover:bg-red-700 text-sm"
+                            className="flex items-center justify-center gap-1 px-3 py-1 bg-red-500 dark:bg-red-600 text-white rounded hover:bg-red-600 dark:hover:bg-red-700 text-sm w-full sm:w-auto"
                           >
                             <Trash2 size={14} />
                             Delete
@@ -1382,7 +1450,36 @@ export default function BudgetTracker() {
                       </div>
                     )}
 
-                    <div className="max-h-60 overflow-y-auto">
+                    <div className="md:hidden space-y-2 max-h-80 overflow-y-auto">
+                      {Object.entries(filteredRules).map(([pattern, category]) => (
+                        <div key={pattern} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <label className="flex items-start gap-2 min-w-0 flex-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedRules.includes(pattern)}
+                                onChange={() => toggleSelectRule(pattern)}
+                                className="cursor-pointer mt-0.5"
+                              />
+                              <div className="min-w-0">
+                                <div className="font-mono text-xs break-all dark:text-gray-300">{pattern}</div>
+                                <span className="inline-block mt-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
+                                  {category}
+                                </span>
+                              </div>
+                            </label>
+                            <button
+                              onClick={() => handleDeleteRule(pattern)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded flex-shrink-0"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="hidden md:block max-h-60 overflow-y-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
                           <tr>
@@ -1483,12 +1580,76 @@ export default function BudgetTracker() {
 
           {showCategoryManager && (
             <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <h3 className="font-bold mb-4 dark:text-white">Category Manager</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold dark:text-white">Category Manager</h3>
+                <button
+                  onClick={() => setShowCategoryManager(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1 rounded"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Rename categories to update all transactions using that category.
               </p>
               
-              <div className="max-h-60 overflow-y-auto">
+              <div className="md:hidden space-y-2 max-h-80 overflow-y-auto">
+                {categories.map(category => {
+                  const count = transactions.filter(t => t.category === category).length;
+                  return (
+                    <div key={category} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          {editingCategory === category ? (
+                            <input
+                              type="text"
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleRenameCategory(category, newCategoryName);
+                                }
+                              }}
+                              onBlur={() => handleRenameCategory(category, newCategoryName)}
+                              className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs break-words max-w-full">
+                              {category}
+                            </span>
+                          )}
+                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                            {count} transaction{count !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => {
+                              setEditingCategory(category);
+                              setNewCategoryName(category);
+                            }}
+                            className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
+                            title="Rename category"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category)}
+                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
+                            title="Delete category"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="hidden md:block max-h-60 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
                     <tr>
@@ -1625,7 +1786,7 @@ export default function BudgetTracker() {
             </div>
           )}
 
-          {activeMainTab === 'dashboard' && transactions.length > 0 && (
+          {transactions.length > 0 && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
@@ -1875,7 +2036,26 @@ export default function BudgetTracker() {
                   No transactions found for this month with a category containing "bill".
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                <div className="md:hidden space-y-2">
+                  {currentMonthBillTransactions.map(transaction => (
+                    <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateToDDMMYY(transaction.date)}</span>
+                        <span className="font-semibold text-sm text-red-600 dark:text-red-400">
+                          EUR {Math.abs(transaction.amount || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm dark:text-gray-300 truncate">{transaction.description}</span>
+                        <span className="px-2 py-0.5 rounded-full text-xs flex-shrink-0 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                          {transaction.category}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -1899,6 +2079,7 @@ export default function BudgetTracker() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </div>
 
@@ -1910,28 +2091,7 @@ export default function BudgetTracker() {
           </div>
         )}
 
-        {activeMainTab === 'dashboard' && transactions.length > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
-            <button
-              onClick={() => setShowGraphs(!showGraphs)}
-              className="w-full flex items-center justify-center gap-2 px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition rounded"
-            >
-              {showGraphs ? (
-                <>
-                  <span>▲</span>
-                  <span className="font-semibold">Reduce Graphs</span>
-                </>
-              ) : (
-                <>
-                  <span>▼</span>
-                  <span className="font-semibold">Expand Graphs</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
-        {activeMainTab === 'dashboard' && transactions.length > 0 && showGraphs && (
+        {activeMainTab === 'graphs' && transactions.length > 0 && (
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
@@ -2081,7 +2241,7 @@ export default function BudgetTracker() {
         )}
 
         {activeMainTab === 'dashboard' && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
             <button
@@ -2089,7 +2249,7 @@ export default function BudgetTracker() {
               className="flex items-center gap-2 px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition"
             >
               <Plus size={20} />
-              Add Transaction
+              <span className="hidden sm:inline">Add Transaction</span>
             </button>
           </div>
           
@@ -2103,59 +2263,16 @@ export default function BudgetTracker() {
                 onChange={(e) => setFilter({...filter, description: e.target.value})}
                 className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
               />
-              
-              <input
-                type="text"
-                placeholder="Search Category..."
-                value={filter.categorySearch}
-                onChange={(e) => setFilter({...filter, categorySearch: e.target.value})}
-                className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-              />
             </div>
-            
-            {/* Multi-Category Selector */}
-            {categories.length > 0 && (
-              <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-700">
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Filter by Categories {filter.categories.length > 0 && `(${filter.categories.length} selected)`}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(cat => (
-                    <label
-                      key={cat}
-                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition ${
-                        filter.categories.includes(cat)
-                          ? 'bg-blue-500 dark:bg-blue-600 text-white'
-                          : 'bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-500'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filter.categories.includes(cat)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFilter({...filter, categories: [...filter.categories, cat]});
-                          } else {
-                            setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                          }
-                        }}
-                        className="hidden"
-                      />
-                      <span className="text-sm">{cat}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
           
           {/* Batch Edit Controls */}
           {selectedTransactions.length > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-between">
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex flex-wrap gap-2 items-center justify-between">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {selectedTransactions.length} transaction(s) selected
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleBatchEdit}
                   className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition text-sm"
@@ -2166,19 +2283,78 @@ export default function BudgetTracker() {
                   onClick={handleBatchDelete}
                   className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
                 >
-                  Delete Selected
+                  Delete
                 </button>
                 <button
                   onClick={() => setSelectedTransactions([])}
                   className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition text-sm"
                 >
-                  Clear Selection
+                  Clear
                 </button>
               </div>
             </div>
           )}
           
-          <div className="overflow-x-auto">
+          <div className="md:hidden space-y-2">
+            {filteredTransactions.map(transaction => (
+              <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactions.includes(transaction.id)}
+                      onChange={() => toggleSelectTransaction(transaction.id)}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateToDDMMYY(transaction.date)}</span>
+                  </div>
+                  <span className={`text-sm font-semibold whitespace-nowrap ${
+                    transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    €{transaction.amount.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <div className="min-w-0">
+                    <div className="text-sm dark:text-gray-300 truncate">{transaction.description}</div>
+                    <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs ${
+                      transaction.category === 'Uncategorized'
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+                        : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                    }`}>
+                      {transaction.category}
+                    </span>
+                  </div>
+                  <div className="flex justify-center gap-2 flex-shrink-0">
+                    {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
+                      <button
+                        onClick={() => openSavingsModal(transaction)}
+                        className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
+                        title="Allocate savings"
+                      >
+                        <Settings size={18} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleEdit(transaction)}
+                      className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700">
