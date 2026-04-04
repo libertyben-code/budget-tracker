@@ -127,6 +127,9 @@ export default function BudgetTracker() {
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [batchEditForm, setBatchEditForm] = useState({ description: '', category: '' });
+  const [salaryInputs, setSalaryInputs] = useState({ person1: '', person2: '' });
+  const [jointTargetAmount, setJointTargetAmount] = useState('2100');
+  const [activeMainTab, setActiveMainTab] = useState('dashboard');
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
@@ -167,10 +170,20 @@ export default function BudgetTracker() {
 
   // Auto-save data when transactions, rules, accounts, or savings allocations change
   useEffect(() => {
-    if (user && (transactions.length > 0 || accounts.length > 1 || Object.keys(savingsAllocations).length > 0)) {
+    if (
+      user &&
+      (
+        transactions.length > 0 ||
+        accounts.length > 1 ||
+        Object.keys(savingsAllocations).length > 0 ||
+        salaryInputs.person1 ||
+        salaryInputs.person2 ||
+        jointTargetAmount
+      )
+    ) {
       saveUserData();
     }
-  }, [transactions, categoryRules, accounts, savingsAllocations]);
+  }, [transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount]);
 
   const loadUserData = async (userId) => {
     try {
@@ -191,13 +204,18 @@ export default function BudgetTracker() {
           const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {} };
           setTransactions(activeData.transactions || []);
           setSavingsAllocations(activeData.savingsAllocations || {});
+          setSalaryInputs(activeData.salaryInputs || { person1: '', person2: '' });
+          setJointTargetAmount(activeData.jointTargetAmount || '2100');
           setActiveAccountId(data.activeAccountId || 'default');
         } else {
           // Legacy support: migrate old data to new structure
           setTransactions(data.transactions || []);
           setAccountsData({
             'default': {
-              transactions: data.transactions || []
+              transactions: data.transactions || [],
+              savingsAllocations: {},
+              salaryInputs: { person1: '', person2: '' },
+              jointTargetAmount: '2100'
             }
           });
         }
@@ -215,7 +233,9 @@ export default function BudgetTracker() {
         ...accountsData,
         [activeAccountId]: {
           transactions,
-          savingsAllocations
+          savingsAllocations,
+          salaryInputs,
+          jointTargetAmount
         }
       };
       
@@ -258,6 +278,8 @@ export default function BudgetTracker() {
     setAccounts([{ id: 'default', name: 'Main Account' }]);
     setActiveAccountId('default');
     setAccountsData({ 'default': { transactions: [] } });
+    setSalaryInputs({ person1: '', person2: '' });
+    setJointTargetAmount('2100');
     setEmail('');
     setPassword('');
   };
@@ -268,7 +290,9 @@ export default function BudgetTracker() {
       ...accountsData,
       [activeAccountId]: {
         transactions,
-        savingsAllocations
+        savingsAllocations,
+        salaryInputs,
+        jointTargetAmount
       }
     };
     setAccountsData(updatedAccountsData);
@@ -277,6 +301,8 @@ export default function BudgetTracker() {
     const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAllocations: {} };
     setTransactions(newAccountData.transactions);
     setSavingsAllocations(newAccountData.savingsAllocations || {});
+    setSalaryInputs(newAccountData.salaryInputs || { person1: '', person2: '' });
+    setJointTargetAmount(newAccountData.jointTargetAmount || '2100');
     setActiveAccountId(accountId);
     setEditingId(null);
     setEditForm({});
@@ -292,7 +318,12 @@ export default function BudgetTracker() {
     setAccounts([...accounts, newAccount]);
     setAccountsData({
       ...accountsData,
-      [newAccountId]: { transactions: [], categoryRules: {} }
+      [newAccountId]: {
+        transactions: [],
+        savingsAllocations: {},
+        salaryInputs: { person1: '', person2: '' },
+        jointTargetAmount: '2100'
+      }
     });
     
     setNewAccountName('');
@@ -455,6 +486,7 @@ export default function BudgetTracker() {
 
     learnCategoryFromTransactions(parsed);
     setTransactions(parsed);
+    setSelectedTransactions([]);
     
     // Set import error message
     if (failedLines.length > 0) {
@@ -719,6 +751,24 @@ export default function BudgetTracker() {
     }
   };
 
+  const isCurrentMonthTransaction = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') return false;
+
+    const parts = dateString.trim().split('/').map(part => part.trim());
+    if (parts.length !== 3) return false;
+
+    const monthNum = parseInt(parts[1], 10);
+    const yearNum = parseInt(parts[2], 10);
+    if (Number.isNaN(monthNum) || Number.isNaN(yearNum)) return false;
+
+    const now = new Date();
+    const currentMonthNum = now.getMonth() + 1;
+    const currentYearShort = now.getFullYear() % 100;
+    const transactionYearShort = yearNum % 100;
+
+    return monthNum === currentMonthNum && transactionYearShort === currentYearShort;
+  };
+
   const exportCSV = () => {
     const headers = ['Date', 'Description', 'Category', 'Amount', 'Type', 'State'];
     const csv = [
@@ -939,6 +989,33 @@ export default function BudgetTracker() {
     
     return { total, spending, income };
   }, [filteredTransactions]);
+
+  const currentMonthBillTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const category = (t.category || '').toLowerCase();
+      return isCurrentMonthTransaction(formatDateToDDMMYY(t.date)) && category.includes('bill');
+    });
+  }, [transactions]);
+
+  const currentMonthBillsTotal = useMemo(() => {
+    return currentMonthBillTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+  }, [currentMonthBillTransactions]);
+
+  const currentMonthNonBillCount = useMemo(() => {
+    return transactions.filter(t => {
+      if (!isCurrentMonthTransaction(formatDateToDDMMYY(t.date))) return false;
+      const category = (t.category || '').toLowerCase();
+      return !category.includes('bill');
+    }).length;
+  }, [transactions]);
+
+  const parsedSalary1 = parseFloat(salaryInputs.person1) || 0;
+  const parsedSalary2 = parseFloat(salaryInputs.person2) || 0;
+  const parsedJointTargetAmount = parseFloat(jointTargetAmount) || 0;
+  const totalToSplit = parsedJointTargetAmount > 0 ? parsedJointTargetAmount : currentMonthBillsTotal;
+  const totalSalaries = parsedSalary1 + parsedSalary2;
+  const person1Contribution = totalSalaries > 0 ? (totalToSplit * parsedSalary1) / totalSalaries : 0;
+  const person2Contribution = totalSalaries > 0 ? (totalToSplit * parsedSalary2) / totalSalaries : 0;
 
   if (initializing) {
     return (
@@ -1178,6 +1255,29 @@ export default function BudgetTracker() {
                 Auto-Categorize
               </button>
             )}
+          </div>
+
+          <div className="mb-6 flex gap-2">
+            <button
+              onClick={() => setActiveMainTab('dashboard')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                activeMainTab === 'dashboard'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setActiveMainTab('joint')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                activeMainTab === 'joint'
+                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Joint Split
+            </button>
           </div>
 
           {importErrors && (
@@ -1525,7 +1625,7 @@ export default function BudgetTracker() {
             </div>
           )}
 
-          {transactions.length > 0 && (
+          {activeMainTab === 'dashboard' && transactions.length > 0 && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
@@ -1693,7 +1793,124 @@ export default function BudgetTracker() {
           )}
         </div>
 
-        {transactions.length > 0 && (
+        {activeMainTab === 'joint' && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Joint Account Split</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Automatically includes current-month transactions where category contains "bill".
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600 dark:text-gray-400">Target Joint Deposit</div>
+                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">EUR {totalToSplit.toFixed(2)}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Bills reference: EUR {currentMonthBillsTotal.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <div className="mb-4 max-w-sm">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total to Put in Joint Account</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={jointTargetAmount}
+                onChange={(e) => setJointTargetAmount(e.target.value)}
+                placeholder="2100"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 1</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={salaryInputs.person1}
+                  onChange={(e) => setSalaryInputs({ ...salaryInputs, person1: e.target.value })}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 2</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={salaryInputs.person2}
+                  onChange={(e) => setSalaryInputs({ ...salaryInputs, person2: e.target.value })}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            {totalSalaries > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+                <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+                  <div className="text-sm text-gray-600 dark:text-gray-300">Person 1 Contribution</div>
+                  <div className="text-xl font-bold text-blue-700 dark:text-blue-300">EUR {person1Contribution.toFixed(2)}</div>
+                </div>
+                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
+                  <div className="text-sm text-gray-600 dark:text-gray-300">Person 2 Contribution</div>
+                  <div className="text-xl font-bold text-green-700 dark:text-green-300">EUR {person2Contribution.toFixed(2)}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-6">
+                Enter both salaries (or at least one) to calculate each person&apos;s pro-rate contribution.
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">
+                Included Transactions ({currentMonthBillTransactions.length})
+              </h3>
+              {currentMonthBillTransactions.length === 0 ? (
+                <div className="text-sm text-gray-600 dark:text-gray-400 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  No transactions found for this month with a category containing "bill".
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="text-left py-2 px-2 dark:text-gray-300">Date</th>
+                        <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
+                        <th className="text-left py-2 px-2 dark:text-gray-300">Category</th>
+                        <th className="text-right py-2 px-2 dark:text-gray-300">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentMonthBillTransactions.map(transaction => (
+                        <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700">
+                          <td className="py-2 px-2 dark:text-gray-300">{formatDateToDDMMYY(transaction.date)}</td>
+                          <td className="py-2 px-2 dark:text-gray-300">{transaction.description}</td>
+                          <td className="py-2 px-2 dark:text-gray-300">{transaction.category}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-red-600 dark:text-red-400">
+                            EUR {Math.abs(transaction.amount || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {currentMonthNonBillCount > 0 && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                {currentMonthNonBillCount} other current-month transaction(s) are not included because their category does not contain "bill".
+              </p>
+            )}
+          </div>
+        )}
+
+        {activeMainTab === 'dashboard' && transactions.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
             <button
               onClick={() => setShowGraphs(!showGraphs)}
@@ -1714,7 +1931,7 @@ export default function BudgetTracker() {
           </div>
         )}
 
-        {transactions.length > 0 && showGraphs && (
+        {activeMainTab === 'dashboard' && transactions.length > 0 && showGraphs && (
           <>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
@@ -1863,6 +2080,7 @@ export default function BudgetTracker() {
           </>
         )}
 
+        {activeMainTab === 'dashboard' && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
@@ -2129,6 +2347,7 @@ export default function BudgetTracker() {
             </table>
           </div>
         </div>
+        )}
 
         {/* Savings Allocation Modal */}
         {showSavingsModal && selectedSavingsTransaction && (

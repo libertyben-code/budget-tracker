@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, dark mode, sortable tables, batch operations, and cloud synchronization through Firebase.
+This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, a dedicated Joint Split planning tab, dark mode, sortable tables, batch operations, and cloud synchronization through Firebase.
 
 ## Setup Instructions
 
@@ -61,7 +61,17 @@ npm start
 - Delete accounts (with protection for default account)
 - Account-specific data synchronization
 
-### 4. **Transaction Management**
+### 4. **Joint Account Split Tab**
+- Dedicated tab for planning how much each person should put into a joint account
+- Automatic inclusion of **current-month transactions** where the category contains `bill`
+- Live list of included transactions (date, description, category, amount)
+- **Target joint deposit** input (default `2100`) used for pro-rata split
+- Salary-based pro-rata contribution calculation for two people:
+  - Person 1 contribution = target × salary1 / (salary1 + salary2)
+  - Person 2 contribution = target × salary2 / (salary1 + salary2)
+- Current-month bill total remains visible as a reference value
+
+### 5. **Transaction Management**
 - **CSV Import**: 
   - Upload bank statement CSV files for automatic transaction parsing
   - Auto-format dates to dd/mm/yy format during import
@@ -80,7 +90,7 @@ npm start
 - **Date Format**: All dates consistently displayed in dd/mm/yy format
 - **Real-time Updates**: Changes instantly reflected across all visualizations
 
-### 5. **Intelligent Auto-Categorization**
+### 6. **Intelligent Auto-Categorization**
 - Machine learning-inspired pattern matching system
 - **Automatic Learning**: When you manually categorize a transaction, the app learns the pattern
 - **Rule-Based System**: Maintains a dictionary of description patterns → categories
@@ -95,7 +105,7 @@ npm start
 - **Global Rules**: Category rules are user-level (shared across all accounts)
 - **Rule Synchronization**: Rules automatically update when categories are renamed or deleted
 
-### 6. **Category Management**
+### 7. **Category Management**
 - **Rename Categories**: Update category names across all transactions and rules
 - **Delete Categories**: Remove categories with options to:
   - Set affected transactions to "Uncategorized"
@@ -104,14 +114,14 @@ npm start
 - **Category Count**: View transaction count per category
 - **Visual Feedback**: Color-coded category badges throughout the interface
 
-### 7. **Savings Management**
+### 8. **Savings Management**
 - **Savings Allocation**: Break down savings deposits by purpose (e.g., Emergency Fund, Vacation, House)
 - **Visual Breakdown**: Dedicated pie chart showing allocation by purpose
 - **Per-Transaction Tracking**: Allocate specific amounts from each savings transaction
 - **Unallocated Tracking**: Automatically tracks unallocated savings amounts
 - Account-specific savings goals and allocations
 
-### 8. **Advanced Data Visualization**
+### 9. **Advanced Data Visualization**
 Four interactive charts using Recharts library:
 - **Spending by Category (Pie Chart)**: Visual breakdown of spending by category with percentages
 - **Spending by Category per Month (Grouped Bar Chart)**: 
@@ -129,7 +139,7 @@ Four interactive charts using Recharts library:
 - Toggle charts visibility on/off
 - Responsive design for all screen sizes
 
-### 9. **Advanced Filtering & Search**
+### 10. **Advanced Filtering & Search**
 Multiple filter options working in combination:
 - **Category Filter**: Multi-select category filtering with checkboxes
   - Linked to transaction filtering
@@ -145,16 +155,16 @@ Multiple filter options working in combination:
 - Real-time statistics that update based on filtered data
 - Clear filters button for quick reset
 
-### 10. **Real-time Statistics**
+### 11. **Real-time Statistics**
 Dynamic statistics display that updates based on filters:
 - **Total Balance**: Income minus spending (color-coded: green for positive, red for negative)
 - **Total Spending**: Sum of all expenses
 - **Total Income**: Sum of all income
 - Statistics reflect currently applied filters
 
-### 11. **Cloud Synchronization**
+### 12. **Cloud Synchronization**
 - All data automatically synced to Firebase Firestore
-- Auto-save triggers when transactions, category rules, or accounts change
+- Auto-save triggers when transactions, category rules, accounts, joint split salaries, or joint target amount change
 - Data persists across devices when logged in with the same account
 - Automatic data loading on login
 - Multi-account data structure with efficient synchronization
@@ -198,6 +208,11 @@ const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 const [selectedTransactions, setSelectedTransactions] = useState([]);
 const [showBatchEdit, setShowBatchEdit] = useState(false);
 const [batchEditForm, setBatchEditForm] = useState({ description: '', category: '' });
+
+// Joint Split State
+const [salaryInputs, setSalaryInputs] = useState({ person1: '', person2: '' });
+const [jointTargetAmount, setJointTargetAmount] = useState('2100');
+const [activeMainTab, setActiveMainTab] = useState('dashboard');
 
 // Category Management State
 const [showCategoryManager, setShowCategoryManager] = useState(false);
