@@ -134,6 +134,7 @@ export default function BudgetTracker() {
   const [salaryInputs, setSalaryInputs] = useState({ person1: '', person2: '' });
   const [jointTargetAmount, setJointTargetAmount] = useState('2100');
   const [activeMainTab, setActiveMainTab] = useState('dashboard');
+  const [isMobileChart, setIsMobileChart] = useState(() => window.innerWidth < 640);
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
@@ -172,6 +173,15 @@ export default function BudgetTracker() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileChart(window.innerWidth < 640);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Listen for auth state changes
@@ -2122,17 +2132,17 @@ export default function BudgetTracker() {
 
         {activeMainTab === 'dashboard' && transactions.length > 0 && (
           <>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
-              <ResponsiveContainer width="100%" height={350}>
+              <ResponsiveContainer width="100%" height={isMobileChart ? 280 : 350}>
                 <PieChart>
                   <Pie
                     data={categoryData}
                     cx="50%"
                     cy="50%"
-                    labelLine={true}
-                    label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
-                    outerRadius={100}
+                    labelLine={!isMobileChart}
+                    label={isMobileChart ? false : ({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                    outerRadius={isMobileChart ? 75 : 100}
                     fill="#8884d8"
                     dataKey="value"
                     animationBegin={0}
@@ -2146,22 +2156,27 @@ export default function BudgetTracker() {
                     formatter={(value) => `€${value.toFixed(2)}`}
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                   />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    wrapperStyle={{ fontSize: isMobileChart ? '11px' : '12px' }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category per Month</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">View spending trends across categories over time</p>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={categoryByMonthData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }} barCategoryGap="5%" barSize={60} barGap={0}>
+              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 400}>
+                <BarChart data={categoryByMonthData} margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: isMobileChart ? 25 : 60 }} barCategoryGap="5%" barSize={isMobileChart ? 28 : 60} barGap={0}>
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
                   <XAxis 
                     dataKey="month" 
-                    angle={-45} 
+                    angle={isMobileChart ? -25 : -45}
                     textAnchor="end" 
-                    height={80}
-                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    height={isMobileChart ? 50 : 80}
+                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => {
                       const [year, month] = value.split('-');
                       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2169,7 +2184,8 @@ export default function BudgetTracker() {
                     }}
                   />
                   <YAxis 
-                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    width={isMobileChart ? 42 : 60}
+                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => `€${value}`}
                   />
                   <Tooltip 
@@ -2189,12 +2205,12 @@ export default function BudgetTracker() {
               </ResponsiveContainer>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold dark:text-white">Monthly Overview</h2>
               </div>
-              <ResponsiveContainer width="100%" height={350}>
-                <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+              <ResponsiveContainer width="100%" height={isMobileChart ? 300 : 350}>
+                <LineChart data={monthlyData} margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: 20 }}>
                   <defs>
                     <linearGradient id="colorSpending" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
@@ -2204,7 +2220,7 @@ export default function BudgetTracker() {
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
                   <XAxis 
                     dataKey="month" 
-                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => {
                       const [year, month] = value.split('-');
                       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2212,7 +2228,8 @@ export default function BudgetTracker() {
                     }}
                   />
                   <YAxis 
-                    tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
+                    width={isMobileChart ? 42 : 60}
+                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
                     tickFormatter={(value) => `€${value}`}
                   />
                   <Tooltip 
@@ -2220,7 +2237,7 @@ export default function BudgetTracker() {
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
                   />
                   <Legend 
-                    wrapperStyle={{ paddingTop: '20px' }}
+                    wrapperStyle={{ paddingTop: '20px', fontSize: isMobileChart ? '11px' : '12px' }}
                     iconType="line"
                   />
                   <Line 
@@ -2238,17 +2255,17 @@ export default function BudgetTracker() {
             </div>
 
             {savingsBreakdownData.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
                 <h2 className="text-xl font-bold mb-4 dark:text-white">Savings Breakdown</h2>
-                <ResponsiveContainer width="100%" height={350}>
+                <ResponsiveContainer width="100%" height={isMobileChart ? 280 : 350}>
                   <PieChart>
                     <Pie
                       data={savingsBreakdownData}
                       cx="50%"
                       cy="50%"
-                      labelLine={true}
-                      label={({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
-                      outerRadius={100}
+                      labelLine={!isMobileChart}
+                      label={isMobileChart ? false : ({name, percent, value}) => `${name}: €${value.toFixed(0)} (${(percent * 100).toFixed(1)}%)`}
+                      outerRadius={isMobileChart ? 75 : 100}
                       fill="#8884d8"
                       dataKey="value"
                       animationBegin={0}
@@ -2261,6 +2278,11 @@ export default function BudgetTracker() {
                     <Tooltip 
                       formatter={(value) => `€${value.toFixed(2)}`}
                       contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={36}
+                      wrapperStyle={{ fontSize: isMobileChart ? '11px' : '12px' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
