@@ -121,6 +121,7 @@ export default function BudgetTracker() {
   const [replacementCategory, setReplacementCategory] = useState('Uncategorized');
   const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
   const settingsMenuRef = useRef(null);
+  const userDataJustLoaded = useRef(false);
   
   // Sorting state
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -181,6 +182,7 @@ export default function BudgetTracker() {
         if (nextUser) {
           setUserDataLoaded(false);
           await loadUserData(nextUser.uid);
+          userDataJustLoaded.current = true;
           setUserDataLoaded(true);
         } else {
           setUserDataLoaded(false);
@@ -255,8 +257,6 @@ export default function BudgetTracker() {
         activeAccountId,
         lastUpdated: new Date().toISOString()
       });
-      
-      setAccountsData(updatedAccountsData);
     } catch (error) {
       console.error('Error saving data:', error);
     }
@@ -264,19 +264,21 @@ export default function BudgetTracker() {
 
   // Auto-save data when transactions, rules, accounts, or savings allocations change
   useEffect(() => {
-    if (
-      user &&
-      userDataLoaded &&
-      (
+    if (user && userDataLoaded) {
+      if (userDataJustLoaded.current) {
+        userDataJustLoaded.current = false;
+        return; // skip redundant write immediately after load
+      }
+      if (
         transactions.length > 0 ||
         accounts.length > 1 ||
         Object.keys(savingsAllocations).length > 0 ||
         salaryInputs.person1 ||
         salaryInputs.person2 ||
         jointTargetAmount
-      )
-    ) {
-      saveUserData();
+      ) {
+        saveUserData();
+      }
     }
   }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount, saveUserData]);
 
