@@ -1,38 +1,26 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Download, Edit2, Trash2, Plus, Save, X, Settings, LogOut, Moon, Sun } from 'lucide-react';
+import { X } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'];
+// Import utility functions
+import { formatDateToDDMMYY } from './utils/dates';
+import { autoCategorizeTrans, learnCategoryFromTransactions } from './utils/categories';
+import { buttonClasses, cardClasses, formClasses, textClasses } from './utils/tailwindClasses';
 
-// Utility function to format date to dd/mm/yy
-const formatDateToDDMMYY = (date) => {
-  if (!date) return '';
-  
-  // If it's already in dd/mm/yy format (8 chars with slashes at positions 2 and 5)
-  if (typeof date === 'string' && date.length === 8 && date[2] === '/' && date[5] === '/') {
-    return date;
-  }
-  
-  // If it's in dd/mm/yyyy format
-  if (typeof date === 'string' && date.length === 10 && date[2] === '/' && date[5] === '/') {
-    const parts = date.split('/');
-    return `${parts[0]}/${parts[1]}/${parts[2].slice(-2)}`;
-  }
-  
-  // If it's a Date object or parseable string
-  try {
-    const dateObj = date instanceof Date ? date : new Date(date);
-    const day = dateObj.getDate().toString().padStart(2, '0');
-    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-    const year = dateObj.getFullYear().toString().slice(-2);
-    return `${day}/${month}/${year}`;
-  } catch {
-    return date.toString();
-  }
-};
+// Import components
+import { AppShellHeader } from './components/AppShellHeader';
+import { CategoryManagerPanel } from './components/CategoryManagerPanel';
+import { CategoryRulesPanel } from './components/CategoryRulesPanel';
+import { DashboardCharts } from './components/DashboardCharts';
+import { JointSplitSection } from './components/JointSplitSection';
+import { LoginScreen } from './components/LoginScreen';
+import { SavingsSection } from './components/SavingsSection';
+import { TransactionTable } from './components/TransactionTable';
+import { ACTIONS, useAppState } from './hooks/useAppState';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'];
 
 // Your Firebase configuration - using environment variables for security
 const firebaseConfig = {
@@ -75,65 +63,98 @@ const firebaseHelpers = {
 };
 
 export default function BudgetTracker() {
-  const [user, setUser] = useState(null);
-  const [authMode, setAuthMode] = useState('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  const [userDataLoaded, setUserDataLoaded] = useState(false);
+  const [appState, dispatch] = useAppState();
+  const {
+    user,
+    authMode,
+    email,
+    password,
+    authError,
+    loading,
+    initializing,
+    userDataLoaded,
+    accounts,
+    activeAccountId,
+    isAddingAccount,
+    newAccountName,
+    accountsData,
+    transactions,
+    categoryRules,
+    editingId,
+    editForm,
+    filter,
+    showRules,
+    newRule,
+    ruleFilter,
+    selectedRules,
+    showBatchRuleEdit,
+    batchRuleCategory,
+    showSettingsMenu,
+    showCategoryManager,
+    editingCategory,
+    newCategoryName,
+    deletingCategory,
+    replacementCategory,
+    isCreatingNewCategory,
+    sortConfig,
+    selectedTransactions,
+    salaryInputs,
+    jointTargetAmount,
+    newSavingsTransaction,
+    savingsAccounts,
+    newSavingsAccount,
+    editingSavingsId,
+    editingSavingsForm,
+    savingsTransactionHistory,
+    darkMode
+  } = appState;
 
-  // Multi-account state
-  const [accounts, setAccounts] = useState([{ id: 'default', name: 'Main Account' }]);
-  const [activeAccountId, setActiveAccountId] = useState('default');
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
-  const [newAccountName, setNewAccountName] = useState('');
-  const [accountsData, setAccountsData] = useState({
-    'default': { transactions: [] }
-  });
+  const makeSetter = (type, getCurrentValue) => (value) => {
+    dispatch({
+      type,
+      payload: typeof value === 'function' ? value(getCurrentValue()) : value
+    });
+  };
 
-  const [transactions, setTransactions] = useState([]);
-  const [categoryRules, setCategoryRules] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [filter, setFilter] = useState({ 
-    categories: [], // Changed to array for multi-select
-    description: '',
-    categorySearch: '',
-    currentMonth: true,
-    dateFilterType: 'all', // 'all', 'year', 'month', 'dateRange'
-    year: '',
-    month: '',
-    startDate: '',
-    endDate: ''
-  });
-  const [showRules, setShowRules] = useState(false);
-  const [newRule, setNewRule] = useState({ pattern: '', category: '' });
-  const [ruleFilter, setRuleFilter] = useState('');
-  const [selectedRules, setSelectedRules] = useState([]);
-  const [showBatchRuleEdit, setShowBatchRuleEdit] = useState(false);
-  const [batchRuleCategory, setBatchRuleCategory] = useState('');
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [editingCategory, setEditingCategory] = useState(null);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [deletingCategory, setDeletingCategory] = useState(null);
-  const [replacementCategory, setReplacementCategory] = useState('Uncategorized');
-  const [isCreatingNewCategory, setIsCreatingNewCategory] = useState(false);
+  const setAuthMode = makeSetter(ACTIONS.SET_AUTH_MODE, () => authMode);
+  const setEmail = makeSetter(ACTIONS.SET_EMAIL, () => email);
+  const setPassword = makeSetter(ACTIONS.SET_PASSWORD, () => password);
+  const setAuthError = makeSetter(ACTIONS.SET_AUTH_ERROR, () => authError);
+  const setLoading = makeSetter(ACTIONS.SET_LOADING, () => loading);
+  const setUserDataLoaded = makeSetter(ACTIONS.SET_USER_DATA_LOADED, () => userDataLoaded);
+  const setAccounts = makeSetter(ACTIONS.SET_ACCOUNTS, () => accounts);
+  const setActiveAccountId = makeSetter(ACTIONS.SET_ACTIVE_ACCOUNT_ID, () => activeAccountId);
+  const setIsAddingAccount = makeSetter(ACTIONS.SET_IS_ADDING_ACCOUNT, () => isAddingAccount);
+  const setNewAccountName = makeSetter(ACTIONS.SET_NEW_ACCOUNT_NAME, () => newAccountName);
+  const setAccountsData = makeSetter(ACTIONS.SET_ACCOUNTS_DATA, () => accountsData);
+  const setTransactions = makeSetter(ACTIONS.SET_TRANSACTIONS, () => transactions);
+  const setCategoryRules = makeSetter(ACTIONS.SET_CATEGORY_RULES, () => categoryRules);
+  const setEditingId = makeSetter(ACTIONS.SET_EDITING_ID, () => editingId);
+  const setEditForm = makeSetter(ACTIONS.SET_EDIT_FORM, () => editForm);
+  const setFilter = makeSetter(ACTIONS.SET_FILTER, () => filter);
+  const setShowRules = makeSetter(ACTIONS.SET_SHOW_RULES, () => showRules);
+  const setNewRule = makeSetter(ACTIONS.SET_NEW_RULE, () => newRule);
+  const setRuleFilter = makeSetter(ACTIONS.SET_RULE_FILTER, () => ruleFilter);
+  const setSelectedRules = makeSetter(ACTIONS.SET_SELECTED_RULES, () => selectedRules);
+  const setShowBatchRuleEdit = makeSetter(ACTIONS.SET_SHOW_BATCH_RULE_EDIT, () => showBatchRuleEdit);
+  const setBatchRuleCategory = makeSetter(ACTIONS.SET_BATCH_RULE_CATEGORY, () => batchRuleCategory);
+  const setShowSettingsMenu = makeSetter(ACTIONS.SET_SHOW_SETTINGS_MENU, () => showSettingsMenu);
+  const setShowCategoryManager = makeSetter(ACTIONS.SET_SHOW_CATEGORY_MANAGER, () => showCategoryManager);
+  const setEditingCategory = makeSetter(ACTIONS.SET_EDITING_CATEGORY, () => editingCategory);
+  const setNewCategoryName = makeSetter(ACTIONS.SET_NEW_CATEGORY_NAME, () => newCategoryName);
+  const setDeletingCategory = makeSetter(ACTIONS.SET_DELETING_CATEGORY, () => deletingCategory);
+  const setReplacementCategory = makeSetter(ACTIONS.SET_REPLACEMENT_CATEGORY, () => replacementCategory);
+  const setIsCreatingNewCategory = makeSetter(ACTIONS.SET_IS_CREATING_NEW_CATEGORY, () => isCreatingNewCategory);
   const settingsMenuRef = useRef(null);
   const userDataJustLoaded = useRef(false);
-  
-  // Sorting state
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-  
-  // Multi-select state
-  const [selectedTransactions, setSelectedTransactions] = useState([]);
+
+  const setSortConfig = makeSetter(ACTIONS.SET_SORT_CONFIG, () => sortConfig);
+  const setSelectedTransactions = makeSetter(ACTIONS.SET_SELECTED_TRANSACTIONS, () => selectedTransactions);
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [batchEditForm, setBatchEditForm] = useState({ description: '', category: '' });
   const [newBatchCategoryName, setNewBatchCategoryName] = useState('');
-  const [salaryInputs, setSalaryInputs] = useState({ person1: '', person2: '' });
-  const [jointTargetAmount, setJointTargetAmount] = useState('2100');
+  const setSalaryInputs = makeSetter(ACTIONS.SET_SALARY_INPUTS, () => salaryInputs);
+  const setJointTargetAmount = makeSetter(ACTIONS.SET_JOINT_TARGET_AMOUNT, () => jointTargetAmount);
   const [activeMainTab, setActiveMainTab] = useState('dashboard');
   const [isMobileChart, setIsMobileChart] = useState(() => window.innerWidth < 640);
   const [categoryChartMode, setCategoryChartMode] = useState('stacked');
@@ -141,18 +162,14 @@ export default function BudgetTracker() {
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
-  
-  // Savings allocation state
-  const [showSavingsModal, setShowSavingsModal] = useState(false);
-  const [selectedSavingsTransaction, setSelectedSavingsTransaction] = useState(null);
-  const [savingsAllocations, setSavingsAllocations] = useState({});
-  const [newAllocation, setNewAllocation] = useState({ purpose: '', amount: 0 });
-  
-  // Dark mode state
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
+
+  const setNewSavingsTransaction = makeSetter(ACTIONS.SET_NEW_SAVINGS_TRANSACTION, () => newSavingsTransaction);
+  const setSavingsAccounts = makeSetter(ACTIONS.SET_SAVINGS_ACCOUNTS, () => savingsAccounts);
+  const setNewSavingsAccount = makeSetter(ACTIONS.SET_NEW_SAVINGS_ACCOUNT, () => newSavingsAccount);
+  const setEditingSavingsId = makeSetter(ACTIONS.SET_EDITING_SAVINGS_ID, () => editingSavingsId);
+  const setEditingSavingsForm = makeSetter(ACTIONS.SET_EDITING_SAVINGS_FORM, () => editingSavingsForm);
+  const setSavingsTransactionHistory = makeSetter(ACTIONS.SET_SAVINGS_TRANSACTION_HISTORY, () => savingsTransactionHistory);
+  const setDarkMode = makeSetter(ACTIONS.SET_DARK_MODE, () => darkMode);
 
   // Toggle dark mode
   useEffect(() => {
@@ -167,7 +184,7 @@ export default function BudgetTracker() {
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
-        setShowSettingsMenu(false);
+        dispatch({ type: ACTIONS.SET_SHOW_SETTINGS_MENU, payload: false });
       }
     };
 
@@ -176,7 +193,7 @@ export default function BudgetTracker() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -191,60 +208,42 @@ export default function BudgetTracker() {
     setShowCategoryDropdown(false);
   }, [activeMainTab]);
 
-  // Listen for auth state changes
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      const syncAuthState = async () => {
-        setUser(nextUser);
-
-        if (nextUser) {
-          setUserDataLoaded(false);
-          await loadUserData(nextUser.uid);
-          userDataJustLoaded.current = true;
-          setUserDataLoaded(true);
-        } else {
-          setUserDataLoaded(false);
-        }
-
-        setInitializing(false);
-      };
-
-      syncAuthState();
-    });
-    return unsubscribe;
-  }, []);
-
-  const loadUserData = async (userId) => {
+  const loadUserData = useCallback(async (userId) => {
     try {
       const data = await firebaseHelpers.loadData(userId);
       if (data) {
         // Load global category rules (shared across all accounts)
         if (data.categoryRules) {
-          setCategoryRules(data.categoryRules);
+          dispatch({ type: ACTIONS.SET_CATEGORY_RULES, payload: data.categoryRules });
         }
         
         // Load accounts structure
         if (data.accounts) {
-          setAccounts(data.accounts);
+          dispatch({ type: ACTIONS.SET_ACCOUNTS, payload: data.accounts });
         }
         if (data.accountsData) {
-          setAccountsData(data.accountsData);
+          dispatch({ type: ACTIONS.SET_ACCOUNTS_DATA, payload: data.accountsData });
           // Set active account data
-          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {} };
-          setTransactions(activeData.transactions || []);
-          setSavingsAllocations(activeData.savingsAllocations || {});
-          setSalaryInputs(activeData.salaryInputs || { person1: '', person2: '' });
-          setJointTargetAmount(activeData.jointTargetAmount || '2100');
-          setActiveAccountId(data.activeAccountId || 'default');
+          const activeData = data.accountsData[data.activeAccountId || 'default'] || { transactions: [], savingsAllocations: {}, savingsAccounts: [] };
+          dispatch({ type: ACTIONS.SET_TRANSACTIONS, payload: activeData.transactions || [] });
+          dispatch({ type: ACTIONS.SET_SAVINGS_TRANSACTION_HISTORY, payload: activeData.savingsTransactionHistory || {} });
+          dispatch({ type: ACTIONS.SET_SAVINGS_ACCOUNTS, payload: activeData.savingsAccounts || [] });
+          dispatch({ type: ACTIONS.SET_SALARY_INPUTS, payload: activeData.salaryInputs || { person1: '', person2: '' } });
+          dispatch({ type: ACTIONS.SET_JOINT_TARGET_AMOUNT, payload: activeData.jointTargetAmount || '2100' });
+          dispatch({ type: ACTIONS.SET_ACTIVE_ACCOUNT_ID, payload: data.activeAccountId || 'default' });
         } else {
           // Legacy support: migrate old data to new structure
-          setTransactions(data.transactions || []);
-          setAccountsData({
+          dispatch({ type: ACTIONS.SET_TRANSACTIONS, payload: data.transactions || [] });
+          dispatch({
+            type: ACTIONS.SET_ACCOUNTS_DATA,
+            payload: {
             'default': {
               transactions: data.transactions || [],
-              savingsAllocations: {},
+              savingsTransactionHistory: {},
+              savingsAccounts: [],
               salaryInputs: { person1: '', person2: '' },
               jointTargetAmount: '2100'
+            }
             }
           });
         }
@@ -252,7 +251,30 @@ export default function BudgetTracker() {
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  };
+  }, [dispatch]);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      const syncAuthState = async () => {
+        dispatch({ type: ACTIONS.SET_USER, payload: nextUser });
+
+        if (nextUser) {
+          dispatch({ type: ACTIONS.SET_USER_DATA_LOADED, payload: false });
+          await loadUserData(nextUser.uid);
+          userDataJustLoaded.current = true;
+          dispatch({ type: ACTIONS.SET_USER_DATA_LOADED, payload: true });
+        } else {
+          dispatch({ type: ACTIONS.SET_USER_DATA_LOADED, payload: false });
+        }
+
+        dispatch({ type: ACTIONS.SET_INITIALIZING, payload: false });
+      };
+
+      syncAuthState();
+    });
+    return unsubscribe;
+  }, [dispatch, loadUserData]);
 
   const saveUserData = useCallback(async () => {
     if (!user) return;
@@ -262,7 +284,8 @@ export default function BudgetTracker() {
         ...accountsData,
         [activeAccountId]: {
           transactions,
-          savingsAllocations,
+          savingsAccounts,
+          savingsTransactionHistory,
           salaryInputs,
           jointTargetAmount
         }
@@ -278,7 +301,7 @@ export default function BudgetTracker() {
     } catch (error) {
       console.error('Error saving data:', error);
     }
-  }, [user, accountsData, activeAccountId, transactions, savingsAllocations, salaryInputs, jointTargetAmount, accounts, categoryRules]);
+  }, [user, accountsData, activeAccountId, transactions, savingsAccounts, savingsTransactionHistory, salaryInputs, jointTargetAmount, accounts, categoryRules]);
 
   // Auto-save data when transactions, rules, accounts, or savings allocations change
   useEffect(() => {
@@ -290,7 +313,7 @@ export default function BudgetTracker() {
       if (
         transactions.length > 0 ||
         accounts.length > 1 ||
-        Object.keys(savingsAllocations).length > 0 ||
+        savingsAccounts.length > 0 ||
         salaryInputs.person1 ||
         salaryInputs.person2 ||
         jointTargetAmount
@@ -298,7 +321,7 @@ export default function BudgetTracker() {
         saveUserData();
       }
     }
-  }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAllocations, salaryInputs, jointTargetAmount, saveUserData]);
+  }, [user, userDataLoaded, transactions, categoryRules, accounts, savingsAccounts, savingsTransactionHistory, salaryInputs, jointTargetAmount, saveUserData]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -326,6 +349,8 @@ export default function BudgetTracker() {
     setAccounts([{ id: 'default', name: 'Main Account' }]);
     setActiveAccountId('default');
     setAccountsData({ 'default': { transactions: [] } });
+    setSavingsAccounts([]);
+    setSavingsTransactionHistory({});
     setSalaryInputs({ person1: '', person2: '' });
     setJointTargetAmount('2100');
     setEmail('');
@@ -338,7 +363,8 @@ export default function BudgetTracker() {
       ...accountsData,
       [activeAccountId]: {
         transactions,
-        savingsAllocations,
+        savingsAccounts,
+        savingsTransactionHistory,
         salaryInputs,
         jointTargetAmount
       }
@@ -346,9 +372,10 @@ export default function BudgetTracker() {
     setAccountsData(updatedAccountsData);
 
     // Load new account data (categoryRules stay the same - they're global)
-    const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAllocations: {} };
+    const newAccountData = updatedAccountsData[accountId] || { transactions: [], savingsAccounts: [], savingsTransactionHistory: {} };
     setTransactions(newAccountData.transactions);
-    setSavingsAllocations(newAccountData.savingsAllocations || {});
+    setSavingsAccounts(newAccountData.savingsAccounts || []);
+    setSavingsTransactionHistory(newAccountData.savingsTransactionHistory || {});
     setSalaryInputs(newAccountData.salaryInputs || { person1: '', person2: '' });
     setJointTargetAmount(newAccountData.jointTargetAmount || '2100');
     setActiveAccountId(accountId);
@@ -368,7 +395,8 @@ export default function BudgetTracker() {
       ...accountsData,
       [newAccountId]: {
         transactions: [],
-        savingsAllocations: {},
+        savingsAccounts: [],
+        savingsTransactionHistory: {},
         salaryInputs: { person1: '', person2: '' },
         jointTargetAmount: '2100'
       }
@@ -407,76 +435,87 @@ export default function BudgetTracker() {
     }
   };
 
-  // Savings allocation handlers
-  const openSavingsModal = (transaction) => {
-    setSelectedSavingsTransaction(transaction);
-    setShowSavingsModal(true);
-  };
-
-  const addSavingsAllocation = () => {
-    if (!newAllocation.purpose.trim() || newAllocation.amount <= 0) return;
+  // Savings transaction handlers
+  const addSavingsTransaction = () => {
+    if (!newSavingsTransaction.selectedAccountId || !newSavingsTransaction.amount || parseFloat(newSavingsTransaction.amount) <= 0) return;
     
-    const transactionId = selectedSavingsTransaction.id;
-    const currentAllocations = savingsAllocations[transactionId] || [];
-    const currentTotal = currentAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-    const newTotal = currentTotal + newAllocation.amount;
+    const accountId = newSavingsTransaction.selectedAccountId;
+    const amount = parseFloat(newSavingsTransaction.amount);
+    const type = newSavingsTransaction.type;
     
-    // Check if new allocation would exceed transaction amount
-    if (newTotal > selectedSavingsTransaction.amount) {
-      alert(`Cannot allocate €${newAllocation.amount.toFixed(2)}. Only €${(selectedSavingsTransaction.amount - currentTotal).toFixed(2)} remaining.`);
-      return;
-    }
+    // Update account balance
+    setSavingsAccounts(savingsAccounts.map(account => {
+      if (account.id === accountId) {
+        const newBalance = type === 'deposit' 
+          ? account.balance + amount 
+          : Math.max(0, account.balance - amount);
+        return { ...account, balance: parseFloat(newBalance.toFixed(2)) };
+      }
+      return account;
+    }));
     
-    setSavingsAllocations({
-      ...savingsAllocations,
-      [transactionId]: [...currentAllocations, { ...newAllocation }]
+    // Add to transaction history
+    const transaction = {
+      id: `tx_${Date.now()}`,
+      date: formatDateToDDMMYY(new Date()),
+      type,
+      amount: parseFloat(amount.toFixed(2)),
+      timestamp: new Date().getTime()
+    };
+    
+    setSavingsTransactionHistory({
+      ...savingsTransactionHistory,
+      [accountId]: [...(savingsTransactionHistory[accountId] || []), transaction]
     });
     
-    setNewAllocation({ purpose: '', amount: 0 });
+    setNewSavingsTransaction({ selectedAccountId: '', type: 'deposit', amount: '' });
   };
 
-  const deleteSavingsAllocation = (transactionId, index) => {
-    const currentAllocations = savingsAllocations[transactionId] || [];
-    const updatedAllocations = currentAllocations.filter((_, i) => i !== index);
-    
-    if (updatedAllocations.length === 0) {
-      const updated = { ...savingsAllocations };
-      delete updated[transactionId];
-      setSavingsAllocations(updated);
-    } else {
-      setSavingsAllocations({
-        ...savingsAllocations,
-        [transactionId]: updatedAllocations
-      });
-    }
-  };
+  const addSavingsAccount = () => {
+    const name = newSavingsAccount.name.trim();
+    const balance = parseFloat(newSavingsAccount.balance);
 
-  const getTotalAllocated = (transactionId) => {
-    const allocations = savingsAllocations[transactionId] || [];
-    return allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-  };
+    if (!name || Number.isNaN(balance) || balance < 0) return;
 
-  const autoCategorizeTrans = (description) => {
-    const desc = description.toLowerCase();
-    for (const [pattern, category] of Object.entries(categoryRules)) {
-      if (desc.includes(pattern.toLowerCase())) {
-        return category;
+    setSavingsAccounts([
+      ...savingsAccounts,
+      {
+        id: `savings_${Date.now()}`,
+        name,
+        balance: parseFloat(balance.toFixed(2))
       }
-    }
-    return 'Uncategorized';
+    ]);
+    setNewSavingsAccount({ name: '', balance: '' });
   };
 
-  const learnCategoryFromTransactions = (transactions) => {
-    const newRules = { ...categoryRules };
-    transactions.forEach(t => {
-      if (t.description && t.category && t.category !== 'Uncategorized') {
-        const desc = t.description.toLowerCase().trim();
-        if (!newRules[desc]) {
-          newRules[desc] = t.category;
-        }
-      }
-    });
-    setCategoryRules(newRules);
+  const startEditSavingsAccount = (account) => {
+    setEditingSavingsId(account.id);
+    setEditingSavingsForm({ name: account.name, balance: account.balance.toString() });
+  };
+
+  const saveSavingsAccount = () => {
+    const name = editingSavingsForm.name.trim();
+    const balance = parseFloat(editingSavingsForm.balance);
+
+    if (!name || Number.isNaN(balance) || balance < 0) return;
+
+    setSavingsAccounts(savingsAccounts.map(account => (
+      account.id === editingSavingsId
+        ? { ...account, name, balance: parseFloat(balance.toFixed(2)) }
+        : account
+    )));
+    setEditingSavingsId(null);
+    setEditingSavingsForm({ name: '', balance: '' });
+  };
+
+  const cancelEditSavingsAccount = () => {
+    setEditingSavingsId(null);
+    setEditingSavingsForm({ name: '', balance: '' });
+  };
+
+  const deleteSavingsAccount = (accountId) => {
+    if (!window.confirm('Delete this savings account from the overview?')) return;
+    setSavingsAccounts(savingsAccounts.filter(account => account.id !== accountId));
   };
 
   const handleFileUpload = async (e) => {
@@ -502,7 +541,7 @@ export default function BudgetTracker() {
         
         const description = row['Description'] || '';
         const existingCategory = row['Categories'] || row['Category'] || '';
-        const autoCategory = autoCategorizeTrans(description);
+        const autoCategory = autoCategorizeTrans(description, categoryRules);
         
         const transaction = {
           id: Date.now() + idx,
@@ -986,32 +1025,18 @@ export default function BudgetTracker() {
   };
 
   // Savings breakdown data
-  const savingsBreakdownData = useMemo(() => {
-    const breakdown = {};
-    
-    // Get all savings transactions (categories containing "savings")
-    const savingsTransactions = filteredTransactions.filter(t => 
-      t.category.toLowerCase().includes('savings') && t.amount > 0
-    );
-    
-    savingsTransactions.forEach(t => {
-      const allocations = savingsAllocations[t.id] || [];
-      allocations.forEach(alloc => {
-        breakdown[alloc.purpose] = (breakdown[alloc.purpose] || 0) + alloc.amount;
-      });
-      
-      // Add unallocated amount if any
-      const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-      const unallocated = t.amount - totalAllocated;
-      if (unallocated > 0) {
-        breakdown['Unallocated'] = (breakdown['Unallocated'] || 0) + unallocated;
-      }
-    });
-    
-    return Object.entries(breakdown)
-      .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions, savingsAllocations]);
+
+
+  const savingsAccountsTotal = useMemo(() => (
+    savingsAccounts.reduce((sum, account) => sum + account.balance, 0)
+  ), [savingsAccounts]);
+
+  const savingsAccountsChartData = useMemo(() => (
+    savingsAccounts
+      .filter(account => account.balance > 0)
+      .map(account => ({ name: account.name, value: account.balance }))
+      .sort((a, b) => b.value - a.value)
+  ), [savingsAccounts]);
 
   const categoryData = useMemo(() => {
     const spending = {};
@@ -1126,760 +1151,116 @@ export default function BudgetTracker() {
 
   // Login Screen
   if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8 w-full max-w-md relative">
-          {/* Dark Mode Toggle */}
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="absolute top-4 right-4 p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-            title="Toggle dark mode"
-          >
-            {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
-          </button>
-          
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Budget Tracker</h1>
-            <p className="text-gray-600 dark:text-gray-300">Sign in to access your budget</p>
-          </div>
-          
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setAuthMode('login')}
-              className={`flex-1 py-2 rounded-lg font-semibold transition ${
-                authMode === 'login' 
-                  ? 'bg-blue-500 dark:bg-blue-600 text-white' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => setAuthMode('signup')}
-              className={`flex-1 py-2 rounded-lg font-semibold transition ${
-                authMode === 'signup' 
-                  ? 'bg-blue-500 dark:bg-blue-600 text-white' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
-
-          <form onSubmit={handleAuth} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-            </div>
-            
-            {authError && (
-              <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm border border-red-200 dark:border-red-800">
-                {authError}
-              </div>
-            )}
-            
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-500 dark:bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-700 transition disabled:bg-gray-400 dark:disabled:bg-gray-600"
-            >
-              {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    return <LoginScreen
+      authMode={authMode}
+      setAuthMode={setAuthMode}
+      email={email}
+      setEmail={setEmail}
+      password={password}
+      setPassword={setPassword}
+      authError={authError}
+      loading={loading}
+      handleAuth={handleAuth}
+      darkMode={darkMode}
+      setDarkMode={setDarkMode}
+    />;
   }
 
   // Main App
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-2 sm:p-6 transition-colors">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6 mb-6">
-          <div className="flex flex-wrap justify-between items-center gap-2 mb-6">
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-3xl font-bold text-gray-800 dark:text-white">Budget Tracker</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[200px] sm:max-w-none">Logged in as: {user.email}</p>
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                title="Toggle dark mode"
-              >
-                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-                <span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span>
-              </button>
-              <div ref={settingsMenuRef} className="relative">
-                <button
-                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                  title="Open settings menu"
-                >
-                  <Settings size={20} />
-                  <span className="hidden sm:inline">Settings</span>
-                </button>
+        <AppShellHeader
+          accounts={accounts}
+          accountsData={accountsData}
+          activeAccountId={activeAccountId}
+          activeMainTab={activeMainTab}
+          addAccount={addAccount}
+          categories={categories}
+          categoryRules={categoryRules}
+          darkMode={darkMode}
+          deleteAccount={deleteAccount}
+          exportCSV={exportCSV}
+          handleFileUpload={handleFileUpload}
+          handleLogout={handleLogout}
+          importErrors={importErrors}
+          isAddingAccount={isAddingAccount}
+          newAccountName={newAccountName}
+          reapplyRules={reapplyRules}
+          setActiveMainTab={setActiveMainTab}
+          setDarkMode={setDarkMode}
+          setImportErrors={setImportErrors}
+          setIsAddingAccount={setIsAddingAccount}
+          setNewAccountName={setNewAccountName}
+          setShowCategoryManager={setShowCategoryManager}
+          setShowRules={setShowRules}
+          setShowSettingsMenu={setShowSettingsMenu}
+          settingsMenuRef={settingsMenuRef}
+          showCategoryManager={showCategoryManager}
+          showRules={showRules}
+          showSettingsMenu={showSettingsMenu}
+          switchAccount={switchAccount}
+          transactions={transactions}
+          userEmail={user.email}
+        />
 
-                {showSettingsMenu && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
-                    <div className="p-2 space-y-1">
-                      <label className="flex items-center gap-3 w-full px-3 py-2 rounded-lg cursor-pointer text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
-                        <Upload size={18} />
-                        <span>Import CSV</span>
-                        <input
-                          type="file"
-                          accept=".csv"
-                          onChange={(e) => {
-                            handleFileUpload(e);
-                            setShowSettingsMenu(false);
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-
-                      <button
-                        onClick={() => {
-                          exportCSV();
-                          setShowSettingsMenu(false);
-                        }}
-                        disabled={transactions.length === 0}
-                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Download size={18} />
-                        <span>Export CSV</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setShowRules(!showRules);
-                          setShowSettingsMenu(false);
-                        }}
-                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                      >
-                        <Settings size={18} />
-                        <span>Category Rules ({Object.keys(categoryRules).length})</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setShowCategoryManager(!showCategoryManager);
-                          setShowSettingsMenu(false);
-                        }}
-                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                      >
-                        <Edit2 size={18} />
-                        <span>Manage Categories ({categories.length})</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          reapplyRules();
-                          setShowSettingsMenu(false);
-                        }}
-                        disabled={transactions.length === 0}
-                        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Save size={18} />
-                        <span>Auto-Categorize</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition"
-              >
-                <LogOut size={20} />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
-            </div>
-          </div>
-          
-          {/* Account Tabs */}
-          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-3">
-              {accounts.map(account => (
-                <div key={account.id} className="group relative">
-                  <button
-                    onClick={() => switchAccount(account.id)}
-                    className={`px-4 py-2 rounded-t-lg font-medium transition whitespace-nowrap ${
-                      activeAccountId === account.id
-                        ? 'bg-blue-500 dark:bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {account.name}
-                    {accountsData[account.id] && (
-                      <span className="ml-2 text-xs opacity-75">
-                        ({accountsData[account.id].transactions?.length || 0})
-                      </span>
-                    )}
-                  </button>
-                  {account.id !== 'default' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteAccount(account.id);
-                      }}
-                      className="absolute -top-2 -right-2 bg-red-500 dark:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
-                      title="Delete account"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              
-              {!isAddingAccount ? (
-                <button
-                  onClick={() => setIsAddingAccount(true)}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1"
-                >
-                  <Plus size={16} />
-                  New Account
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newAccountName}
-                    onChange={(e) => setNewAccountName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addAccount()}
-                    placeholder="Account name"
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    autoFocus
-                  />
-                  <button
-                    onClick={addAccount}
-                    className="p-2 bg-green-500 dark:bg-green-600 text-white rounded hover:bg-green-600 dark:hover:bg-green-700"
-                  >
-                    <Save size={16} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsAddingAccount(false);
-                      setNewAccountName('');
-                    }}
-                    className="p-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="mb-6 flex gap-2">
-            <button
-              onClick={() => setActiveMainTab('dashboard')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                activeMainTab === 'dashboard'
-                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveMainTab('joint')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                activeMainTab === 'joint'
-                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Joint Split
-            </button>
-            <button
-              onClick={() => setActiveMainTab('graphs')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                activeMainTab === 'graphs'
-                  ? 'bg-blue-500 dark:bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Transactions
-            </button>
-          </div>
-
-          {importErrors && (
-            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
-                    Import Warning: {importErrors.count} line{importErrors.count > 1 ? 's' : ''} not imported
-                  </h4>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
-                    The following lines were skipped (REVERTED, PENDING, or invalid data):
-                  </p>
-                  <p className="text-sm text-yellow-600 dark:text-yellow-400 font-mono">
-                    Lines: {importErrors.lines.slice(0, 20).join(', ')}
-                    {importErrors.lines.length > 20 && ` ... and ${importErrors.lines.length - 20} more`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setImportErrors(null)}
-                  className="text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-800 p-1 rounded"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          )}
+        <div className={cardClasses.default}>
 
           {showRules && (
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold dark:text-white">Category Auto-Assignment Rules</h3>
-                <button
-                  onClick={() => setShowRules(false)}
-                  className="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1 rounded"
-                  title="Close"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Rules are automatically learned when you set categories.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <input
-                  type="text"
-                  placeholder="Description pattern"
-                  value={newRule.pattern}
-                  onChange={(e) => setNewRule({...newRule, pattern: e.target.value})}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-                <input
-                  type="text"
-                  placeholder="Category"
-                  value={newRule.category}
-                  onChange={(e) => setNewRule({...newRule, category: e.target.value})}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-                <button
-                  onClick={handleAddRule}
-                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 w-full sm:w-auto"
-                >
-                  Add Rule
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                  Filter by Category:
-                </label>
-                <select
-                  value={ruleFilter}
-                  onChange={(e) => setRuleFilter(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-
-              {(() => {
-                const filteredRules = ruleFilter 
-                  ? Object.fromEntries(Object.entries(categoryRules).filter(([_, cat]) => cat === ruleFilter))
-                  : categoryRules;
-                
-                return (
-                  <>
-                    {selectedRules.length > 0 && (
-                      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                        <span className="text-sm text-blue-700 dark:text-blue-300">
-                          {selectedRules.length} rule{selectedRules.length > 1 ? 's' : ''} selected
-                        </span>
-                        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
-                          <button
-                            onClick={handleBatchRuleEdit}
-                            className="flex items-center justify-center gap-1 px-3 py-1 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 text-sm w-full sm:w-auto"
-                          >
-                            <Edit2 size={14} />
-                            Change Category
-                          </button>
-                          <button
-                            onClick={handleBatchRuleDelete}
-                            className="flex items-center justify-center gap-1 px-3 py-1 bg-red-500 dark:bg-red-600 text-white rounded hover:bg-red-600 dark:hover:bg-red-700 text-sm w-full sm:w-auto"
-                          >
-                            <Trash2 size={14} />
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="md:hidden space-y-2 max-h-80 overflow-y-auto">
-                      {Object.entries(filteredRules).map(([pattern, category]) => (
-                        <div key={pattern} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <label className="flex items-start gap-2 min-w-0 flex-1 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={selectedRules.includes(pattern)}
-                                onChange={() => toggleSelectRule(pattern)}
-                                className="cursor-pointer mt-0.5"
-                              />
-                              <div className="min-w-0">
-                                <div className="font-mono text-xs break-all dark:text-gray-300">{pattern}</div>
-                                <span className="inline-block mt-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
-                                  {category}
-                                </span>
-                              </div>
-                            </label>
-                            <button
-                              onClick={() => handleDeleteRule(pattern)}
-                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded flex-shrink-0"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="hidden md:block max-h-60 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
-                          <tr>
-                            <th className="text-center py-2 px-2 dark:text-white w-10">
-                              <input
-                                type="checkbox"
-                                checked={selectedRules.length === Object.keys(filteredRules).length && Object.keys(filteredRules).length > 0}
-                                onChange={() => toggleSelectAllRules(filteredRules)}
-                                className="cursor-pointer"
-                              />
-                            </th>
-                            <th className="text-left p-2 dark:text-white">Pattern</th>
-                            <th className="text-left p-2 dark:text-white">Category</th>
-                            <th className="text-center p-2 dark:text-white">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(filteredRules).map(([pattern, category]) => (
-                            <tr key={pattern} className="border-t border-gray-200 dark:border-gray-700">
-                              <td className="text-center py-2 px-2">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRules.includes(pattern)}
-                                  onChange={() => toggleSelectRule(pattern)}
-                                  className="cursor-pointer"
-                                />
-                              </td>
-                              <td className="p-2 font-mono text-xs dark:text-gray-300">{pattern}</td>
-                              <td className="p-2">
-                                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
-                                  {category}
-                                </span>
-                              </td>
-                              <td className="p-2 text-center">
-                                <button
-                                  onClick={() => handleDeleteRule(pattern)}
-                                  className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          )}
-
-          {showBatchRuleEdit && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-                <h3 className="text-xl font-bold mb-4 dark:text-white">Change Category for {selectedRules.length} Rule(s)</h3>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    New Category:
-                  </label>
-                  <input
-                    type="text"
-                    value={batchRuleCategory}
-                    onChange={(e) => setBatchRuleCategory(e.target.value)}
-                    placeholder="Enter category name"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    list="batch-rule-categories-list"
-                  />
-                  <datalist id="batch-rule-categories-list">
-                    {categories.map(cat => (
-                      <option key={cat} value={cat} />
-                    ))}
-                  </datalist>
-                </div>
-                
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={() => {
-                      setShowBatchRuleEdit(false);
-                      setBatchRuleCategory('');
-                    }}
-                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={applyBatchRuleEdit}
-                    disabled={!batchRuleCategory.trim()}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    Apply to {selectedRules.length} Rule(s)
-                  </button>
-                </div>
-              </div>
-            </div>
+            <CategoryRulesPanel
+              applyBatchRuleEdit={applyBatchRuleEdit}
+              batchRuleCategory={batchRuleCategory}
+              categories={categories}
+              categoryRules={categoryRules}
+              handleAddRule={handleAddRule}
+              handleBatchRuleDelete={handleBatchRuleDelete}
+              handleBatchRuleEdit={handleBatchRuleEdit}
+              handleDeleteRule={handleDeleteRule}
+              newRule={newRule}
+              ruleFilter={ruleFilter}
+              selectedRules={selectedRules}
+              setBatchRuleCategory={setBatchRuleCategory}
+              setNewRule={setNewRule}
+              setRuleFilter={setRuleFilter}
+              setShowBatchRuleEdit={setShowBatchRuleEdit}
+              setShowRules={setShowRules}
+              showBatchRuleEdit={showBatchRuleEdit}
+              toggleSelectAllRules={toggleSelectAllRules}
+              toggleSelectRule={toggleSelectRule}
+            />
           )}
 
           {showCategoryManager && (
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold dark:text-white">Category Manager</h3>
-                <button
-                  onClick={() => setShowCategoryManager(false)}
-                  className="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1 rounded"
-                  title="Close"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Rename categories to update all transactions using that category.
-              </p>
-              
-              <div className="md:hidden space-y-2 max-h-80 overflow-y-auto">
-                {categories.map(category => {
-                  const count = transactions.filter(t => t.category === category).length;
-                  return (
-                    <div key={category} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          {editingCategory === category ? (
-                            <input
-                              type="text"
-                              value={newCategoryName}
-                              onChange={(e) => setNewCategoryName(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleRenameCategory(category, newCategoryName);
-                                }
-                              }}
-                              onBlur={() => handleRenameCategory(category, newCategoryName)}
-                              className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                              autoFocus
-                            />
-                          ) : (
-                            <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs break-words max-w-full">
-                              {category}
-                            </span>
-                          )}
-                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                            {count} transaction{count !== 1 ? 's' : ''}
-                          </div>
-                        </div>
-                        <div className="flex gap-2 flex-shrink-0">
-                          <button
-                            onClick={() => {
-                              setEditingCategory(category);
-                              setNewCategoryName(category);
-                            }}
-                            className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
-                            title="Rename category"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCategory(category)}
-                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
-                            title="Delete category"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="hidden md:block max-h-60 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
-                    <tr>
-                      <th className="text-left p-2 dark:text-white">Category Name</th>
-                      <th className="text-center p-2 dark:text-white">Count</th>
-                      <th className="text-center p-2 dark:text-white">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categories.map(category => {
-                      const count = transactions.filter(t => t.category === category).length;
-                      return (
-                        <tr key={category} className="border-t border-gray-200 dark:border-gray-700">
-                          <td className="p-2">
-                            {editingCategory === category ? (
-                              <input
-                                type="text"
-                                value={newCategoryName}
-                                onChange={(e) => setNewCategoryName(e.target.value)}
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleRenameCategory(category, newCategoryName);
-                                  }
-                                }}
-                                onBlur={() => handleRenameCategory(category, newCategoryName)}
-                                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                autoFocus
-                              />
-                            ) : (
-                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs">
-                                {category}
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-center text-gray-600 dark:text-gray-400">{count}</td>
-                          <td className="p-2 text-center">
-                            <div className="flex gap-2 justify-center">
-                              <button
-                                onClick={() => {
-                                  setEditingCategory(category);
-                                  setNewCategoryName(category);
-                                }}
-                                className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 p-1 rounded"
-                                title="Rename category"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCategory(category)}
-                                className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-1 rounded"
-                                title="Delete category"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {deletingCategory && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-                <h3 className="text-xl font-bold mb-4 dark:text-white">Delete Category: {deletingCategory}</h3>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                  There are {transactions.filter(t => t.category === deletingCategory).length} transaction(s) with this category.
-                </p>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                  What would you like to do with these transactions?
-                </p>
-                
-                <div className="mb-4">
-                  <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={!isCreatingNewCategory}
-                      onChange={() => {
-                        setIsCreatingNewCategory(false);
-                        setReplacementCategory('Uncategorized');
-                      }}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-gray-700 dark:text-gray-300">Set to Uncategorized</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={isCreatingNewCategory}
-                      onChange={() => {
-                        setIsCreatingNewCategory(true);
-                        setReplacementCategory('');
-                      }}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-gray-700 dark:text-gray-300">Enter a new category</span>
-                  </label>
-                  
-                  {isCreatingNewCategory && (
-                    <div className="ml-6 mt-2">
-                      <input
-                        type="text"
-                        value={replacementCategory}
-                        onChange={(e) => setReplacementCategory(e.target.value)}
-                        placeholder="New category name"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        autoFocus
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={cancelDeleteCategory}
-                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmDeleteCategory}
-                    disabled={isCreatingNewCategory && !replacementCategory.trim()}
-                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    Delete Category
-                  </button>
-                </div>
-              </div>
-            </div>
+            <CategoryManagerPanel
+              cancelDeleteCategory={cancelDeleteCategory}
+              categories={categories}
+              confirmDeleteCategory={confirmDeleteCategory}
+              deletingCategory={deletingCategory}
+              editingCategory={editingCategory}
+              handleDeleteCategory={handleDeleteCategory}
+              handleRenameCategory={handleRenameCategory}
+              isCreatingNewCategory={isCreatingNewCategory}
+              newCategoryName={newCategoryName}
+              replacementCategory={replacementCategory}
+              setEditingCategory={setEditingCategory}
+              setIsCreatingNewCategory={setIsCreatingNewCategory}
+              setNewCategoryName={setNewCategoryName}
+              setReplacementCategory={setReplacementCategory}
+              setShowCategoryManager={setShowCategoryManager}
+              transactions={transactions}
+            />
           )}
 
           {transactions.length > 0 && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
+                <div className={cardClasses.info}>
                   <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Balance</div>
                   <div className={`text-2xl font-bold ${stats.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     €{stats.total.toFixed(2)}
                   </div>
                 </div>
-                <div className="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg">
+                <div className={cardClasses.danger}>
                   <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Spending</div>
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                     €{stats.spending.toFixed(2)}
@@ -1957,7 +1338,7 @@ export default function BudgetTracker() {
                     <select
                       value={filter.year}
                       onChange={(e) => setFilter({...filter, year: e.target.value})}
-                      className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      className={formClasses.selectSm}
                     >
                       <option value="">Select Year</option>
                       {years.map(year => (
@@ -1974,7 +1355,7 @@ export default function BudgetTracker() {
                       <select
                         value={filter.month.startsWith('__') ? '' : filter.month}
                         onChange={(e) => setFilter({...filter, currentMonth: false, month: e.target.value})}
-                        className="flex-1 min-w-[170px] sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                        className={formClasses.selectSm}
                       >
                         <option value="">Select Month</option>
                         {months.map(month => (
@@ -2016,7 +1397,7 @@ export default function BudgetTracker() {
                         type="date"
                         value={filter.startDate}
                         onChange={(e) => setFilter({...filter, startDate: e.target.value})}
-                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                        className={`${formClasses.input} text-sm`}
                       />
                     </div>
                     <div className="flex gap-2 items-center">
@@ -2025,7 +1406,7 @@ export default function BudgetTracker() {
                         type="date"
                         value={filter.endDate}
                         onChange={(e) => setFilter({...filter, endDate: e.target.value})}
-                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                        className={`${formClasses.input} text-sm`}
                       />
                     </div>
                   </div>
@@ -2037,808 +1418,93 @@ export default function BudgetTracker() {
         </div>
 
         {activeMainTab === 'joint' && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Joint Account Split</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Automatically includes current-month transactions where category contains "bill".
-                </p>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-600 dark:text-gray-400">Target Joint Deposit</div>
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">EUR {totalToSplit.toFixed(2)}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Bills reference: EUR {currentMonthBillsTotal.toFixed(2)}</div>
-              </div>
-            </div>
+          <JointSplitSection
+            currentMonthBillTransactions={currentMonthBillTransactions}
+            currentMonthBillsTotal={currentMonthBillsTotal}
+            currentMonthNonBillCount={currentMonthNonBillCount}
+            formatDateToDDMMYY={formatDateToDDMMYY}
+            jointTargetAmount={jointTargetAmount}
+            person1Contribution={person1Contribution}
+            person2Contribution={person2Contribution}
+            salaryInputs={salaryInputs}
+            setJointTargetAmount={setJointTargetAmount}
+            setSalaryInputs={setSalaryInputs}
+            totalSalaries={totalSalaries}
+            totalToSplit={totalToSplit}
+          />
+        )}
 
-            <div className="mb-4 max-w-sm">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total to Put in Joint Account</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={jointTargetAmount}
-                onChange={(e) => setJointTargetAmount(e.target.value)}
-                placeholder="2100"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 1</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={salaryInputs.person1}
-                  onChange={(e) => setSalaryInputs({ ...salaryInputs, person1: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 2</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={salaryInputs.person2}
-                  onChange={(e) => setSalaryInputs({ ...salaryInputs, person2: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-            </div>
-
-            {totalSalaries > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-                <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Person 1 Contribution</div>
-                  <div className="text-xl font-bold text-blue-700 dark:text-blue-300">EUR {person1Contribution.toFixed(2)}</div>
-                </div>
-                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
-                  <div className="text-sm text-gray-600 dark:text-gray-300">Person 2 Contribution</div>
-                  <div className="text-xl font-bold text-green-700 dark:text-green-300">EUR {person2Contribution.toFixed(2)}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-6">
-                Enter both salaries (or at least one) to calculate each person&apos;s pro-rate contribution.
-              </div>
-            )}
-
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">
-                Included Transactions ({currentMonthBillTransactions.length})
-              </h3>
-              {currentMonthBillTransactions.length === 0 ? (
-                <div className="text-sm text-gray-600 dark:text-gray-400 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  No transactions found for this month with a category containing "bill".
-                </div>
-              ) : (
-                <>
-                <div className="md:hidden space-y-2">
-                  {currentMonthBillTransactions.map(transaction => (
-                    <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateToDDMMYY(transaction.date)}</span>
-                        <span className="font-semibold text-sm text-red-600 dark:text-red-400">
-                          EUR {Math.abs(transaction.amount || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm dark:text-gray-300 truncate">{transaction.description}</span>
-                        <span className="px-2 py-0.5 rounded-full text-xs flex-shrink-0 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                          {transaction.category}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="text-left py-2 px-2 dark:text-gray-300">Date</th>
-                        <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
-                        <th className="text-left py-2 px-2 dark:text-gray-300">Category</th>
-                        <th className="text-right py-2 px-2 dark:text-gray-300">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentMonthBillTransactions.map(transaction => (
-                        <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700">
-                          <td className="py-2 px-2 dark:text-gray-300">{formatDateToDDMMYY(transaction.date)}</td>
-                          <td className="py-2 px-2 dark:text-gray-300">{transaction.description}</td>
-                          <td className="py-2 px-2 dark:text-gray-300">{transaction.category}</td>
-                          <td className="py-2 px-2 text-right font-semibold text-red-600 dark:text-red-400">
-                            EUR {Math.abs(transaction.amount || 0).toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                </>
-              )}
-            </div>
-
-            {currentMonthNonBillCount > 0 && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-                {currentMonthNonBillCount} other current-month transaction(s) are not included because their category does not contain "bill".
-              </p>
-            )}
-          </div>
+        {activeMainTab === 'savings' && (
+          <SavingsSection
+            addSavingsAccount={addSavingsAccount}
+            addSavingsTransaction={addSavingsTransaction}
+            cancelEditSavingsAccount={cancelEditSavingsAccount}
+            colors={COLORS}
+            deleteSavingsAccount={deleteSavingsAccount}
+            editingSavingsForm={editingSavingsForm}
+            editingSavingsId={editingSavingsId}
+            isMobileChart={isMobileChart}
+            newSavingsAccount={newSavingsAccount}
+            newSavingsTransaction={newSavingsTransaction}
+            saveSavingsAccount={saveSavingsAccount}
+            savingsAccounts={savingsAccounts}
+            savingsAccountsChartData={savingsAccountsChartData}
+            savingsAccountsTotal={savingsAccountsTotal}
+            savingsTransactionHistory={savingsTransactionHistory}
+            setEditingSavingsForm={setEditingSavingsForm}
+            setNewSavingsAccount={setNewSavingsAccount}
+            setNewSavingsTransaction={setNewSavingsTransaction}
+            startEditSavingsAccount={startEditSavingsAccount}
+          />
         )}
 
         {activeMainTab === 'dashboard' && transactions.length > 0 && (
-          <>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-              <div className="relative w-full mb-4">
-                <button
-                  onClick={() => setShowCategoryDropdown(prev => !prev)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
-                >
-                  <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
-                  <span>▼</span>
-                </button>
-                <div className={`${showCategoryDropdown ? 'block' : 'hidden'} absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto`}>
-                  <div className="p-2">
-                    <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={filter.categories.length === 0}
-                        onChange={() => setFilter({...filter, categories: []})}
-                        className="cursor-pointer"
-                      />
-                      <span className="text-sm dark:text-white">All Categories</span>
-                    </label>
-                    {categories.map(cat => (
-                      <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={filter.categories.includes(cat)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFilter({...filter, categories: [...filter.categories, cat]});
-                            } else {
-                              setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                            }
-                          }}
-                          className="cursor-pointer"
-                        />
-                        <span className="text-sm dark:text-white">{cat}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <h2 className="text-xl font-bold mb-4 dark:text-white">Spending by Category</h2>
-              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={!isMobileChart}
-                    label={isMobileChart ? false : ({ name }) => name}
-                    outerRadius={isMobileChart ? 90 : 120}
-                    fill="#8884d8"
-                    dataKey="value"
-                    animationBegin={0}
-                    animationDuration={800}
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name, item) => {
-                      const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
-                      return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
-                    }}
-                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                  />
-                  {isMobileChart && (
-                    <Legend
-                      verticalAlign="bottom"
-                      height={36}
-                      wrapperStyle={{ fontSize: '11px' }}
-                    />
-                  )}
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                <h2 className="text-xl font-bold dark:text-white">Spending by Category per Month</h2>
-                <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden self-start sm:self-auto">
-                  <button
-                    onClick={() => setCategoryChartMode('stacked')}
-                    className={`px-3 py-1.5 text-sm font-medium transition ${
-                      categoryChartMode === 'stacked'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    Stacked (Recommended)
-                  </button>
-                  <button
-                    onClick={() => setCategoryChartMode('grouped')}
-                    className={`px-3 py-1.5 text-sm font-medium transition border-l border-gray-300 dark:border-gray-600 ${
-                      categoryChartMode === 'grouped'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    Grouped
-                  </button>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">View spending trends across categories over time</p>
-              <div className="overflow-x-auto">
-                <div
-                  style={{
-                    minWidth: `${Math.max(640, categoryByMonthData.length * (isMobileChart ? 140 : 120))}px`,
-                    height: isMobileChart ? 360 : 440,
-                  }}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={categoryByMonthData}
-                      margin={{ top: 20, right: 20, left: 10, bottom: 65 }}
-                      barCategoryGap={categoryChartMode === 'stacked' ? '8%' : (categoryByMonthData.length === 1 ? '0%' : '3%')}
-                      barSize={categoryChartMode === 'stacked' ? undefined : (categoryByMonthData.length === 1 ? (isMobileChart ? 38 : 78) : (isMobileChart ? 26 : 46))}
-                      barGap={0}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
-                      <XAxis
-                        dataKey="month"
-                        angle={-35}
-                        textAnchor="end"
-                        height={70}
-                        tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                        tickFormatter={(value) => {
-                          const [year, month] = value.split('-');
-                          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                          return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
-                        }}
-                      />
-                      <YAxis
-                        width={64}
-                        tick={{ fontSize: 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                        tickFormatter={(value) => `€${value}`}
-                      />
-                      <Tooltip
-                        formatter={(value, name) => [`€${value.toFixed(2)}`, name]}
-                        contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: '12px' }} />
-                      {categories.map((category, index) => (
-                        <Bar
-                          key={category}
-                          dataKey={category}
-                          fill={COLORS[index % COLORS.length]}
-                          stackId={categoryChartMode === 'stacked' ? 'total' : undefined}
-                          animationBegin={0}
-                          animationDuration={800}
-                        />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold dark:text-white">Monthly Overview</h2>
-              </div>
-              <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
-                <LineChart data={monthlyData} margin={{ top: 20, right: isMobileChart ? 10 : 30, left: isMobileChart ? 0 : 20, bottom: 20 }}>
-                  <defs>
-                    <linearGradient id="colorSpending" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e0e0e0"} />
-                  <XAxis 
-                    dataKey="month" 
-                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                    tickFormatter={(value) => {
-                      const [year, month] = value.split('-');
-                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                      return `${monthNames[parseInt(month) - 1]}-${year.slice(-2)}`;
-                    }}
-                  />
-                  <YAxis 
-                    width={isMobileChart ? 42 : 60}
-                    tick={{ fontSize: isMobileChart ? 10 : 12, fill: darkMode ? "#e5e7eb" : "#374151" }}
-                    tickFormatter={(value) => `€${value}`}
-                  />
-                  <Tooltip 
-                    formatter={(value, name) => [`€${value.toFixed(2)}`, name.charAt(0).toUpperCase() + name.slice(1)]}
-                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                  />
-                  <Legend 
-                    wrapperStyle={{ paddingTop: '20px', fontSize: isMobileChart ? '11px' : '12px' }}
-                    iconType="line"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="spending" 
-                    stroke="#ef4444" 
-                    strokeWidth={3}
-                    dot={{ fill: '#ef4444', r: 4 }}
-                    activeDot={{ r: 6 }}
-                    animationBegin={0}
-                    animationDuration={800}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            {savingsBreakdownData.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-6">
-                <h2 className="text-xl font-bold mb-4 dark:text-white">Savings Breakdown</h2>
-                <ResponsiveContainer width="100%" height={isMobileChart ? 320 : 380}>
-                  <PieChart>
-                    <Pie
-                      data={savingsBreakdownData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={!isMobileChart}
-                      label={isMobileChart ? false : ({ name }) => name}
-                      outerRadius={isMobileChart ? 90 : 120}
-                      fill="#8884d8"
-                      dataKey="value"
-                      animationBegin={0}
-                      animationDuration={800}
-                    >
-                      {savingsBreakdownData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, name, item) => {
-                        const percent = (item && typeof item.percent === 'number') ? item.percent * 100 : 0;
-                        return [`€${value.toFixed(2)} (${percent.toFixed(1)}%)`, name];
-                      }}
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', borderRadius: '8px', padding: '10px' }}
-                    />
-                    {isMobileChart && (
-                      <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        wrapperStyle={{ fontSize: '11px' }}
-                      />
-                    )}
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </>
+          <DashboardCharts
+            categories={categories}
+            categoryByMonthData={categoryByMonthData}
+            categoryChartMode={categoryChartMode}
+            categoryData={categoryData}
+            colors={COLORS}
+            darkMode={darkMode}
+            filter={filter}
+            isMobileChart={isMobileChart}
+            monthlyData={monthlyData}
+            setCategoryChartMode={setCategoryChartMode}
+            setFilter={setFilter}
+            setShowCategoryDropdown={setShowCategoryDropdown}
+            showCategoryDropdown={showCategoryDropdown}
+          />
         )}
 
         {activeMainTab === 'graphs' && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
-            <button
-              onClick={handleAdd}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition"
-            >
-              <Plus size={20} />
-              <span className="hidden sm:inline">Add Transaction</span>
-            </button>
-          </div>
-          
-          {/* Transaction Search Filters */}
-          <div className="mb-4 space-y-3">
-            <div className="relative w-full">
-              <button
-                onClick={() => setShowCategoryDropdown(prev => !prev)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
-              >
-                <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
-                <span>▼</span>
-              </button>
-              <div className={`${showCategoryDropdown ? 'block' : 'hidden'} absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto`}>
-                <div className="p-2">
-                  <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={filter.categories.length === 0}
-                      onChange={() => setFilter({...filter, categories: []})}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-sm dark:text-white">All Categories</span>
-                  </label>
-                  {categories.map(cat => (
-                    <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={filter.categories.includes(cat)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFilter({...filter, categories: [...filter.categories, cat]});
-                          } else {
-                            setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                          }
-                        }}
-                        className="cursor-pointer"
-                      />
-                      <span className="text-sm dark:text-white">{cat}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 flex-wrap items-center">
-              <input
-                type="text"
-                placeholder="Search Description..."
-                value={filter.description}
-                onChange={(e) => setFilter({...filter, description: e.target.value})}
-                className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-              />
-            </div>
-          </div>
-          
-          {/* Batch Edit Controls */}
-          {selectedTransactions.length > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex flex-wrap gap-2 items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {selectedTransactions.length} transaction(s) selected
-              </span>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={handleBatchEdit}
-                  className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition text-sm"
-                >
-                  Batch Edit
-                </button>
-                <button
-                  onClick={handleBatchDelete}
-                  className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => setSelectedTransactions([])}
-                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition text-sm"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-          
-          <div className="md:hidden space-y-2">
-            {filteredTransactions.map(transaction => (
-              <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={selectedTransactions.includes(transaction.id)}
-                      onChange={() => toggleSelectTransaction(transaction.id)}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateToDDMMYY(transaction.date)}</span>
-                  </div>
-                  <span className={`text-sm font-semibold whitespace-nowrap ${
-                    transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                  }`}>
-                    €{transaction.amount.toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 mt-2">
-                  <div className="min-w-0">
-                    <div className="text-sm dark:text-gray-300 truncate">{transaction.description}</div>
-                    <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs ${
-                      transaction.category === 'Uncategorized'
-                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-                        : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                    }`}>
-                      {transaction.category}
-                    </span>
-                  </div>
-                  <div className="flex justify-center gap-2 flex-shrink-0">
-                    {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
-                      <button
-                        onClick={() => openSavingsModal(transaction)}
-                        className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
-                        title="Allocate savings"
-                      >
-                        <Settings size={18} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleEdit(transaction)}
-                      className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(transaction.id)}
-                      className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-center py-2 px-2 w-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedTransactions.length === filteredTransactions.length && filteredTransactions.length > 0}
-                      onChange={toggleSelectAll}
-                      className="cursor-pointer"
-                    />
-                  </th>
-                  <th 
-                    className="text-left py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
-                    onClick={() => handleSort('date')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Date
-                      {sortConfig.key === 'date' && (
-                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
-                  <th 
-                    className="text-left py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
-                    onClick={() => handleSort('category')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Category
-                      {sortConfig.key === 'category' && (
-                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="text-right py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
-                    onClick={() => handleSort('amount')}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      Amount
-                      {sortConfig.key === 'amount' && (
-                        <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="text-center py-2 px-2 dark:text-gray-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTransactions.map(transaction => (
-                  <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="text-center py-2 px-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTransactions.includes(transaction.id)}
-                        onChange={() => toggleSelectTransaction(transaction.id)}
-                        className="cursor-pointer"
-                      />
-                    </td>
-                    {editingId === transaction.id ? (
-                      <>
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={editForm.date}
-                            onChange={(e) => setEditForm({...editForm, date: e.target.value})}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={editForm.description}
-                            onChange={(e) => setEditForm({...editForm, description: e.target.value})}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={editForm.category}
-                            onChange={(e) => setEditForm({...editForm, category: e.target.value})}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            list="categories-list"
-                          />
-                          <datalist id="categories-list">
-                            {categories.map(cat => (
-                              <option key={cat} value={cat} />
-                            ))}
-                          </datalist>
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editForm.amount}
-                            onChange={(e) => setEditForm({...editForm, amount: parseFloat(e.target.value)})}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-right bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <div className="flex justify-center gap-2">
-                            <button
-                              onClick={handleSave}
-                              className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900 rounded"
-                            >
-                              <Save size={18} />
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
-                            >
-                              <X size={18} />
-                            </button>
-                          </div>
-                          </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="py-2 px-2 text-sm dark:text-gray-300">{formatDateToDDMMYY(transaction.date)}</td>
-                        <td className="py-2 px-2 text-sm dark:text-gray-300">{transaction.description}</td>
-                        <td className="py-2 px-2 text-sm">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            transaction.category === 'Uncategorized' 
-                              ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300' 
-                              : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                          }`}>
-                            {transaction.category}
-                          </span>
-                        </td>
-                        <td className={`py-2 px-2 text-sm text-right font-semibold ${
-                          transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                        }`}>
-                          €{transaction.amount.toFixed(2)}
-                        </td>
-                        <td className="py-2 px-2">
-                          <div className="flex justify-center gap-2">
-                            {transaction.category.toLowerCase().includes('savings') && transaction.amount > 0 && (
-                              <button
-                                onClick={() => openSavingsModal(transaction)}
-                                className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900 rounded"
-                                title="Allocate savings"
-                              >
-                                <Settings size={18} />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleEdit(transaction)}
-                              className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(transaction.id)}
-                              className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          <TransactionTable
+            categories={categories}
+            editForm={editForm}
+            editingId={editingId}
+            filter={filter}
+            filteredTransactions={filteredTransactions}
+            formatDateToDDMMYY={formatDateToDDMMYY}
+            handleAdd={handleAdd}
+            handleBatchDelete={handleBatchDelete}
+            handleBatchEdit={handleBatchEdit}
+            handleDelete={handleDelete}
+            handleEdit={handleEdit}
+            handleSave={handleSave}
+            handleSort={handleSort}
+            selectedTransactions={selectedTransactions}
+            setEditForm={setEditForm}
+            setEditingId={setEditingId}
+            setFilter={setFilter}
+            setSelectedTransactions={setSelectedTransactions}
+            setShowCategoryDropdown={setShowCategoryDropdown}
+            showCategoryDropdown={showCategoryDropdown}
+            sortConfig={sortConfig}
+            toggleSelectAll={toggleSelectAll}
+            toggleSelectTransaction={toggleSelectTransaction}
+          />
         )}
 
-        {/* Savings Allocation Modal */}
-        {showSavingsModal && selectedSavingsTransaction && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold dark:text-white">Allocate Savings</h2>
-                  <button
-                    onClick={() => setShowSavingsModal(false)}
-                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
-                  >
-                    <X size={24} />
-                  </button>
-                </div>
 
-                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Transaction</p>
-                  <p className="font-semibold dark:text-white">{selectedSavingsTransaction.description}</p>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">€{selectedSavingsTransaction.amount.toFixed(2)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                    Allocated: €{getTotalAllocated(selectedSavingsTransaction.id).toFixed(2)} | 
-                    Remaining: €{(selectedSavingsTransaction.amount - getTotalAllocated(selectedSavingsTransaction.id)).toFixed(2)}
-                  </p>
-                </div>
-
-                {/* Current Allocations */}
-                {savingsAllocations[selectedSavingsTransaction.id]?.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="font-semibold mb-3 dark:text-white">Current Allocations</h3>
-                    <div className="space-y-2">
-                      {savingsAllocations[selectedSavingsTransaction.id].map((alloc, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <div>
-                            <p className="font-medium dark:text-white">{alloc.purpose}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">€{alloc.amount.toFixed(2)}</p>
-                          </div>
-                          <button
-                            onClick={() => deleteSavingsAllocation(selectedSavingsTransaction.id, index)}
-                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 p-2 rounded"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Add New Allocation */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold dark:text-white">Add Allocation</h3>
-                  <div className="flex gap-3 flex-wrap">
-                    <input
-                      type="text"
-                      placeholder="Purpose (e.g., Traveling, Emergency Fund)"
-                      value={newAllocation.purpose}
-                      onChange={(e) => setNewAllocation({...newAllocation, purpose: e.target.value})}
-                      className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Amount"
-                      value={newAllocation.amount || ''}
-                      onChange={(e) => setNewAllocation({...newAllocation, amount: parseFloat(e.target.value) || 0})}
-                      className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    />
-                    <button
-                      onClick={addSavingsAllocation}
-                      className="px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setShowSavingsModal(false);
-                      setNewAllocation({ purpose: '', amount: 0 });
-                    }}
-                    className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Batch Edit Modal */}
         {showBatchEdit && (
@@ -2855,7 +1521,7 @@ export default function BudgetTracker() {
                   </button>
                 </div>
 
-                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                <div className={cardClasses.info}>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Editing {selectedTransactions.length} transaction(s)
                   </p>
@@ -2874,7 +1540,7 @@ export default function BudgetTracker() {
                       placeholder="New description for all selected"
                       value={batchEditForm.description}
                       onChange={(e) => setBatchEditForm({...batchEditForm, description: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                      className={`${formClasses.inputLg} ${textClasses.placeholder}`}
                     />
                   </div>
 
@@ -2885,7 +1551,7 @@ export default function BudgetTracker() {
                     <select
                       value={batchEditForm.category}
                       onChange={(e) => setBatchEditForm({...batchEditForm, category: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      className={formClasses.inputLg}
                     >
                       <option value="">-- Keep existing categories --</option>
                       {categories.map(cat => (
@@ -2899,7 +1565,7 @@ export default function BudgetTracker() {
                         placeholder="Enter new category name"
                         value={newBatchCategoryName}
                         onChange={(e) => setNewBatchCategoryName(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 mt-2"
+                        className={`${formClasses.inputLg} ${textClasses.placeholder} mt-2`}
                         autoFocus
                       />
                     )}
@@ -2909,14 +1575,14 @@ export default function BudgetTracker() {
                 <div className="mt-6 flex justify-end gap-3">
                   <button
                     onClick={cancelBatchEdit}
-                    className="px-6 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition"
+                    className={buttonClasses.secondary}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={applyBatchEdit}
                     disabled={!batchEditForm.description && (batchEditForm.category === '__new__' ? !newBatchCategoryName : !batchEditForm.category)}
-                    className="px-6 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                    className={`${buttonClasses.primaryLg} disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed`}
                   >
                     Apply Changes
                   </button>
