@@ -839,7 +839,7 @@ export default function BudgetTracker() {
       if (!year || !month || !day) return true;
       
       if (filter.dateFilterType === 'year' && filter.year) {
-        if (year !== filter.year) return false;
+        if (year !== filter.year.slice(-2)) return false;
       } else if (filter.dateFilterType === 'month' && filter.month) {
         const txMonth = `${year}-${month.padStart(2, '0')}`;
         if (txMonth !== filter.month) return false;
@@ -904,7 +904,7 @@ export default function BudgetTracker() {
     const yearSet = new Set();
     transactions.forEach(t => {
       const [, , year] = t.date.split('/');
-      if (year) yearSet.add(year);
+      if (year) yearSet.add('20' + year.padStart(2, '0'));
     });
     return [...yearSet].sort().reverse();
   }, [transactions]);
@@ -1824,72 +1824,82 @@ export default function BudgetTracker() {
                 </div>
               </div>
 
-              <div className="space-y-4 mb-6">
-                <div className="flex gap-4 flex-wrap items-center">
+              <div className="space-y-3 mb-6">
+                {/* Row 1: Date buttons + Category filter + Clear */}
+                <div className="flex flex-wrap gap-3 items-center">
+                  {/* Date type button group */}
                   <div className="flex items-center gap-2">
-                    <Calendar size={20} className="text-gray-600 dark:text-gray-400" />
-                    <select
-                      value={filter.dateFilterType}
-                      onChange={(e) => setFilter({
-                        ...filter, 
-                        dateFilterType: e.target.value,
-                        year: '',
-                        month: '',
-                        startDate: '',
-                        endDate: ''
-                      })}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    >
-                      <option value="all">All Time</option>
-                      <option value="year">By Year</option>
-                      <option value="month">By Month</option>
-                      <option value="dateRange">Date Range</option>
-                    </select>
+                    <Calendar size={18} className="text-gray-600 dark:text-gray-400 shrink-0" />
+                    <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'year', label: 'Year' },
+                        { value: 'month', label: 'Month' },
+                        { value: 'dateRange', label: 'Range' },
+                      ].map(({ value, label }) => (
+                        <button
+                          key={value}
+                          onClick={() => setFilter({
+                            ...filter,
+                            dateFilterType: value,
+                            year: '',
+                            month: '',
+                            startDate: '',
+                            endDate: ''
+                          })}
+                          className={`px-3 py-2 text-sm font-medium transition-colors border-r border-gray-300 dark:border-gray-600 last:border-r-0 ${
+                            filter.dateFilterType === value
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  
-                  {/* Category Filter - now multi-select with chips */}
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <button
-                        onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex items-center gap-2 min-w-[150px] justify-between"
-                      >
-                        <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
-                        <span>▼</span>
-                      </button>
-                      <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto min-w-[200px]">
-                        <div className="p-2">
-                          <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+
+                  {/* Category Filter */}
+                  <div className="relative">
+                    <button
+                      onClick={() => document.getElementById('category-dropdown').classList.toggle('hidden')}
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex items-center gap-2 w-full sm:w-auto justify-between sm:min-w-[150px]"
+                    >
+                      <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+                      <span>▼</span>
+                    </button>
+                    <div id="category-dropdown" className="hidden absolute top-full mt-1 left-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto min-w-[200px]">
+                      <div className="p-2">
+                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filter.categories.length === 0}
+                            onChange={() => setFilter({...filter, categories: []})}
+                            className="cursor-pointer"
+                          />
+                          <span className="text-sm dark:text-white">All Categories</span>
+                        </label>
+                        {categories.map(cat => (
+                          <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={filter.categories.length === 0}
-                              onChange={() => setFilter({...filter, categories: []})}
+                              checked={filter.categories.includes(cat)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFilter({...filter, categories: [...filter.categories, cat]});
+                                } else {
+                                  setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
+                                }
+                              }}
                               className="cursor-pointer"
                             />
-                            <span className="text-sm dark:text-white">All Categories</span>
+                            <span className="text-sm dark:text-white">{cat}</span>
                           </label>
-                          {categories.map(cat => (
-                            <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={filter.categories.includes(cat)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFilter({...filter, categories: [...filter.categories, cat]});
-                                  } else {
-                                    setFilter({...filter, categories: filter.categories.filter(c => c !== cat)});
-                                  }
-                                }}
-                                className="cursor-pointer"
-                              />
-                              <span className="text-sm dark:text-white">{cat}</span>
-                            </label>
-                          ))}
-                        </div>
+                        ))}
                       </div>
                     </div>
                   </div>
-                  
+
                   {(filter.categories.length > 0 || filter.description || filter.categorySearch || filter.dateFilterType !== 'all') && (
                     <button
                       onClick={() => setFilter({
@@ -1902,21 +1912,21 @@ export default function BudgetTracker() {
                         startDate: '',
                         endDate: ''
                       })}
-                      className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
+                      className="px-3 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
                     >
                       Clear Filters
                     </button>
                   )}
                 </div>
 
-                {/* Date Filter Options */}
+                {/* Row 2: Date sub-filters */}
                 {filter.dateFilterType === 'year' && (
-                  <div className="flex gap-2 items-center pl-8">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Year:</label>
+                  <div className="flex gap-2 items-center">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Year:</label>
                     <select
                       value={filter.year}
                       onChange={(e) => setFilter({...filter, year: e.target.value})}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                     >
                       <option value="">Select Year</option>
                       {years.map(year => (
@@ -1927,12 +1937,12 @@ export default function BudgetTracker() {
                 )}
 
                 {filter.dateFilterType === 'month' && (
-                  <div className="flex gap-2 items-center pl-8">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Month:</label>
+                  <div className="flex gap-2 items-center">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Month:</label>
                     <select
                       value={filter.month}
                       onChange={(e) => setFilter({...filter, month: e.target.value})}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                     >
                       <option value="">Select Month</option>
                       {months.map(month => (
@@ -1943,23 +1953,23 @@ export default function BudgetTracker() {
                 )}
 
                 {filter.dateFilterType === 'dateRange' && (
-                  <div className="flex gap-4 items-center pl-8 flex-wrap">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">From:</label>
                       <input
                         type="date"
                         value={filter.startDate}
                         onChange={(e) => setFilter({...filter, startDate: e.target.value})}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                       />
                     </div>
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">To:</label>
                       <input
                         type="date"
                         value={filter.endDate}
                         onChange={(e) => setFilter({...filter, endDate: e.target.value})}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                       />
                     </div>
                   </div>
