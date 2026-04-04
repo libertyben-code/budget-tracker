@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, a dedicated Joint Split planning tab, dark mode, sortable tables, batch operations, and cloud synchronization through Firebase.
+This Budget Tracker is a React-based web application that helps users manage their personal finances with automatic transaction categorization, advanced data visualization, multi-account support, dedicated Dashboard, Joint Split, and Graphs tabs, dark mode, sortable tables, batch operations, responsive mobile layouts, and cloud synchronization through Firebase.
 
 ## Setup Instructions
 
@@ -44,6 +44,7 @@ npm start
 ### 2. **Dark Mode**
 - Toggle between light and dark themes
 - Persistent preference saved to localStorage
+- Header utility actions are grouped into a Settings dropdown next to the dark mode toggle
 - Full UI adaptation including:
   - All buttons and forms
   - Tables and data displays
@@ -65,6 +66,7 @@ npm start
 - Dedicated tab for planning how much each person should put into a joint account
 - Automatic inclusion of **current-month transactions** where the category contains `bill`
 - Live list of included transactions (date, description, category, amount)
+- Responsive mobile card layout for included transactions, with table view on larger screens
 - **Target joint deposit** input (default `2100`) used for pro-rata split
 - Salary-based pro-rata contribution calculation for two people:
   - Person 1 contribution = target × salary1 / (salary1 + salary2)
@@ -72,8 +74,8 @@ npm start
 - Current-month bill total remains visible as a reference value
 
 ### 5. **Transaction Management**
-- **CSV Import**: 
-  - Upload bank statement CSV files for automatic transaction parsing
+- **CSV Import**:
+  - Upload bank statement CSV files for automatic transaction parsing from the Settings dropdown
   - Auto-format dates to dd/mm/yy format during import
   - Import error tracking with line-by-line reporting
   - Automatic filtering of REVERTED and PENDING transactions
@@ -86,15 +88,18 @@ npm start
   - Batch edit description and/or category for selected transactions
   - Batch delete multiple transactions at once
   - Category dropdown with "Create New" option in batch edit
-- **CSV Export**: Download your transaction data as a CSV file
+- **CSV Export**: Download your transaction data as a CSV file from the Settings dropdown
 - **Date Format**: All dates consistently displayed in dd/mm/yy format
 - **Real-time Updates**: Changes instantly reflected across all visualizations
+- **Responsive Layout**:
+  - Mobile two-line transaction cards for compact viewing
+  - Desktop table layout from medium screens upward
 
 ### 6. **Intelligent Auto-Categorization**
 - Machine learning-inspired pattern matching system
 - **Automatic Learning**: When you manually categorize a transaction, the app learns the pattern
 - **Rule-Based System**: Maintains a dictionary of description patterns → categories
-- **Manual Rules**: Add custom categorization rules through the settings panel
+- **Manual Rules**: Add custom categorization rules through the Settings dropdown
 - **Category Filtering**: Filter rules by category to view and manage specific groups
 - **Batch Rule Operations**:
   - Select multiple rules with checkboxes
@@ -104,6 +109,10 @@ npm start
 - **Bulk Re-categorization**: Apply rules to all uncategorized transactions with one click
 - **Global Rules**: Category rules are user-level (shared across all accounts)
 - **Rule Synchronization**: Rules automatically update when categories are renamed or deleted
+- **Responsive Rules Panel**:
+  - Mobile card layout for rules
+  - Desktop table layout on larger screens
+  - Close button in panel header
 
 ### 7. **Category Management**
 - **Rename Categories**: Update category names across all transactions and rules
@@ -113,6 +122,10 @@ npm start
 - **Automatic Rule Updates**: Category rules update automatically when categories change
 - **Category Count**: View transaction count per category
 - **Visual Feedback**: Color-coded category badges throughout the interface
+- **Responsive Category Manager**:
+  - Mobile card layout for category entries
+  - Desktop table layout on larger screens
+  - Close button in panel header
 
 ### 8. **Savings Management**
 - **Savings Allocation**: Break down savings deposits by purpose (e.g., Emergency Fund, Vacation, House)
@@ -122,7 +135,7 @@ npm start
 - Account-specific savings goals and allocations
 
 ### 9. **Advanced Data Visualization**
-Four interactive charts using Recharts library:
+Charts are available in the dedicated **Graphs** tab using Recharts:
 - **Spending by Category (Pie Chart)**: Visual breakdown of spending by category with percentages
 - **Spending by Category per Month (Grouped Bar Chart)**: 
   - Shows all categories grouped by month
@@ -136,17 +149,11 @@ Four interactive charts using Recharts library:
   - Lighter axis labels for better visibility in dark mode
   - Darker grid lines to reduce visual clutter
   - Consistent color scheme across themes
-- Toggle charts visibility on/off
 - Responsive design for all screen sizes
 
 ### 10. **Advanced Filtering & Search**
 Multiple filter options working in combination:
-- **Category Filter**: Multi-select category filtering with checkboxes
-  - Linked to transaction filtering
-  - Select multiple categories simultaneously
-  - Visual checkbox indicators
 - **Description Search**: Search transactions by description (case-insensitive)
-- **Category Search**: Search by category name
 - **Date Filters**:
   - Filter by specific year
   - Filter by specific month
@@ -154,6 +161,7 @@ Multiple filter options working in combination:
   - View all transactions (no date filter)
 - Real-time statistics that update based on filtered data
 - Clear filters button for quick reset
+- Shared stats and date filter controls are available on Dashboard, Joint Split, and Graphs tabs
 
 ### 11. **Real-time Statistics**
 Dynamic statistics display that updates based on filters:
@@ -230,6 +238,10 @@ const [selectedRules, setSelectedRules] = useState([]);
 const [showBatchRuleEdit, setShowBatchRuleEdit] = useState(false);
 const [batchRuleCategory, setBatchRuleCategory] = useState('');
 
+// Header Settings Menu State
+const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+const settingsMenuRef = useRef(null);
+
 // Import Error State
 const [importErrors, setImportErrors] = useState(null);
 
@@ -256,7 +268,6 @@ const [filter, setFilter] = useState({
   startDate: '',
   endDate: ''
 });
-const [showGraphs, setShowGraphs] = useState(true);
 ```
 
 ### Data Flow
