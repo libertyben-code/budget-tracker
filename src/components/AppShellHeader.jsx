@@ -196,6 +196,7 @@ export function AppShellHeader({
               className={`${accountTabClasses(false)} flex items-center justify-center gap-1 shrink-0`}
             >
               <Plus size={16} />
+              <span className="sm:hidden">New</span>
               <span className="hidden sm:inline">{t('header.newAccount')}</span>
             </button>
           ) : (
