@@ -87,6 +87,8 @@ const translations = {
       batchEdit: 'Batch Edit',
       clear: 'Clear',
       editingTransaction: 'Editing transaction',
+      loadMore: 'Load more',
+      showing: 'Showing {visible} of {total} transactions',
     },
     joint: {
       title: 'Joint Account Split',
@@ -257,6 +259,8 @@ const translations = {
       batchEdit: 'Modifier en lot',
       clear: 'Effacer',
       editingTransaction: 'Modification de la transaction',
+      loadMore: 'Voir plus',
+      showing: '{visible} transactions affichées sur {total}',
     },
     joint: {
       title: 'Répartition du compte joint',
