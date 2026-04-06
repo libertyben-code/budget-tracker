@@ -121,43 +121,106 @@ export function TransactionTable({
       <div className="md:hidden space-y-2">
         {filteredTransactions.map((transaction) => (
           <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <input
-                  type="checkbox"
-                  checked={selectedTransactions.includes(transaction.id)}
-                  onChange={() => toggleSelectTransaction(transaction.id)}
-                  className="cursor-pointer"
-                />
-                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateToDDMMYY(transaction.date)}</span>
-              </div>
-              <span className={`text-sm font-semibold whitespace-nowrap ${transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                €{transaction.amount.toFixed(2)}
-              </span>
-            </div>
+            {editingId === transaction.id ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedTransactions.includes(transaction.id)}
+                    onChange={() => toggleSelectTransaction(transaction.id)}
+                    className="cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Editing transaction</span>
+                </div>
 
-            <div className="flex items-center justify-between gap-2 mt-2">
-              <div className="min-w-0">
-                <div className="text-sm dark:text-gray-300 truncate">{transaction.description}</div>
-                <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs ${transaction.category === 'Uncategorized' ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'}`}>
-                  {transaction.category}
-                </span>
+                <input
+                  type="text"
+                  value={editForm.date}
+                  onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={editForm.category}
+                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                  className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  list="categories-list-mobile"
+                />
+                <datalist id="categories-list-mobile">
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm({ ...editForm, amount: parseFloat(e.target.value) })}
+                  className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-right bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={handleSave}
+                    className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900 rounded"
+                  >
+                    <Save size={18} />
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-              <div className="flex justify-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => handleEdit(transaction)}
-                  className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
-                >
-                  <Edit2 size={18} />
-                </button>
-                <button
-                  onClick={() => handleDelete(transaction.id)}
-                  className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactions.includes(transaction.id)}
+                      onChange={() => toggleSelectTransaction(transaction.id)}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateToDDMMYY(transaction.date)}</span>
+                  </div>
+                  <span className={`text-sm font-semibold whitespace-nowrap ${transaction.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    €{transaction.amount.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <div className="min-w-0">
+                    <div className="text-sm dark:text-gray-300 truncate">{transaction.description}</div>
+                    <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs ${transaction.category === 'Uncategorized' ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'}`}>
+                      {transaction.category}
+                    </span>
+                  </div>
+                  <div className="flex justify-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleEdit(transaction)}
+                      className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900 rounded"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>
