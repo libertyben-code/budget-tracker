@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Edit2, Plus, Save, Trash2, X } from 'lucide-react';
 
 export function TransactionTable({
@@ -27,6 +27,32 @@ export function TransactionTable({
   toggleSelectTransaction,
   t
 }) {
+  const INITIAL_VISIBLE_ROWS = 100;
+  const LOAD_MORE_STEP = 100;
+  const dropdownRef = useRef(null);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ROWS);
+
+  const displayedTransactions = useMemo(
+    () => filteredTransactions.slice(0, visibleCount),
+    [filteredTransactions, visibleCount]
+  );
+  const selectedCategoriesKey = useMemo(() => filter.categories.join('|'), [filter.categories]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowCategoryDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [setShowCategoryDropdown]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_ROWS);
+  }, [filter.description, selectedCategoriesKey, sortConfig.key, sortConfig.direction, filteredTransactions.length]);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6">
       <div className="flex justify-between items-center mb-4">
@@ -41,7 +67,7 @@ export function TransactionTable({
       </div>
 
       <div className="mb-4 space-y-3">
-        <div className="relative w-full">
+        <div ref={dropdownRef} className="relative w-full">
           <button
             onClick={() => setShowCategoryDropdown((prev) => !prev)}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
@@ -120,7 +146,7 @@ export function TransactionTable({
       )}
 
       <div className="md:hidden space-y-2">
-        {filteredTransactions.map((transaction) => (
+        {displayedTransactions.map((transaction) => (
           <div key={transaction.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
             {editingId === transaction.id ? (
               <div className="space-y-2">
@@ -270,7 +296,7 @@ export function TransactionTable({
             </tr>
           </thead>
           <tbody>
-            {filteredTransactions.map((transaction) => (
+            {displayedTransactions.map((transaction) => (
               <tr key={transaction.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td className="text-center py-2 px-2">
                   <input
@@ -373,6 +399,20 @@ export function TransactionTable({
           </tbody>
         </table>
       </div>
+
+      {displayedTransactions.length < filteredTransactions.length && (
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {t('transactionTable.showing', { visible: displayedTransactions.length, total: filteredTransactions.length })}
+          </p>
+          <button
+            onClick={() => setVisibleCount((prev) => prev + LOAD_MORE_STEP)}
+            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+          >
+            {t('transactionTable.loadMore')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
