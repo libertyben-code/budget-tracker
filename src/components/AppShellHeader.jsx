@@ -162,7 +162,7 @@ export function AppShellHeader({
                   className={accountTabClasses(activeAccountId === account.id && activeMainTab !== 'savings')}
                 >
                   {account.name}
-                  {accountsData[account.id] && (
+                  {account.id !== 'default' && accountsData[account.id] && (
                     <span className="ml-2 text-xs opacity-75">
                       ({accountsData[account.id].transactions?.length || 0})
                     </span>
@@ -183,7 +183,7 @@ export function AppShellHeader({
               </div>
 
               {account.id === 'default' && (
-                <button onClick={() => setActiveMainTab('savings')} className={navButtonClasses(activeMainTab === 'savings')}>
+                <button onClick={() => setActiveMainTab('savings')} className={accountTabClasses(activeMainTab === 'savings')}>
                   {t('header.savings')}
                 </button>
               )}
@@ -193,10 +193,10 @@ export function AppShellHeader({
           {!isAddingAccount ? (
             <button
               onClick={() => setIsAddingAccount(true)}
-              className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1 shrink-0"
+              className={`${accountTabClasses(false)} flex items-center justify-center gap-1 shrink-0`}
             >
               <Plus size={16} />
-              {t('header.newAccount')}
+              <span className="hidden sm:inline">{t('header.newAccount')}</span>
             </button>
           ) : (
             <div className="flex items-center gap-2 shrink-0 min-w-0">
