@@ -17,6 +17,63 @@ export const autoCategorizeTrans = (description, categoryRules) => {
 };
 
 /**
+ * AI-style fallback categorization for unknown merchants.
+ * Uses merchant keyword intent + fuzzy match against existing user categories.
+ * @param {string} description - Transaction description
+ * @param {array} availableCategories - Existing categories in the account
+ * @returns {string} Best category guess or 'Uncategorized'
+ */
+export const guessCategoryWithAI = (description, availableCategories = []) => {
+  const desc = (description || '').toLowerCase();
+  if (!desc) return 'Uncategorized';
+
+  const categories = availableCategories.filter(c => c && c !== 'Uncategorized');
+  if (categories.length === 0) return 'Uncategorized';
+
+  const intents = [
+    { tags: ['grocery', 'supermarket', 'aldi', 'lidl', 'tesco', 'carrefour', 'auchan', 'food'], aliases: ['grocer', 'grocery', 'supermarket', 'food'] },
+    { tags: ['restaurant', 'cafe', 'coffee', 'uber eats', 'deliveroo', 'just eat', 'takeaway'], aliases: ['restaurant', 'dining', 'food', 'eating out'] },
+    { tags: ['fuel', 'petrol', 'gas station', 'shell', 'bp', 'esso', 'total'], aliases: ['fuel', 'gas', 'transport', 'car'] },
+    { tags: ['rent', 'landlord', 'mortgage'], aliases: ['rent', 'housing', 'home'] },
+    { tags: ['electric', 'water', 'internet', 'mobile', 'phone', 'utility', 'bill'], aliases: ['utilities', 'bills', 'internet', 'phone'] },
+    { tags: ['netflix', 'spotify', 'disney', 'prime video', 'subscription'], aliases: ['subscription', 'entertainment', 'streaming'] },
+    { tags: ['pharmacy', 'doctor', 'medical', 'hospital', 'dentist'], aliases: ['health', 'medical', 'pharmacy'] },
+    { tags: ['amazon', 'shop', 'store', 'ikea', 'zara', 'h&m'], aliases: ['shopping', 'retail'] },
+    { tags: ['salary', 'payroll', 'income', 'refund'], aliases: ['income', 'salary'] },
+    { tags: ['transfer', 'bank transfer'], aliases: ['transfer', 'bank'] },
+  ];
+
+  const scoreCategory = (categoryName, intentAliases) => {
+    const normalized = categoryName.toLowerCase();
+    let score = 0;
+
+    intentAliases.forEach((alias) => {
+      if (normalized.includes(alias)) score += 2;
+    });
+
+    return score;
+  };
+
+  let bestCategory = 'Uncategorized';
+  let bestScore = 0;
+
+  intents.forEach((intent) => {
+    const matched = intent.tags.some((tag) => desc.includes(tag));
+    if (!matched) return;
+
+    categories.forEach((category) => {
+      const score = scoreCategory(category, intent.aliases);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCategory = category;
+      }
+    });
+  });
+
+  return bestScore > 0 ? bestCategory : 'Uncategorized';
+};
+
+/**
  * Learn new category patterns from a list of transactions
  * @param {array} transactions - List of transactions with categories set
  * @param {object} currentRules - Existing category rules
