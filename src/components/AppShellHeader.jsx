@@ -17,7 +17,6 @@ export function AppShellHeader({
   importErrors,
   isAddingAccount,
   newAccountName,
-  reapplyRules,
   setActiveMainTab,
   setDarkMode,
   setLanguage,
@@ -125,18 +124,6 @@ export function AppShellHeader({
                   >
                     <Edit2 size={18} />
                     <span>{t('header.manageCategories', { count: categories.length })}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      reapplyRules();
-                      setShowSettingsMenu(false);
-                    }}
-                    disabled={transactions.length === 0}
-                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Save size={18} />
-                    <span>{t('header.autoCategorize')}</span>
                   </button>
 
                   <button

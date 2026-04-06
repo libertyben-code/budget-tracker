@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 // Import utility functions
 import { formatDateToDDMMYY } from './utils/dates';
-import { autoCategorizeTrans, learnCategoryFromTransactions } from './utils/categories';
+import { autoCategorizeTrans } from './utils/categories';
 import { buttonClasses, cardClasses, formClasses, textClasses } from './utils/tailwindClasses';
 import { createTranslator } from './utils/i18n';
 
@@ -547,14 +547,13 @@ export default function BudgetTracker() {
         });
         
         const description = row['Description'] || '';
-        const existingCategory = row['Categories'] || row['Category'] || '';
         const autoCategory = autoCategorizeTrans(description, categoryRules);
         
         const transaction = {
           id: Date.now() + idx,
           date: formatDateToDDMMYY(row['Started Date'] || row.Date || ''),
           description: description,
-          category: existingCategory || autoCategory,
+          category: autoCategory,
           amount: parseFloat(row.Amount) || 0,
           type: row.Type || '',
           state: row.State || ''
@@ -577,8 +576,6 @@ export default function BudgetTracker() {
         failedLines.push(idx + 2); // +2 because of 0-index and header row
       }
     });
-
-    learnCategoryFromTransactions(parsed);
     setTransactions(parsed);
     setSelectedTransactions([]);
     
@@ -700,14 +697,6 @@ export default function BudgetTracker() {
       setCategoryRules(updatedRules);
       setSelectedRules([]);
     }
-  };
-
-  const reapplyRules = () => {
-    const updated = transactions.map(t => ({
-      ...t,
-      category: t.category === 'Uncategorized' ? autoCategorizeTrans(t.description) : t.category
-    }));
-    setTransactions(updated);
   };
 
   const handleRenameCategory = (oldName, newName) => {
@@ -1196,7 +1185,6 @@ export default function BudgetTracker() {
           importErrors={importErrors}
           isAddingAccount={isAddingAccount}
           newAccountName={newAccountName}
-          reapplyRules={reapplyRules}
           setActiveMainTab={setActiveMainTab}
           setDarkMode={setDarkMode}
           setImportErrors={setImportErrors}
