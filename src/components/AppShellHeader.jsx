@@ -149,50 +149,66 @@ export function AppShellHeader({
       <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-3">
           {accounts.map((account) => (
-            <div key={account.id} className="group relative">
-              <button onClick={() => switchAccount(account.id)} className={accountTabClasses(activeAccountId === account.id)}>
-                {account.name}
-                {accountsData[account.id] && (
-                  <span className="ml-2 text-xs opacity-75">
-                    ({accountsData[account.id].transactions?.length || 0})
-                  </span>
-                )}
-              </button>
-              {account.id !== 'default' && (
+            <React.Fragment key={account.id}>
+              <div className="group relative">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteAccount(account.id);
+                  onClick={() => {
+                    switchAccount(account.id);
+                    if (activeMainTab === 'savings') {
+                      setActiveMainTab('dashboard');
+                    }
                   }}
-                  className="absolute -top-2 -right-2 bg-red-500 dark:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
-                  title="Delete account"
+                  className={accountTabClasses(activeAccountId === account.id && activeMainTab !== 'savings')}
                 >
-                  <X size={14} />
+                  {account.name}
+                  {accountsData[account.id] && (
+                    <span className="ml-2 text-xs opacity-75">
+                      ({accountsData[account.id].transactions?.length || 0})
+                    </span>
+                  )}
+                </button>
+                {account.id !== 'default' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteAccount(account.id);
+                    }}
+                    className="absolute -top-2 -right-2 bg-red-500 dark:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
+                    title="Delete account"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {account.id === 'default' && (
+                <button onClick={() => setActiveMainTab('savings')} className={navButtonClasses(activeMainTab === 'savings')}>
+                  Savings
                 </button>
               )}
-            </div>
+            </React.Fragment>
           ))}
 
           {!isAddingAccount ? (
             <button
               onClick={() => setIsAddingAccount(true)}
-              className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1"
+              className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1 shrink-0"
             >
               <Plus size={16} />
               New Account
             </button>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
               <input
                 type="text"
                 value={newAccountName}
                 onChange={(e) => setNewAccountName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && addAccount()}
                 placeholder="Account name"
-                className={`${formClasses.input} ${textClasses.placeholder}`}
+                className={`${formClasses.input} ${textClasses.placeholder} w-40 sm:w-56`}
                 autoFocus
               />
-              <button onClick={addAccount} className="p-2 bg-green-500 dark:bg-green-600 text-white rounded hover:bg-green-600 dark:hover:bg-green-700">
+              <button onClick={addAccount} className="p-2 bg-green-500 dark:bg-green-600 text-white rounded hover:bg-green-600 dark:hover:bg-green-700 shrink-0">
                 <Save size={16} />
               </button>
               <button
@@ -200,7 +216,7 @@ export function AppShellHeader({
                   setIsAddingAccount(false);
                   setNewAccountName('');
                 }}
-                className="p-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
+                className="p-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-400 dark:hover:bg-gray-500 shrink-0"
               >
                 <X size={16} />
               </button>
@@ -209,12 +225,13 @@ export function AppShellHeader({
         </div>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
-        <button onClick={() => setActiveMainTab('dashboard')} className={navButtonClasses(activeMainTab === 'dashboard')}>Dashboard</button>
-        <button onClick={() => setActiveMainTab('joint')} className={navButtonClasses(activeMainTab === 'joint')}>Joint Split</button>
-        <button onClick={() => setActiveMainTab('savings')} className={navButtonClasses(activeMainTab === 'savings')}>Savings</button>
-        <button onClick={() => setActiveMainTab('graphs')} className={navButtonClasses(activeMainTab === 'graphs')}>Transactions</button>
-      </div>
+      {activeMainTab !== 'savings' && (
+        <div className="mb-6 flex flex-wrap gap-2">
+          <button onClick={() => setActiveMainTab('dashboard')} className={navButtonClasses(activeMainTab === 'dashboard')}>Dashboard</button>
+          <button onClick={() => setActiveMainTab('graphs')} className={navButtonClasses(activeMainTab === 'graphs')}>Transactions</button>
+          <button onClick={() => setActiveMainTab('joint')} className={navButtonClasses(activeMainTab === 'joint')}>Joint Split</button>
+        </div>
+      )}
 
       {importErrors && (
         <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">

@@ -1204,7 +1204,7 @@ export default function BudgetTracker() {
           userEmail={user.email}
         />
 
-        <div className={cardClasses.default}>
+        <div className={(activeMainTab === 'joint' || activeMainTab === 'savings') ? '' : cardClasses.default}>
 
           {showRules && (
             <CategoryRulesPanel
@@ -1251,7 +1251,7 @@ export default function BudgetTracker() {
             />
           )}
 
-          {transactions.length > 0 && (
+          {transactions.length > 0 && activeMainTab !== 'joint' && activeMainTab !== 'savings' && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className={cardClasses.info}>
