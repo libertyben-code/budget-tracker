@@ -535,6 +535,16 @@ export default function BudgetTracker() {
     
     const failedLines = [];
     const parsed = [];
+    const existingTransactionKeys = new Set(
+      transactions.map((t) => {
+        const date = (t.date || '').trim();
+        const desc = (t.description || '').trim().toLowerCase();
+        const amount = Number(t.amount || 0).toFixed(2);
+        const type = (t.type || '').trim().toLowerCase();
+        return `${date}|${desc}|${amount}|${type}`;
+      })
+    );
+    const importedTransactionKeys = new Set();
     
     lines.slice(1).forEach((line, idx) => {
       if (!line.trim()) return;
@@ -570,13 +580,20 @@ export default function BudgetTracker() {
           failedLines.push(idx + 2);
           return;
         }
+
+        const transactionKey = `${(transaction.date || '').trim()}|${(transaction.description || '').trim().toLowerCase()}|${Number(transaction.amount || 0).toFixed(2)}|${(transaction.type || '').trim().toLowerCase()}`;
+        if (existingTransactionKeys.has(transactionKey) || importedTransactionKeys.has(transactionKey)) {
+          return;
+        }
+
+        importedTransactionKeys.add(transactionKey);
         
         parsed.push(transaction);
       } catch (error) {
         failedLines.push(idx + 2); // +2 because of 0-index and header row
       }
     });
-    setTransactions(parsed);
+    setTransactions([...parsed, ...transactions]);
     setSelectedTransactions([]);
     
     // Set import error message
@@ -1129,6 +1146,14 @@ export default function BudgetTracker() {
     }).length;
   }, [transactions]);
 
+  const headerAccountsData = useMemo(() => ({
+    ...accountsData,
+    [activeAccountId]: {
+      ...(accountsData[activeAccountId] || {}),
+      transactions,
+    },
+  }), [accountsData, activeAccountId, transactions]);
+
   const parsedSalary1 = parseFloat(salaryInputs.person1) || 0;
   const parsedSalary2 = parseFloat(salaryInputs.person2) || 0;
   const parsedJointTargetAmount = parseFloat(jointTargetAmount) || 0;
@@ -1171,7 +1196,7 @@ export default function BudgetTracker() {
       <div className="max-w-7xl mx-auto">
         <AppShellHeader
           accounts={accounts}
-          accountsData={accountsData}
+          accountsData={headerAccountsData}
           activeAccountId={activeAccountId}
           activeMainTab={activeMainTab}
           addAccount={addAccount}
