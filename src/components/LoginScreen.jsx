@@ -13,7 +13,10 @@ export function LoginScreen({
   loading,
   handleAuth,
   darkMode,
-  setDarkMode
+  setDarkMode,
+  language,
+  setLanguage,
+  t
 }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-6">
@@ -22,14 +25,22 @@ export function LoginScreen({
         <button
           onClick={() => setDarkMode(!darkMode)}
           className="absolute top-4 right-4 p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-          title="Toggle dark mode"
+          title={t('login.toggleDarkMode')}
         >
           {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
         </button>
+
+        <button
+          onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
+          className="absolute top-4 left-4 px-2 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+          title={t('common.language')}
+        >
+          {language === 'en' ? 'FR' : 'EN'}
+        </button>
         
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Budget Tracker</h1>
-          <p className="text-gray-600 dark:text-gray-300">Sign in to access your budget</p>
+          <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">{t('login.title')}</h1>
+          <p className="text-gray-600 dark:text-gray-300">{t('login.subtitle')}</p>
         </div>
         
         <div className="flex gap-2 mb-6">
@@ -41,7 +52,7 @@ export function LoginScreen({
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            Login
+            {t('login.login')}
           </button>
           <button
             onClick={() => setAuthMode('signup')}
@@ -51,13 +62,13 @@ export function LoginScreen({
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            Sign Up
+            {t('login.signup')}
           </button>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('login.email')}</label>
             <input
               type="email"
               value={email}
@@ -69,7 +80,7 @@ export function LoginScreen({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('login.password')}</label>
             <input
               type="password"
               value={password}
@@ -92,7 +103,7 @@ export function LoginScreen({
             disabled={loading}
             className={`${buttonClasses.primaryLg} w-full font-semibold disabled:bg-gray-400 dark:disabled:bg-gray-600`}
           >
-            {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
+            {loading ? t('login.processing') : authMode === 'login' ? t('login.login') : t('login.signup')}
           </button>
         </form>
       </div>

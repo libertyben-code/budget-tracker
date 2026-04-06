@@ -20,6 +20,7 @@ export function AppShellHeader({
   reapplyRules,
   setActiveMainTab,
   setDarkMode,
+  setLanguage,
   setImportErrors,
   setIsAddingAccount,
   setNewAccountName,
@@ -33,7 +34,9 @@ export function AppShellHeader({
   switchAccount,
   transactions,
   userEmail,
-  addAccount
+  addAccount,
+  language,
+  t
 }) {
   const navButtonClasses = (isActive) => `px-4 py-2 rounded-lg font-medium transition whitespace-nowrap text-sm sm:text-base ${
     isActive
@@ -51,26 +54,26 @@ export function AppShellHeader({
     <div className={cardClasses.default}>
       <div className="flex flex-wrap justify-between items-center gap-2 mb-6">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-3xl font-bold text-gray-800 dark:text-white">Budget Tracker</h1>
-          <p className={`text-sm mt-1 truncate max-w-[200px] sm:max-w-none ${textClasses.muted}`}>Logged in as: {userEmail}</p>
+          <h1 className="text-xl sm:text-3xl font-bold text-gray-800 dark:text-white">{t('login.title')}</h1>
+          <p className={`text-sm mt-1 truncate max-w-[200px] sm:max-w-none ${textClasses.muted}`}>{t('header.loggedInAs', { email: userEmail })}</p>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={() => setDarkMode(!darkMode)}
             className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-            title="Toggle dark mode"
+            title={t('login.toggleDarkMode')}
           >
             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            <span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span>
+            <span className="hidden sm:inline">{darkMode ? t('header.light') : t('header.dark')}</span>
           </button>
           <div ref={settingsMenuRef} className="relative">
             <button
               onClick={() => setShowSettingsMenu(!showSettingsMenu)}
               className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-              title="Open settings menu"
+              title={t('header.openSettings')}
             >
               <Settings size={20} />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden sm:inline">{t('header.settings')}</span>
             </button>
 
             {showSettingsMenu && (
@@ -78,7 +81,7 @@ export function AppShellHeader({
                 <div className="p-2 space-y-1">
                   <label className="flex items-center gap-3 w-full px-3 py-2 rounded-lg cursor-pointer text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
                     <Upload size={18} />
-                    <span>Import CSV</span>
+                    <span>{t('header.importCsv')}</span>
                     <input
                       type="file"
                       accept=".csv"
@@ -99,7 +102,7 @@ export function AppShellHeader({
                     className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Download size={18} />
-                    <span>Export CSV</span>
+                    <span>{t('header.exportCsv')}</span>
                   </button>
 
                   <button
@@ -110,7 +113,7 @@ export function AppShellHeader({
                     className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                   >
                     <Settings size={18} />
-                    <span>Category Rules ({Object.keys(categoryRules).length})</span>
+                    <span>{t('header.categoryRules', { count: Object.keys(categoryRules).length })}</span>
                   </button>
 
                   <button
@@ -121,7 +124,7 @@ export function AppShellHeader({
                     className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                   >
                     <Edit2 size={18} />
-                    <span>Manage Categories ({categories.length})</span>
+                    <span>{t('header.manageCategories', { count: categories.length })}</span>
                   </button>
 
                   <button
@@ -133,7 +136,18 @@ export function AppShellHeader({
                     className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save size={18} />
-                    <span>Auto-Categorize</span>
+                    <span>{t('header.autoCategorize')}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setLanguage(language === 'en' ? 'fr' : 'en');
+                      setShowSettingsMenu(false);
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                  >
+                    <Settings size={18} />
+                    <span>{t('common.language')}: {language === 'en' ? t('common.english') : t('common.french')}</span>
                   </button>
                 </div>
               </div>
@@ -141,7 +155,7 @@ export function AppShellHeader({
           </div>
           <button onClick={handleLogout} className={`flex items-center gap-2 ${buttonClasses.danger}`}>
             <LogOut size={20} />
-            <span className="hidden sm:inline">Logout</span>
+            <span className="hidden sm:inline">{t('header.logout')}</span>
           </button>
         </div>
       </div>
@@ -174,7 +188,7 @@ export function AppShellHeader({
                       deleteAccount(account.id);
                     }}
                     className="absolute -top-2 -right-2 bg-red-500 dark:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
-                    title="Delete account"
+                    title={t('header.deleteAccountTitle')}
                   >
                     <X size={14} />
                   </button>
@@ -183,7 +197,7 @@ export function AppShellHeader({
 
               {account.id === 'default' && (
                 <button onClick={() => setActiveMainTab('savings')} className={navButtonClasses(activeMainTab === 'savings')}>
-                  Savings
+                  {t('header.savings')}
                 </button>
               )}
             </React.Fragment>
@@ -195,7 +209,7 @@ export function AppShellHeader({
               className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-t-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1 shrink-0"
             >
               <Plus size={16} />
-              New Account
+              {t('header.newAccount')}
             </button>
           ) : (
             <div className="flex items-center gap-2 shrink-0 min-w-0">
@@ -204,7 +218,7 @@ export function AppShellHeader({
                 value={newAccountName}
                 onChange={(e) => setNewAccountName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && addAccount()}
-                placeholder="Account name"
+                placeholder={t('header.accountName')}
                 className={`${formClasses.input} ${textClasses.placeholder} w-40 sm:w-56`}
                 autoFocus
               />
@@ -227,9 +241,9 @@ export function AppShellHeader({
 
       {activeMainTab !== 'savings' && (
         <div className="mb-6 flex flex-wrap gap-2">
-          <button onClick={() => setActiveMainTab('dashboard')} className={navButtonClasses(activeMainTab === 'dashboard')}>Dashboard</button>
-          <button onClick={() => setActiveMainTab('graphs')} className={navButtonClasses(activeMainTab === 'graphs')}>Transactions</button>
-          <button onClick={() => setActiveMainTab('joint')} className={navButtonClasses(activeMainTab === 'joint')}>Joint Split</button>
+          <button onClick={() => setActiveMainTab('dashboard')} className={navButtonClasses(activeMainTab === 'dashboard')}>{t('header.dashboard')}</button>
+          <button onClick={() => setActiveMainTab('graphs')} className={navButtonClasses(activeMainTab === 'graphs')}>{t('header.transactions')}</button>
+          <button onClick={() => setActiveMainTab('joint')} className={navButtonClasses(activeMainTab === 'joint')}>{t('header.jointSplit')}</button>
         </div>
       )}
 
@@ -238,14 +252,14 @@ export function AppShellHeader({
           <div className="flex justify-between items-start">
             <div>
               <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
-                Import Warning: {importErrors.count} line{importErrors.count > 1 ? 's' : ''} not imported
+                {t('header.importWarning', { count: importErrors.count, suffix: importErrors.count > 1 ? 's' : '' })}
               </h4>
               <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
-                The following lines were skipped (REVERTED, PENDING, or invalid data):
+                {t('header.importWarningDesc')}
               </p>
               <p className="text-sm text-yellow-600 dark:text-yellow-400 font-mono">
-                Lines: {importErrors.lines.slice(0, 20).join(', ')}
-                {importErrors.lines.length > 20 && ` ... and ${importErrors.lines.length - 20} more`}
+                {t('header.lines', { lines: importErrors.lines.slice(0, 20).join(', ') })}
+                {importErrors.lines.length > 20 && t('header.andMore', { count: importErrors.lines.length - 20 })}
               </p>
             </div>
             <button

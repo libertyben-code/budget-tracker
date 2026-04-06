@@ -22,35 +22,36 @@ export function CategoryRulesPanel({
   showBatchRuleEdit,
   toggleSelectAllRules,
   toggleSelectRule,
+  t,
 }) {
   return (
     <>
       <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold dark:text-white">Category Auto-Assignment Rules</h3>
+          <h3 className="font-bold dark:text-white">{t('categoryRules.title')}</h3>
           <button
             onClick={() => setShowRules(false)}
             className="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1 rounded"
-            title="Close"
+            title={t('common.close')}
           >
             <X size={18} />
           </button>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          Rules are automatically learned when you set categories.
+          {t('categoryRules.subtitle')}
         </p>
 
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <input
             type="text"
-            placeholder="Description pattern"
+            placeholder={t('categoryRules.patternPlaceholder')}
             value={newRule.pattern}
             onChange={(e) => setNewRule({ ...newRule, pattern: e.target.value })}
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
           <input
             type="text"
-            placeholder="Category"
+            placeholder={t('categoryRules.categoryPlaceholder')}
             value={newRule.category}
             onChange={(e) => setNewRule({ ...newRule, category: e.target.value })}
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
@@ -59,20 +60,20 @@ export function CategoryRulesPanel({
             onClick={handleAddRule}
             className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 w-full sm:w-auto"
           >
-            Add Rule
+            {t('categoryRules.addRule')}
           </button>
         </div>
 
         <div className="mb-4">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-            Filter by Category:
+            {t('categoryRules.filterByCategory')}
           </label>
           <select
             value={ruleFilter}
             onChange={(e) => setRuleFilter(e.target.value)}
             className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
-            <option value="">All Categories</option>
+            <option value="">{t('categoryRules.allCategories')}</option>
             {categories.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
@@ -89,7 +90,7 @@ export function CategoryRulesPanel({
               {selectedRules.length > 0 && (
                 <div className={`${cardClasses.info} mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2`}>
                   <span className="text-sm text-blue-700 dark:text-blue-300">
-                    {selectedRules.length} rule{selectedRules.length > 1 ? 's' : ''} selected
+                    {t('categoryRules.selectedRules', { count: selectedRules.length, suffix: selectedRules.length > 1 ? 's' : '' })}
                   </span>
                   <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                     <button
@@ -97,14 +98,14 @@ export function CategoryRulesPanel({
                       className="flex items-center justify-center gap-1 px-3 py-1 bg-blue-500 dark:bg-blue-600 text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700 text-sm w-full sm:w-auto"
                     >
                       <Edit2 size={14} />
-                      Change Category
+                      {t('categoryRules.changeCategory')}
                     </button>
                     <button
                       onClick={handleBatchRuleDelete}
                       className="flex items-center justify-center gap-1 px-3 py-1 bg-red-500 dark:bg-red-600 text-white rounded hover:bg-red-600 dark:hover:bg-red-700 text-sm w-full sm:w-auto"
                     >
                       <Trash2 size={14} />
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </div>
                 </div>
@@ -151,9 +152,9 @@ export function CategoryRulesPanel({
                           className="cursor-pointer"
                         />
                       </th>
-                      <th className="text-left p-2 dark:text-white">Pattern</th>
-                      <th className="text-left p-2 dark:text-white">Category</th>
-                      <th className="text-center p-2 dark:text-white">Actions</th>
+                      <th className="text-left p-2 dark:text-white">{t('categoryRules.pattern')}</th>
+                      <th className="text-left p-2 dark:text-white">{t('common.category')}</th>
+                      <th className="text-center p-2 dark:text-white">{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -195,18 +196,18 @@ export function CategoryRulesPanel({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-xl font-bold mb-4 dark:text-white">
-              Change Category for {selectedRules.length} Rule(s)
+              {t('categoryRules.batchTitle', { count: selectedRules.length })}
             </h3>
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                New Category:
+                {t('categoryRules.newCategory')}
               </label>
               <input
                 type="text"
                 value={batchRuleCategory}
                 onChange={(e) => setBatchRuleCategory(e.target.value)}
-                placeholder="Enter category name"
+                placeholder={t('categoryRules.enterCategoryName')}
                 className={formClasses.input}
                 list="batch-rule-categories-list"
               />
@@ -225,14 +226,14 @@ export function CategoryRulesPanel({
                 }}
                 className={buttonClasses.secondary}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={applyBatchRuleEdit}
                 disabled={!batchRuleCategory.trim()}
                 className={`${buttonClasses.primary} disabled:bg-gray-400 disabled:cursor-not-allowed`}
               >
-                Apply to {selectedRules.length} Rule(s)
+                {t('categoryRules.applyToRules', { count: selectedRules.length })}
               </button>
             </div>
           </div>

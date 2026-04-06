@@ -8,6 +8,7 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { formatDateToDDMMYY } from './utils/dates';
 import { autoCategorizeTrans, learnCategoryFromTransactions } from './utils/categories';
 import { buttonClasses, cardClasses, formClasses, textClasses } from './utils/tailwindClasses';
+import { createTranslator } from './utils/i18n';
 
 // Import components
 import { AppShellHeader } from './components/AppShellHeader';
@@ -159,6 +160,8 @@ export default function BudgetTracker() {
   const [isMobileChart, setIsMobileChart] = useState(() => window.innerWidth < 640);
   const [categoryChartMode, setCategoryChartMode] = useState('stacked');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'en');
+  const t = useMemo(() => createTranslator(language), [language]);
   
   // Import error state
   const [importErrors, setImportErrors] = useState(null);
@@ -180,6 +183,10 @@ export default function BudgetTracker() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('language', language);
+  }, [language]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1144,7 +1151,7 @@ export default function BudgetTracker() {
   if (initializing) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-        <div className="text-white text-2xl">Loading...</div>
+        <div className="text-white text-2xl">{t('common.loading')}</div>
       </div>
     );
   }
@@ -1163,6 +1170,9 @@ export default function BudgetTracker() {
       handleAuth={handleAuth}
       darkMode={darkMode}
       setDarkMode={setDarkMode}
+      language={language}
+      setLanguage={setLanguage}
+      t={t}
     />;
   }
 
@@ -1202,6 +1212,9 @@ export default function BudgetTracker() {
           switchAccount={switchAccount}
           transactions={transactions}
           userEmail={user.email}
+          language={language}
+          setLanguage={setLanguage}
+          t={t}
         />
 
         <div className={(activeMainTab === 'joint' || activeMainTab === 'savings') ? '' : cardClasses.default}>
@@ -1227,6 +1240,7 @@ export default function BudgetTracker() {
               showBatchRuleEdit={showBatchRuleEdit}
               toggleSelectAllRules={toggleSelectAllRules}
               toggleSelectRule={toggleSelectRule}
+              t={t}
             />
           )}
 
@@ -1248,6 +1262,7 @@ export default function BudgetTracker() {
               setReplacementCategory={setReplacementCategory}
               setShowCategoryManager={setShowCategoryManager}
               transactions={transactions}
+              t={t}
             />
           )}
 
@@ -1255,13 +1270,13 @@ export default function BudgetTracker() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className={cardClasses.info}>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Balance</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('app.totalBalance')}</div>
                   <div className={`text-2xl font-bold ${stats.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     €{stats.total.toFixed(2)}
                   </div>
                 </div>
                 <div className={cardClasses.danger}>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Spending</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('app.totalSpending')}</div>
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                     €{stats.spending.toFixed(2)}
                   </div>
@@ -1276,10 +1291,10 @@ export default function BudgetTracker() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden shrink-0">
                         {[
-                          { value: 'all', label: 'All' },
-                          { value: 'year', label: 'Year' },
-                          { value: 'month', label: 'Month' },
-                          { value: 'dateRange', label: 'Range' },
+                          { value: 'all', label: t('common.all') },
+                          { value: 'year', label: t('common.year') },
+                          { value: 'month', label: t('common.month') },
+                          { value: 'dateRange', label: t('common.range') },
                           ].map(({ value, label }) => {
                             const isActive = value === 'all'
                               ? filter.dateFilterType === 'all' && !filter.currentMonth
@@ -1326,7 +1341,7 @@ export default function BudgetTracker() {
                           : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600'
                       }`}
                     >
-                      Current Month
+                      {t('app.currentMonth')}
                     </button>
                   </div>
                 </div>
@@ -1334,13 +1349,13 @@ export default function BudgetTracker() {
                 {/* Row 2: Date sub-filters */}
                 {filter.dateFilterType === 'year' && (
                   <div className="flex gap-2 items-center">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Year:</label>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">{t('common.year')}:</label>
                     <select
                       value={filter.year}
                       onChange={(e) => setFilter({...filter, year: e.target.value})}
                       className={formClasses.selectSm}
                     >
-                      <option value="">Select Year</option>
+                      <option value="">{t('app.selectYear')}</option>
                       {years.map(year => (
                         <option key={year} value={year}>{year}</option>
                       ))}
@@ -1351,13 +1366,13 @@ export default function BudgetTracker() {
                 {filter.dateFilterType === 'month' && (
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="flex gap-2 items-center w-full sm:w-auto">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">Month:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">{t('common.month')}:</label>
                       <select
                         value={filter.month.startsWith('__') ? '' : filter.month}
                         onChange={(e) => setFilter({...filter, currentMonth: false, month: e.target.value})}
                         className={formClasses.selectSm}
                       >
-                        <option value="">Select Month</option>
+                        <option value="">{t('app.selectMonth')}</option>
                         {months.map(month => (
                           <option key={month} value={month}>{formatMonthDisplay(month)}</option>
                         ))}
@@ -1365,9 +1380,9 @@ export default function BudgetTracker() {
                     </div>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                       {[
-                        { value: '__last_month__', label: 'Last Month' },
-                        { value: '__last_3_months__', label: 'Last 3 Months' },
-                        { value: '__last_6_months__', label: 'Last 6 Months' },
+                        { value: '__last_month__', label: t('app.lastMonth') },
+                        { value: '__last_3_months__', label: t('app.last3Months') },
+                        { value: '__last_6_months__', label: t('app.last6Months') },
                       ].map(({ value, label }) => {
                         const isActive = !filter.currentMonth && filter.month === value;
 
@@ -1392,7 +1407,7 @@ export default function BudgetTracker() {
                 {filter.dateFilterType === 'dateRange' && (
                   <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">From:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">{t('common.from')}</label>
                       <input
                         type="date"
                         value={filter.startDate}
@@ -1401,7 +1416,7 @@ export default function BudgetTracker() {
                       />
                     </div>
                     <div className="flex gap-2 items-center">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">To:</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">{t('common.to')}</label>
                       <input
                         type="date"
                         value={filter.endDate}
@@ -1431,6 +1446,7 @@ export default function BudgetTracker() {
             setSalaryInputs={setSalaryInputs}
             totalSalaries={totalSalaries}
             totalToSplit={totalToSplit}
+            t={t}
           />
         )}
 
@@ -1455,6 +1471,7 @@ export default function BudgetTracker() {
             setNewSavingsAccount={setNewSavingsAccount}
             setNewSavingsTransaction={setNewSavingsTransaction}
             startEditSavingsAccount={startEditSavingsAccount}
+            t={t}
           />
         )}
 
@@ -1473,6 +1490,8 @@ export default function BudgetTracker() {
             setFilter={setFilter}
             setShowCategoryDropdown={setShowCategoryDropdown}
             showCategoryDropdown={showCategoryDropdown}
+            t={t}
+            language={language}
           />
         )}
 
@@ -1501,6 +1520,7 @@ export default function BudgetTracker() {
             sortConfig={sortConfig}
             toggleSelectAll={toggleSelectAll}
             toggleSelectTransaction={toggleSelectTransaction}
+            t={t}
           />
         )}
 
@@ -1512,7 +1532,7 @@ export default function BudgetTracker() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-md w-full">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold dark:text-white">Batch Edit Transactions</h2>
+                  <h2 className="text-2xl font-bold dark:text-white">{t('app.batchEditTransactions')}</h2>
                   <button
                     onClick={cancelBatchEdit}
                     className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
@@ -1523,21 +1543,21 @@ export default function BudgetTracker() {
 
                 <div className={cardClasses.info}>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Editing {selectedTransactions.length} transaction(s)
+                    {t('app.editingTransactions', { count: selectedTransactions.length })}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                    Leave fields empty to keep existing values
+                    {t('app.leaveEmpty')}
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Description (optional)
+                      {t('app.descriptionOptional')}
                     </label>
                     <input
                       type="text"
-                      placeholder="New description for all selected"
+                      placeholder={t('app.newDescriptionAll')}
                       value={batchEditForm.description}
                       onChange={(e) => setBatchEditForm({...batchEditForm, description: e.target.value})}
                       className={`${formClasses.inputLg} ${textClasses.placeholder}`}
@@ -1546,23 +1566,23 @@ export default function BudgetTracker() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Category (optional)
+                      {t('app.categoryOptional')}
                     </label>
                     <select
                       value={batchEditForm.category}
                       onChange={(e) => setBatchEditForm({...batchEditForm, category: e.target.value})}
                       className={formClasses.inputLg}
                     >
-                      <option value="">-- Keep existing categories --</option>
+                      <option value="">{t('app.keepExistingCategories')}</option>
                       {categories.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
-                      <option value="__new__">+ Create New Category</option>
+                      <option value="__new__">{t('app.createNewCategory')}</option>
                     </select>
                     {batchEditForm.category === '__new__' && (
                       <input
                         type="text"
-                        placeholder="Enter new category name"
+                        placeholder={t('app.enterNewCategoryName')}
                         value={newBatchCategoryName}
                         onChange={(e) => setNewBatchCategoryName(e.target.value)}
                         className={`${formClasses.inputLg} ${textClasses.placeholder} mt-2`}
@@ -1577,14 +1597,14 @@ export default function BudgetTracker() {
                     onClick={cancelBatchEdit}
                     className={buttonClasses.secondary}
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     onClick={applyBatchEdit}
                     disabled={!batchEditForm.description && (batchEditForm.category === '__new__' ? !newBatchCategoryName : !batchEditForm.category)}
                     className={`${buttonClasses.primaryLg} disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed`}
                   >
-                    Apply Changes
+                    {t('app.applyChanges')}
                   </button>
                 </div>
               </div>
