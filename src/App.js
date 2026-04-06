@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 // Import utility functions
 import { formatDateToDDMMYY } from './utils/dates';
-import { autoCategorizeTrans } from './utils/categories';
+import { autoCategorizeTrans, guessCategoryWithAI } from './utils/categories';
 import { buttonClasses, cardClasses, formClasses, textClasses } from './utils/tailwindClasses';
 import { createTranslator } from './utils/i18n';
 
@@ -558,12 +558,15 @@ export default function BudgetTracker() {
         
         const description = row['Description'] || '';
         const autoCategory = autoCategorizeTrans(description, categoryRules);
+        const guessedCategory = autoCategory !== 'Uncategorized'
+          ? autoCategory
+          : guessCategoryWithAI(description, categories);
         
         const transaction = {
           id: Date.now() + idx,
           date: formatDateToDDMMYY(row['Started Date'] || row.Date || ''),
           description: description,
-          category: autoCategory,
+          category: guessedCategory,
           amount: parseFloat(row.Amount) || 0,
           type: row.Type || '',
           state: row.State || ''
