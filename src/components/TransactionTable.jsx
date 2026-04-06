@@ -24,18 +24,19 @@ export function TransactionTable({
   showCategoryDropdown,
   sortConfig,
   toggleSelectAll,
-  toggleSelectTransaction
+  toggleSelectTransaction,
+  t
 }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold dark:text-white">Transactions ({filteredTransactions.length})</h2>
+        <h2 className="text-xl font-bold dark:text-white">{t('transactionTable.title', { count: filteredTransactions.length })}</h2>
         <button
           onClick={handleAdd}
           className="flex items-center gap-2 px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition"
         >
           <Plus size={20} />
-          <span className="hidden sm:inline">Add Transaction</span>
+          <span className="hidden sm:inline">{t('transactionTable.addTransaction')}</span>
         </button>
       </div>
 
@@ -45,7 +46,7 @@ export function TransactionTable({
             onClick={() => setShowCategoryDropdown((prev) => !prev)}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center justify-between"
           >
-            <span>{filter.categories.length === 0 ? 'All Categories' : `${filter.categories.length} selected`}</span>
+            <span>{filter.categories.length === 0 ? t('transactionTable.allCategories') : t('transactionTable.selectedCount', { count: filter.categories.length })}</span>
             <span>▼</span>
           </button>
           <div className={`${showCategoryDropdown ? 'block' : 'hidden'} absolute top-full mt-1 left-0 right-0 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto`}>
@@ -57,7 +58,7 @@ export function TransactionTable({
                   onChange={() => setFilter({ ...filter, categories: [] })}
                   className="cursor-pointer"
                 />
-                <span className="text-sm dark:text-white">All Categories</span>
+                <span className="text-sm dark:text-white">{t('transactionTable.allCategories')}</span>
               </label>
               {categories.map((cat) => (
                 <label key={cat} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
@@ -82,7 +83,7 @@ export function TransactionTable({
         <div className="flex gap-3 flex-wrap items-center">
           <input
             type="text"
-            placeholder="Search Description..."
+            placeholder={t('transactionTable.searchDescription')}
             value={filter.description}
             onChange={(e) => setFilter({ ...filter, description: e.target.value })}
             className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
@@ -93,26 +94,26 @@ export function TransactionTable({
       {selectedTransactions.length > 0 && (
         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex flex-wrap gap-2 items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {selectedTransactions.length} transaction(s) selected
+            {t('transactionTable.selectedTransactions', { count: selectedTransactions.length })}
           </span>
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={handleBatchEdit}
               className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition text-sm"
             >
-              Batch Edit
+              {t('transactionTable.batchEdit')}
             </button>
             <button
               onClick={handleBatchDelete}
               className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700 transition text-sm"
             >
-              Delete
+              {t('common.delete')}
             </button>
             <button
               onClick={() => setSelectedTransactions([])}
               className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition text-sm"
             >
-              Clear
+              {t('transactionTable.clear')}
             </button>
           </div>
         </div>
@@ -130,7 +131,7 @@ export function TransactionTable({
                     onChange={() => toggleSelectTransaction(transaction.id)}
                     className="cursor-pointer"
                   />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Editing transaction</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{t('transactionTable.editingTransaction')}</span>
                 </div>
 
                 <input
@@ -242,17 +243,17 @@ export function TransactionTable({
                 onClick={() => handleSort('date')}
               >
                 <div className="flex items-center gap-1">
-                  Date
+                  {t('common.date')}
                   {sortConfig.key === 'date' && <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>}
                 </div>
               </th>
-              <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
+              <th className="text-left py-2 px-2 dark:text-gray-300">{t('common.description')}</th>
               <th
                 className="text-left py-2 px-2 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
                 onClick={() => handleSort('category')}
               >
                 <div className="flex items-center gap-1">
-                  Category
+                  {t('common.category')}
                   {sortConfig.key === 'category' && <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>}
                 </div>
               </th>
@@ -261,11 +262,11 @@ export function TransactionTable({
                 onClick={() => handleSort('amount')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  Amount
+                  {t('common.amount')}
                   {sortConfig.key === 'amount' && <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>}
                 </div>
               </th>
-              <th className="text-center py-2 px-2 dark:text-gray-300">Actions</th>
+              <th className="text-center py-2 px-2 dark:text-gray-300">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>

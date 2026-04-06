@@ -12,26 +12,27 @@ export function JointSplitSection({
   setJointTargetAmount,
   setSalaryInputs,
   totalSalaries,
-  totalToSplit
+  totalToSplit,
+  t
 }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
       <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Joint Account Split</h2>
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{t('joint.title')}</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Automatically includes current-month transactions where category contains "bill".
+            {t('joint.subtitle')}
           </p>
         </div>
         <div className="text-right">
-          <div className="text-sm text-gray-600 dark:text-gray-400">Target Joint Deposit</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">{t('joint.targetJointDeposit')}</div>
           <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">EUR {totalToSplit.toFixed(2)}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Bills reference: EUR {currentMonthBillsTotal.toFixed(2)}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('joint.billsReference', { amount: currentMonthBillsTotal.toFixed(2) })}</div>
         </div>
       </div>
 
       <div className="mb-4 max-w-sm">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total to Put in Joint Account</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('joint.totalToPut')}</label>
         <input
           type="number"
           step="0.01"
@@ -45,7 +46,7 @@ export function JointSplitSection({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 1</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('joint.salaryPerson1')}</label>
           <input
             type="number"
             step="0.01"
@@ -57,7 +58,7 @@ export function JointSplitSection({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Person 2</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('joint.salaryPerson2')}</label>
           <input
             type="number"
             step="0.01"
@@ -73,27 +74,27 @@ export function JointSplitSection({
       {totalSalaries > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
           <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
-            <div className="text-sm text-gray-600 dark:text-gray-300">Person 1 Contribution</div>
+            <div className="text-sm text-gray-600 dark:text-gray-300">{t('joint.person1Contribution')}</div>
             <div className="text-xl font-bold text-blue-700 dark:text-blue-300">EUR {person1Contribution.toFixed(2)}</div>
           </div>
           <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
-            <div className="text-sm text-gray-600 dark:text-gray-300">Person 2 Contribution</div>
+            <div className="text-sm text-gray-600 dark:text-gray-300">{t('joint.person2Contribution')}</div>
             <div className="text-xl font-bold text-green-700 dark:text-green-300">EUR {person2Contribution.toFixed(2)}</div>
           </div>
         </div>
       ) : (
         <div className="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-6">
-          Enter both salaries (or at least one) to calculate each person&apos;s pro-rate contribution.
+          {t('joint.enterSalaries')}
         </div>
       )}
 
       <div>
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">
-          Included Transactions ({currentMonthBillTransactions.length})
+          {t('joint.includedTransactions', { count: currentMonthBillTransactions.length })}
         </h3>
         {currentMonthBillTransactions.length === 0 ? (
           <div className="text-sm text-gray-600 dark:text-gray-400 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            No transactions found for this month with a category containing "bill".
+            {t('joint.noTransactions')}
           </div>
         ) : (
           <>
@@ -119,10 +120,10 @@ export function JointSplitSection({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="text-left py-2 px-2 dark:text-gray-300">Date</th>
-                    <th className="text-left py-2 px-2 dark:text-gray-300">Description</th>
-                    <th className="text-left py-2 px-2 dark:text-gray-300">Category</th>
-                    <th className="text-right py-2 px-2 dark:text-gray-300">Amount</th>
+                    <th className="text-left py-2 px-2 dark:text-gray-300">{t('common.date')}</th>
+                    <th className="text-left py-2 px-2 dark:text-gray-300">{t('common.description')}</th>
+                    <th className="text-left py-2 px-2 dark:text-gray-300">{t('common.category')}</th>
+                    <th className="text-right py-2 px-2 dark:text-gray-300">{t('common.amount')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -145,7 +146,7 @@ export function JointSplitSection({
 
       {currentMonthNonBillCount > 0 && (
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-          {currentMonthNonBillCount} other current-month transaction(s) are not included because their category does not contain "bill".
+          {t('joint.otherNotIncluded', { count: currentMonthNonBillCount })}
         </p>
       )}
     </div>
