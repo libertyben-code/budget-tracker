@@ -3,6 +3,7 @@
 html, body {
   margin: 0;
   padding: 0;
+  overflow-x: clip;
 }
 
 body {
@@ -31,6 +32,8 @@ button {
 
 input, select, textarea {
   font: inherit;
+  /* 16px floor: below it, mobile Safari zooms the page on focus */
+  font-size: 16px;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -38,6 +41,9 @@ input, select, textarea {
   padding: 8px 10px;
   max-width: 100%;
   min-height: 40px;
+}
+@media (pointer: coarse) {
+  input, select, textarea { min-height: 44px; }
 }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent);

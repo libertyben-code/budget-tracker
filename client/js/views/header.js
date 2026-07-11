@@ -1,4 +1,4 @@
-import { esc, toast } from '../dom.js';
+import { esc, icons, toast } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -12,23 +12,23 @@ export function render(state, t) {
   return `
   <header class="app-header">
     <div class="header-top">
-      <h1>💶 Budget Tracker</h1>
-      <button class="icon-btn" data-action="toggle-dark" title="${esc(t(state.ui.dark ? 'header.light' : 'header.dark'))}">${state.ui.dark ? '☀️' : '🌙'}</button>
+      <h1>${icons.wallet} Budget Tracker</h1>
+      <button class="icon-btn" data-action="toggle-dark" title="${esc(t(state.ui.dark ? 'header.light' : 'header.dark'))}">${state.ui.dark ? icons.sun : icons.moon}</button>
       <div class="dropdown">
-        <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">⚙️</button>
+        <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>
           <label class="menu-item" style="cursor:pointer">
-            📥 ${esc(t('header.importCsv'))}
+            ${icons.import} ${esc(t('header.importCsv'))}
             <input type="file" accept=".csv" data-action-change="import-csv" hidden>
           </label>
-          <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>📤 ${esc(t('header.exportCsv'))}</button>
-          <button class="menu-item" data-action="auto-categorize">✨ ${esc(t('header.autoCategorize'))}</button>
+          <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
+          <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" data-action="open-rules">🏷️ ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
-          <button class="menu-item" data-action="open-category-manager">🗂️ ${esc(t('header.manageCategories', { count: cats.length }))}</button>
+          <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
+          <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" data-action="toggle-lang">🌐 ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
+          <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
         </div>` : ''}
       </div>
     </div>
@@ -41,7 +41,7 @@ export function render(state, t) {
             ? `<span role="button" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">✕</span>` : ''}
         </button>`).join('')}
       ${state.addingAccount ? `
-        <input id="new-account-name" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account" style="min-height:36px">
+        <input id="new-account-name" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
         <button class="btn small" data-action="create-account">${esc(t('common.save'))}</button>
         <button class="btn small ghost" data-action="cancel-add-account">${esc(t('common.cancel'))}</button>
       ` : `
@@ -55,7 +55,7 @@ export function render(state, t) {
       <button class="tab ${state.ui.tab === 'savings' ? 'active' : ''}" data-action="nav" data-tab="savings">${esc(t('header.savings'))}</button>
     </nav>
   </header>
-  ${state.offline ? `<div class="banner offline" style="margin:12px 16px 0">📡 ${esc(t('common.offline'))}</div>` : ''}
+  ${state.offline ? `<div class="banner offline" style="margin:12px 16px 0">${icons.offline} ${esc(t('common.offline'))}</div>` : ''}
   ${importErrors ? `
   <div class="banner warning" style="margin:12px 16px 0">
     <div class="grow">

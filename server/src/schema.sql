@@ -52,5 +52,15 @@ CREATE TABLE IF NOT EXISTS savings_history (
 );
 CREATE INDEX IF NOT EXISTS idx_sh_account_ts ON savings_history(savings_account_id, timestamp DESC);
 
+-- day capped at 28 so every month has the deposit day
+CREATE TABLE IF NOT EXISTS savings_recurring (
+  id                 TEXT PRIMARY KEY,
+  savings_account_id TEXT NOT NULL REFERENCES savings_accounts(id) ON DELETE CASCADE,
+  amount             REAL NOT NULL,
+  day                INTEGER NOT NULL CHECK (day BETWEEN 1 AND 28),
+  next_date          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sr_account ON savings_recurring(savings_account_id);
+
 INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

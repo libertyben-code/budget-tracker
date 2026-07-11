@@ -1,4 +1,4 @@
-import { esc, eur, toast } from '../dom.js';
+import { esc, eur, icons, toast } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { filteredTransactions, categories, stats } from '../derive.js';
@@ -27,23 +27,24 @@ export function render(state, t) {
   const selection = state.selection;
   const allVisibleSelected = filtered.length > 0 && filtered.every(tx => selection.has(tx.id));
   const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
-  const catOptions = `<datalist id="cat-list">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>`;
 
+  const editCats = cats.includes('Uncategorized') ? cats : ['Uncategorized', ...cats];
   const editRow = (tx) => `
     <div class="tx-edit-grid" data-editing="${tx.id}">
       <input id="edit-date" type="date" value="${esc(tx.date)}">
-      <input id="edit-amount" type="number" step="0.01" value="${esc(tx.amount)}">
+      <input id="edit-amount" type="number" inputmode="decimal" step="0.01" value="${esc(tx.amount)}">
       <input id="edit-desc" class="span2" placeholder="${esc(t('common.description'))}" value="${esc(tx.description)}">
-      <input id="edit-cat" class="span2" list="cat-list" placeholder="${esc(t('common.category'))}" value="${esc(tx.category)}">
+      <select id="edit-cat" class="span2">
+        ${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+      </select>
       <button class="btn primary" data-action="save-tx" data-id="${tx.id}">${esc(t('common.save'))}</button>
       <button class="btn" data-action="cancel-edit">${esc(t('common.cancel'))}</button>
     </div>`;
 
   const cards = visible.map(tx => state.editingId === tx.id
-    ? `<div class="card tx-card">${editRow(tx)}</div>`
+    ? `<div class="card tx-card editing">${editRow(tx)}</div>`
     : `
-    <div class="card tx-card">
-      <input type="checkbox" data-action-change="select-tx" data-id="${tx.id}" ${selection.has(tx.id) ? 'checked' : ''}>
+    <div class="card tx-card selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
       <div class="tx-main">
         <span class="tx-desc">${esc(tx.description) || '<span class="muted">—</span>'}</span>
         <span class="tx-meta"><span>${esc(isoToDisplay(tx.date))}</span><span class="chip">${esc(tx.category)}</span></span>
@@ -51,37 +52,36 @@ export function render(state, t) {
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</span>
         <span>
-          <button class="icon-btn" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">✏️</button>
-          <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">🗑️</button>
+          <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
+          <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">${icons.trash}</button>
         </span>
       </div>
     </div>`).join('');
 
   const tableRows = visible.map(tx => state.editingId === tx.id
-    ? `<tr><td colspan="6">${editRow(tx)}</td></tr>`
+    ? `<tr><td colspan="5">${editRow(tx)}</td></tr>`
     : `
-    <tr>
-      <td><input type="checkbox" data-action-change="select-tx" data-id="${tx.id}" ${selection.has(tx.id) ? 'checked' : ''}></td>
+    <tr class="selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
       <td class="num">${esc(isoToDisplay(tx.date))}</td>
       <td>${esc(tx.description)}</td>
       <td><span class="chip">${esc(tx.category)}</span></td>
       <td class="amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</td>
       <td style="white-space:nowrap">
-        <button class="icon-btn" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">✏️</button>
-        <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">🗑️</button>
+        <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
+        <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">${icons.trash}</button>
       </td>
     </tr>`).join('');
 
   return `
-  <section class="view">
+  <section class="view ${selection.size > 0 ? 'has-selection' : ''}">
     ${renderTiles(state, t)}
     ${renderFilters(state, t)}
     ${selection.size > 0 ? `
     <div class="selection-bar">
-      <span class="grow">${esc(t('transactionTable.selectedTransactions', { count: selection.size }))}</span>
+      <span class="grow">${esc(t('transactionTable.selectedCount', { count: selection.size }))}</span>
       <button class="btn small primary" data-action="open-batch-edit">${esc(t('transactionTable.batchEdit'))}</button>
-      <button class="btn small danger" data-action="batch-delete">${esc(t('common.delete'))}</button>
-      <button class="btn small" data-action="clear-selection">${esc(t('transactionTable.clear'))}</button>
+      <button class="btn small danger" data-action="batch-delete" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icons.trash}</button>
+      <button class="btn small ghost" data-action="clear-selection" title="${esc(t('transactionTable.clear'))}" aria-label="${esc(t('transactionTable.clear'))}">✕</button>
     </div>` : ''}
     <div class="card">
       <div class="row" style="margin-bottom:12px">
@@ -89,15 +89,13 @@ export function render(state, t) {
         <label class="row" style="gap:6px;font-size:0.85rem;color:var(--muted)">
           <input type="checkbox" data-action-change="select-all" ${allVisibleSelected ? 'checked' : ''}> ${esc(t('common.all'))}
         </label>
-        <button class="btn primary" data-action="add-tx">＋ ${esc(t('transactionTable.addTransaction'))}</button>
+        <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
       </div>
-      ${catOptions}
       <div class="tx-cards">${cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
       <div class="tx-table">
         <table>
           <thead>
             <tr>
-              <th></th>
               <th class="sortable" data-action="sort" data-key="date">${esc(t('common.date'))}${sortIndicator('date')}</th>
               <th>${esc(t('common.description'))}</th>
               <th class="sortable" data-action="sort" data-key="category">${esc(t('common.category'))}${sortIndicator('category')}</th>
@@ -122,7 +120,7 @@ function readEditForm() {
     date: document.getElementById('edit-date')?.value || todayIso(),
     amount: parseFloat(document.getElementById('edit-amount')?.value) || 0,
     description: document.getElementById('edit-desc')?.value.trim() || '',
-    category: document.getElementById('edit-cat')?.value.trim() || 'Uncategorized',
+    category: document.getElementById('edit-cat')?.value || 'Uncategorized',
   };
 }
 
@@ -179,11 +177,11 @@ export const actions = {
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
     }
   },
-  'select-tx': (el) => {
+  'toggle-select': (el) => {
     const selection = new Set(get().selection);
     const id = Number(el.dataset.id);
-    if (el.checked) selection.add(id);
-    else selection.delete(id);
+    if (selection.has(id)) selection.delete(id);
+    else selection.add(id);
     set({ selection });
   },
   'select-all': (el) => {

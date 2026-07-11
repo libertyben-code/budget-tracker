@@ -109,7 +109,7 @@ Every release entry in `CHANGELOG.md` must follow this format:
   - `docs: update README for new export feature`
   - `chore: bump version to 1.1.0`
 - Always `git push` immediately after each commit — no local-only commits
-- Always add `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` at the end
+- Always add `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` at the end
 
 ---
 
@@ -184,6 +184,17 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-07-11 — v2 UI revamp: responsive layout, charts, filters, savings recurring (branch: feature/v2-ui-revamp)
+
+- Responsive pass — no horizontal page scroll at phone widths (grid/flex `min-width: 0` fixes, `overflow-x: clip`, charts fit the viewport instead of scrolling). Phone-friendly inputs: 16px font (no iOS focus zoom), `inputmode="decimal"` on amounts, 44px touch targets on coarse pointers.
+- Filters: single chip row (This Month · Last Month · 3M · 6M · Month… · Year… · Range… · All) replaces the date-type segmented control + separate Current Month toggle + preset buttons.
+- Dashboard charts rebuilt (dataviz-validated): Spending by Category → horizontal bars with € labels; Monthly Overview → income vs spending bars; per-month stacked/grouped chart fits the screen with a shared 6M/12M/All trend-range picker (trend charts ignore the time filter to avoid the single-point trap). New CVD-safe chart palette with dedicated dark-mode steps; stable per-category colors with top-7 + "Other" folding.
+- Transactions: tap-to-select cards/table rows (per-row checkboxes removed), floating bottom selection bar (no layout shift), inline category edit is a dropdown of existing categories only, add button reduced to ＋.
+- Joint Split: duplicate "Total to put" tile removed; coherent field layout.
+- Savings: hero centered Total Saved (subtitle removed), split-by-account chart as horizontal bars placed above the accounts list, per-account deposit/withdraw + history, add-account behind a ＋ toggle next to the title. **New feature: recurring monthly deposits** — `savings_recurring` table, rules applied lazily with catch-up on account data load, idempotent via deterministic history ids; UI to add/list/delete rules per savings account.
+- All emoji icons replaced with inline SVG icons (`client/js/dom.js` `icons`): edit/trash (accent/danger), header wallet/moon/sun/gear, settings menu, offline banner, recurring.
+- `sw.js` CACHE bumped to `bt-static-v2`. README/MAINTAINER still describe v1 — rewrite deferred to cutover (tracked in BACKLOG).
 
 ### 2026-07-11 — v2 self-hosted rewrite baseline (branch: feature/v2-rewrite)
 

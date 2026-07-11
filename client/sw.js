@@ -1,4 +1,4 @@
-const CACHE = 'bt-static-v1';
+const CACHE = 'bt-static-v2';
 
 const SHELL = [
   '/',

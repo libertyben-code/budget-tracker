@@ -59,6 +59,43 @@ export function importTransactions(db, accountId, rows) {
   return { imported, skippedDuplicates };
 }
 
+function monthDate(year, month, day) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function nextMonthDate(iso, day) {
+  const [y, m] = iso.split('-').map(Number);
+  return m === 12 ? monthDate(y + 1, 1, day) : monthDate(y, m + 1, day);
+}
+
+function applyDueRecurring(db, accountId) {
+  const rules = db.prepare(`
+    SELECT r.id, r.savings_account_id AS sid, r.amount, r.day, r.next_date AS nextDate
+    FROM savings_recurring r JOIN savings_accounts s ON s.id = r.savings_account_id
+    WHERE s.account_id = ?
+  `).all(accountId);
+  const today = todayIso();
+  db.transaction(() => {
+    for (const rule of rules) {
+      let next = rule.nextDate;
+      while (next <= today) {
+        // deterministic id makes each occurrence apply-once even if next_date is ever rewound
+        const inserted = db.prepare(
+          'INSERT OR IGNORE INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(`rec_${rule.id}_${next}`, rule.sid, next, 'deposit', rule.amount, Date.now()).changes;
+        if (inserted) {
+          db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2) WHERE id = ?')
+            .run(rule.amount, rule.sid);
+        }
+        next = nextMonthDate(next, rule.day);
+      }
+      if (next !== rule.nextDate) {
+        db.prepare('UPDATE savings_recurring SET next_date = ? WHERE id = ?').run(next, rule.id);
+      }
+    }
+  })();
+}
+
 export function createApiRouter(db) {
   const router = express.Router();
 
@@ -81,17 +118,22 @@ export function createApiRouter(db) {
   // --- Accounts ---
 
   router.get('/accounts/:id/data', requireAccount, (req, res) => {
+    applyDueRecurring(db, req.params.id);
     const transactions = db.prepare(`SELECT ${txColumns} FROM transactions WHERE account_id = ? ORDER BY date DESC, id DESC`)
       .all(req.params.id);
     const savingsAccounts = db.prepare('SELECT id, name, balance FROM savings_accounts WHERE account_id = ?')
       .all(req.params.id);
     const savingsHistory = {};
+    const savingsRecurring = {};
     for (const s of savingsAccounts) {
       savingsHistory[s.id] = db.prepare(
         'SELECT id, date, type, amount, timestamp FROM savings_history WHERE savings_account_id = ? ORDER BY timestamp DESC'
       ).all(s.id);
+      savingsRecurring[s.id] = db.prepare(
+        'SELECT id, amount, day, next_date AS nextDate FROM savings_recurring WHERE savings_account_id = ? ORDER BY day'
+      ).all(s.id);
     }
-    res.json({ transactions, savingsAccounts, savingsHistory });
+    res.json({ transactions, savingsAccounts, savingsHistory, savingsRecurring });
   });
 
   router.post('/accounts', (req, res) => {
@@ -337,6 +379,29 @@ export function createApiRouter(db) {
 
   router.delete('/savings/:sid', (req, res) => {
     db.prepare('DELETE FROM savings_accounts WHERE id = ?').run(req.params.sid);
+    res.status(204).end();
+  });
+
+  router.post('/savings/:sid/recurring', (req, res) => {
+    const account = db.prepare('SELECT id FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    if (!account) return res.status(404).json({ error: 'Savings account not found' });
+    const amount = Number(req.body.amount);
+    const day = Number(req.body.day);
+    if (Number.isNaN(amount) || amount <= 0 || !Number.isInteger(day) || day < 1 || day > 28) {
+      return res.status(400).json({ error: 'positive amount and day 1-28 required' });
+    }
+    const today = todayIso();
+    const [y, m] = today.split('-').map(Number);
+    let nextDate = monthDate(y, m, day);
+    if (nextDate < today) nextDate = nextMonthDate(nextDate, day);
+    const id = `rec_${Date.now()}`;
+    db.prepare('INSERT INTO savings_recurring (id, savings_account_id, amount, day, next_date) VALUES (?, ?, ?, ?, ?)')
+      .run(id, req.params.sid, amount, day, nextDate);
+    res.status(201).json({ id, amount, day, nextDate });
+  });
+
+  router.delete('/savings/recurring/:rid', (req, res) => {
+    db.prepare('DELETE FROM savings_recurring WHERE id = ?').run(req.params.rid);
     res.status(204).end();
   });
 

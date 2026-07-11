@@ -1,4 +1,4 @@
-import { esc } from '../dom.js';
+import { esc, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { loadAccount } from '../app.js';
@@ -30,8 +30,8 @@ export function render(state, t) {
         <div class="panel-list-item">
           <span class="grow">${esc(c)}</span>
           <span class="badge">${esc(t('categoryManager.transactionCount', { count: counts[c], suffix: counts[c] > 1 ? 's' : '' }))}</span>
-          <button class="icon-btn" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}">✏️</button>
-          <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">🗑️</button>
+          <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}">${icons.edit}</button>
+          <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">${icons.trash}</button>
         </div>`).join('')}
       </div>
       ${deleting ? `

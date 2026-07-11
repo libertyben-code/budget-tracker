@@ -13,25 +13,19 @@ export function render(state, t) {
     <div class="card">
       <h2>${esc(t('joint.title'))}</h2>
       <p class="muted">${esc(t('joint.subtitle'))}</p>
-      <div class="tiles" style="grid-template-columns:1fr 1fr">
-        <div class="field" style="margin:0">
-          <label>${esc(t('joint.targetJointDeposit'))}</label>
-          <input id="joint-target" type="number" step="0.01" value="${esc(account.jointTargetAmount ?? '2100')}" data-action-change="joint-target">
-          <span class="muted" style="font-size:0.8rem">${esc(t('joint.billsReference', { amount: joint.billsTotal.toFixed(2) }))}</span>
-        </div>
-        <div class="tile card" style="box-shadow:none">
-          <div class="label">${esc(t('joint.totalToPut'))}</div>
-          <div class="value">${eur(joint.totalToSplit)}</div>
-        </div>
+      <div class="field">
+        <label>${esc(t('joint.targetJointDeposit'))}</label>
+        <input id="joint-target" type="number" inputmode="decimal" step="0.01" value="${esc(account.jointTargetAmount ?? '2100')}" data-action-change="joint-target">
+        <span class="muted" style="font-size:0.8rem">${esc(t('joint.billsReference', { amount: joint.billsTotal.toFixed(2) }))}</span>
       </div>
-      <div class="tiles" style="grid-template-columns:1fr 1fr">
+      <div class="tiles" style="margin-bottom:0">
         <div class="field" style="margin:0">
           <label>${esc(t('joint.salaryPerson1'))}</label>
-          <input type="number" step="0.01" value="${esc(account.salaryPerson1 ?? '')}" data-action-change="joint-salary1">
+          <input type="number" inputmode="decimal" step="0.01" value="${esc(account.salaryPerson1 ?? '')}" data-action-change="joint-salary1">
         </div>
         <div class="field" style="margin:0">
           <label>${esc(t('joint.salaryPerson2'))}</label>
-          <input type="number" step="0.01" value="${esc(account.salaryPerson2 ?? '')}" data-action-change="joint-salary2">
+          <input type="number" inputmode="decimal" step="0.01" value="${esc(account.salaryPerson2 ?? '')}" data-action-change="joint-salary2">
         </div>
       </div>
       ${joint.hasSalaries ? `

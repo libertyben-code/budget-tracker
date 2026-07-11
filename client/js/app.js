@@ -121,6 +121,7 @@ export async function loadAccount(accountId) {
     transactions: data.transactions,
     savingsAccounts: data.savingsAccounts,
     savingsHistory: data.savingsHistory,
+    savingsRecurring: data.savingsRecurring,
     selection: new Set(),
     editingId: null,
     visibleCount: 100,
@@ -152,6 +153,7 @@ async function boot() {
       transactions: data.transactions,
       savingsAccounts: data.savingsAccounts,
       savingsHistory: data.savingsHistory,
+      savingsRecurring: data.savingsRecurring,
     });
   } catch {
     set({ loaded: true, offline: true });
