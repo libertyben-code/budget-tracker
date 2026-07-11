@@ -58,6 +58,8 @@ git push
 
 ## Version management
 
+> **Paused as of 2026-07-11**: version bumping is on hold for now — do not bump `package.json` or tag releases on merge until this note is removed. Rules below still describe the intended process for when bumping resumes.
+
 ### Rules
 
 | Rule | Detail |
