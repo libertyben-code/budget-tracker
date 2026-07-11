@@ -185,6 +185,18 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-07-11 — v2 self-hosted rewrite baseline (branch: feature/v2-rewrite)
+
+- Built the full v2 stack alongside the old CRA app (old `src/` untouched, kept as reference until parity cutover):
+  - `server/` — Express 5 + better-sqlite3, ~25 REST endpoints (transactions, batch ops, CSV import/export, rules, category rename/delete propagation, savings, multi-account). CSV import pipeline (skip REVERTED/PENDING → dedup → rules-then-keyword categorization) is server-side and reusable for a future bank connector.
+  - `client/` — full plain HTML/CSS/JS rewrite, native ES modules, no build step; Chart.js v4 vendored. All v1 features rebuilt: transactions (inline edit/sort/pagination/multi-select/batch edit), filters, dashboard (3 charts + tiles), joint split, savings, multi-account, dark mode, EN/FR.
+  - `shared/` — categorization engine, date + CSV helpers used by both Node and browser. Dates now stored ISO in DB/API, displayed dd/mm/yy.
+  - PWA: manifest, network-first service worker with offline read-only fallback, generated icons.
+  - Deployment: Dockerfile, docker-compose.yml, update.sh (backup → pull → rebuild); `tailscale serve` provides HTTPS. See `docs/V2-SETUP.md`.
+  - `server/scripts/migrate-from-firestore.mjs` — one-time Firestore → SQLite migration (not yet run against real data).
+- Verified: 30-check API test suite passes (incl. double-import → 0 duplicates); headless-Chrome drive of all flows at phone + desktop sizes with zero JS errors.
+- Committed as a working baseline before a planned revamp session; not merged, no version bump (bumping paused).
+
 ### 2026-07-11 — Adopt WORKFLOW docs (branch: feature/adopt-workflow-docs)
 
 - Copied the `docs/` template into the repo and filled in project-specific content:
