@@ -270,7 +270,4 @@ This keeps filtering and chart rendering responsive as the dataset grows.
 
 ## Next Refactor Candidates
 
-- Category rules management panel.
-- Category manager panel.
-- Dashboard chart section.
 - Batch edit modal.
