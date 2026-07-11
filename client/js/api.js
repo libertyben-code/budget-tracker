@@ -42,4 +42,6 @@ export const api = {
   patchSavings: (id, patch) => request('PATCH', `/savings/${id}`, patch),
   deleteSavings: (id) => request('DELETE', `/savings/${id}`),
   savingsTransaction: (id, type, amount) => request('POST', `/savings/${id}/transactions`, { type, amount }),
+  createSavingsRecurring: (id, amount, day) => request('POST', `/savings/${id}/recurring`, { amount, day }),
+  deleteSavingsRecurring: (rid) => request('DELETE', `/savings/recurring/${rid}`),
 };

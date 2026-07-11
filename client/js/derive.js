@@ -1,6 +1,6 @@
 import { monthKey, todayIso, relativeMonthStart } from '/shared/dates.js';
 
-export function filteredTransactions(state) {
+export function filteredTransactions(state, { ignoreTime = false } = {}) {
   const { filter, sort } = state;
   const nowMonth = monthKey(todayIso());
 
@@ -8,6 +8,7 @@ export function filteredTransactions(state) {
     if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
     if (filter.description && !t.description.toLowerCase().includes(filter.description.toLowerCase())) return false;
     if (filter.categorySearch && !t.category.toLowerCase().includes(filter.categorySearch.toLowerCase())) return false;
+    if (ignoreTime) return true;
 
     const txMonth = monthKey(t.date);
     if (filter.currentMonth && txMonth !== nowMonth) return false;
@@ -72,31 +73,52 @@ export function stats(filtered) {
   return { total, spending, income };
 }
 
-export function categoryData(filtered, pieCategories) {
+export const OTHER = '__other__';
+
+// Slots are assigned from the full dataset so filtering never repaints a
+// surviving category. Past 8 spending categories, the smallest fold into OTHER.
+export function categoryPalette(state) {
+  const totals = {};
+  for (const t of state.transactions) {
+    if (t.amount >= 0) continue;
+    totals[t.category] = (totals[t.category] || 0) + Math.abs(t.amount);
+  }
+  const ranked = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+  const kept = (ranked.length <= 8 ? ranked : ranked.slice(0, 7)).sort();
+  return {
+    slotIndex: new Map(kept.map((c, i) => [c, i])),
+    fold: new Set(ranked.slice(kept.length)),
+  };
+}
+
+export function categoryData(filtered, pieCategories, palette) {
   const spending = {};
   for (const t of filtered) {
     if (t.amount >= 0) continue;
     if (pieCategories.length > 0 && !pieCategories.includes(t.category)) continue;
-    spending[t.category] = (spending[t.category] || 0) + Math.abs(t.amount);
+    const name = palette.fold.has(t.category) ? OTHER : t.category;
+    spending[name] = (spending[name] || 0) + Math.abs(t.amount);
   }
   return Object.entries(spending)
     .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => (a.name === OTHER) - (b.name === OTHER) || b.value - a.value);
 }
 
-export function categoryByMonthData(filtered) {
+export function categoryByMonthData(filtered, palette) {
   const byMonth = {};
   const cats = new Set();
   for (const t of filtered) {
     if (t.amount >= 0) continue;
     const m = monthKey(t.date);
     if (!m) continue;
+    const cat = palette.fold.has(t.category) ? OTHER : t.category;
     byMonth[m] = byMonth[m] || {};
-    byMonth[m][t.category] = (byMonth[m][t.category] || 0) + Math.abs(t.amount);
-    cats.add(t.category);
+    byMonth[m][cat] = (byMonth[m][cat] || 0) + Math.abs(t.amount);
+    cats.add(cat);
   }
   const monthKeys = Object.keys(byMonth).sort();
-  return { monthKeys, categories: [...cats].sort(), byMonth };
+  const categories = [...cats].sort((a, b) => (a === OTHER) - (b === OTHER) || a.localeCompare(b));
+  return { monthKeys, categories, byMonth };
 }
 
 export function monthlyData(filtered) {

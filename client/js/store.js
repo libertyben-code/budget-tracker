@@ -7,6 +7,7 @@ const state = {
   transactions: [],
   savingsAccounts: [],
   savingsHistory: {},
+  savingsRecurring: {},
   filter: {
     categories: [],
     description: '',
@@ -31,6 +32,7 @@ const state = {
     categoryDropdownOpen: null,
     pieCategories: [],
     chartMode: 'stacked',
+    chartRange: '6m',
     importErrors: null,
     panel: null,
     batchEditOpen: false,
@@ -41,7 +43,9 @@ const state = {
     editingCategory: null,
     deletingCategory: null,
     editingSavingsId: null,
+    addingSavings: false,
     openHistoryIds: new Set(),
+    openRecurringIds: new Set(),
   },
 };
 

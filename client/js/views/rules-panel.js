@@ -1,4 +1,4 @@
-import { esc } from '../dom.js';
+import { esc, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -57,7 +57,7 @@ export function render(state, t) {
           <input type="checkbox" data-action-change="select-rule" data-pattern="${esc(r.pattern)}" ${selection.has(r.pattern) ? 'checked' : ''}>
           <span class="grow">${esc(r.pattern)}</span>
           <span class="chip">${esc(r.category)}</span>
-          <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}">🗑️</button>
+          <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}">${icons.trash}</button>
         </div>`).join('') || `<p class="muted">—</p>`}
       </div>
     </div>
