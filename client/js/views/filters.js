@@ -36,7 +36,7 @@ export function render(state, t) {
   <div class="filter-bar card">
     <div class="filter-row">
       <div class="dropdown">
-        <button class="btn" data-action="toggle-cat-dropdown" data-which="filter">${esc(catLabel)} ▾</button>
+        <button class="btn select-btn" data-action="toggle-cat-dropdown" data-which="filter">${esc(catLabel)}</button>
         ${state.ui.categoryDropdownOpen === 'filter' ? `
         <div class="dropdown-menu left" data-keep-open>
           <label class="menu-item"><input type="checkbox" data-action-change="filter-cat-all" ${f.categories.length === 0 ? 'checked' : ''}> ${esc(t('transactionTable.allCategories'))}</label>

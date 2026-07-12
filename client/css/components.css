@@ -19,6 +19,18 @@
 .btn.small { min-height: 32px; padding: 4px 10px; font-size: 0.85rem; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.btn.select-btn {
+  background-color: var(--surface);
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+  justify-content: flex-start;
+  font-weight: 400;
+}
+.btn.small.select-btn { padding-right: 30px; background-position: right 9px center; background-size: 14px; }
+.btn.select-btn:hover { border-color: var(--accent); }
 
 .icon-btn {
   display: inline-flex;
@@ -164,8 +176,10 @@
 .seg button.active { background: var(--accent); color: #fff; }
 
 .tile { padding: var(--space-4); }
+.tile.total-tile { text-align: center; }
 .tile .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .tile .value { font-size: clamp(1.15rem, 4.2vw, 1.5rem); font-weight: 650; }
+.tile .value.big { font-size: clamp(1.5rem, 6vw, 2rem); }
 .tile .value.hero { font-size: clamp(2rem, 8vw, 2.75rem); }
 
 .toast {

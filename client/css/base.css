@@ -45,6 +45,18 @@ input, select, textarea {
 @media (pointer: coarse) {
   input, select, textarea { min-height: 44px; }
 }
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 38px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+select:hover { border-color: var(--accent); }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

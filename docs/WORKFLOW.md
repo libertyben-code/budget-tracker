@@ -185,6 +185,16 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-07-12 — v2 UI polish: savings cards, dashboard/joint tweaks, inline category, modern selects, account switcher (branch: feature/v2-ui-polish)
+
+- Savings: each account renders as its own card (was one wrapping card); Total Saved centered hero, subtitle removed; split-by-account chart moved above the account list; add-account behind a ＋ toggle beside the title.
+- Joint Split: contribution cards always visible (show €0.00 + hint when no salary) and centered with a clear gap above the salary inputs; the "includes… bill" explanation moved to sit under the Included Transactions header (bills total shown top-right there); removed the "N others not included" line.
+- Dashboard: balance/spending tiles centered and unified to one medium size shared with the Transactions tab (`renderTiles` no longer branches on a `hero` flag; `.tile.total-tile` + `.value.big`); trend-range picker (6M/12M/All) moved out of the top row into the Monthly Overview card header since it only scopes the two time-series charts; Spending-by-Category bars now show `€ · %`.
+- Transactions: unwrapped the list — the header (title/select-all/＋) sits on the page and each transaction is its own card (desktop table still one card); **inline category editing** — the category is a tappable `<select>` on cards and table rows (`set-category` action patches + learns a rule; a `noop` action stops the tap from also selecting the row).
+- Selects modernised app-wide: native `<select>` chrome replaced with `appearance:none` + a shared theme-aware `--chevron` token (tokens.css); category chips are pill-shaped; the category-filter and dashboard category buttons use a `.select-btn` style (dropped the `▾` glyph).
+- Account overflow fix: replaced the horizontally-overflowing account tab strip with an **account-switcher dropdown** (`accountMenuOpen` state) — current account button opens a scrollable menu of all accounts (delete + count badge each) with the New-Account form inside; scales to any count, never overflows.
+- No new i18n gaps; no server changes. sw.js cache stays `bt-static-v2` (v2 still unreleased).
+
 ### 2026-07-11 — v2 UI revamp: responsive layout, charts, filters, savings recurring (branch: feature/v2-ui-revamp)
 
 - Responsive pass — no horizontal page scroll at phone widths (grid/flex `min-width: 0` fixes, `overflow-x: clip`, charts fit the viewport instead of scrolling). Phone-friendly inputs: 16px font (no iOS focus zoom), `inputmode="decimal"` on amounts, 44px touch targets on coarse pointers.

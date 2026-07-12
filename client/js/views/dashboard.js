@@ -19,20 +19,12 @@ export function render(state, t) {
   <section class="view">
     ${renderTiles(state, t)}
     ${renderFilters(state, t)}
-    <div class="row" style="justify-content:flex-end;gap:8px">
-      <span class="muted" style="font-size:0.85rem">${esc(t('dashboard.trendRange'))}</span>
-      <div class="seg">
-        ${rangeBtn('6m', '6M')}
-        ${rangeBtn('12m', '12M')}
-        ${rangeBtn('all', t('common.all'))}
-      </div>
-    </div>
     <div class="charts">
       <div class="card">
         <div class="row" style="margin-bottom:8px">
           <h2 class="grow" style="margin:0">${esc(t('dashboard.spendingByCategory'))}</h2>
           <div class="dropdown">
-            <button class="btn small" data-action="toggle-cat-dropdown" data-which="pie">${esc(pieLabel)} ▾</button>
+            <button class="btn small select-btn" data-action="toggle-cat-dropdown" data-which="pie">${esc(pieLabel)}</button>
             ${state.ui.categoryDropdownOpen === 'pie' ? `
             <div class="dropdown-menu" data-keep-open>
               <label class="menu-item"><input type="checkbox" data-action-change="pie-cat-all" ${state.ui.pieCategories.length === 0 ? 'checked' : ''}> ${esc(t('dashboard.allCategories'))}</label>
@@ -44,7 +36,14 @@ export function render(state, t) {
         <div class="chart-box" id="hbar-box"><canvas id="chart-hbar"></canvas></div>
       </div>
       <div class="card">
-        <h2>${esc(t('dashboard.monthlyOverview'))}</h2>
+        <div class="row" style="margin-bottom:8px">
+          <h2 class="grow" style="margin:0">${esc(t('dashboard.monthlyOverview'))}</h2>
+          <div class="seg">
+            ${rangeBtn('6m', '6M')}
+            ${rangeBtn('12m', '12M')}
+            ${rangeBtn('all', t('common.all'))}
+          </div>
+        </div>
         <div class="chart-box"><canvas id="chart-flow"></canvas></div>
       </div>
       <div class="card chart-wide">
@@ -83,6 +82,7 @@ export function afterRender(state, t) {
   const hbarEl = document.getElementById('chart-hbar');
   if (hbarEl) {
     const data = categoryData(filtered, state.ui.pieCategories, palette);
+    const hbarTotal = data.reduce((sum, d) => sum + d.value, 0);
     const box = document.getElementById('hbar-box');
     if (box) box.style.height = `${Math.max(data.length * 36 + 24, 120)}px`;
     const valueLabels = {
@@ -94,7 +94,11 @@ export function afterRender(state, t) {
         ctx.font = `600 11px ${Chart.defaults.font.family}`;
         ctx.fillStyle = colors.text;
         ctx.textBaseline = 'middle';
-        meta.data.forEach((bar, i) => ctx.fillText(eur(chart.data.datasets[0].data[i]), bar.x + 6, bar.y));
+        meta.data.forEach((bar, i) => {
+          const value = chart.data.datasets[0].data[i];
+          const pct = hbarTotal > 0 ? Math.round((value / hbarTotal) * 100) : 0;
+          ctx.fillText(`${eur(value)} · ${pct}%`, bar.x + 6, bar.y);
+        });
         ctx.restore();
       },
     };
@@ -115,10 +119,14 @@ export function afterRender(state, t) {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { right: 64 } },
+        layout: { padding: { right: 104 } },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => eur(ctx.parsed.x) } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${eur(ctx.parsed.x)} (${hbarTotal > 0 ? ((ctx.parsed.x / hbarTotal) * 100).toFixed(1) : 0}%)`,
+            },
+          },
         },
         scales: {
           x: { display: false, beginAtZero: true },

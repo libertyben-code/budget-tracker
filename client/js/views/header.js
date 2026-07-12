@@ -6,6 +6,7 @@ import { loadAccount, refreshBootstrap } from '../app.js';
 
 export function render(state, t) {
   const cats = categories(state);
+  const activeAccount = state.accounts.find(a => a.id === state.activeAccountId) || state.accounts[0] || { name: '' };
   const importErrors = state.ui.importErrors;
   const shownLines = importErrors ? importErrors.lines.slice(0, 20).join(', ') : '';
 
@@ -32,21 +33,26 @@ export function render(state, t) {
         </div>` : ''}
       </div>
     </div>
-    <div class="account-bar">
-      ${state.accounts.map(a => `
-        <button class="account-tab ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
-          ${esc(a.name)}
-          ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
-          ${a.id !== 'default' && a.id === state.activeAccountId && state.accounts.length > 1
-            ? `<span role="button" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">✕</span>` : ''}
-        </button>`).join('')}
-      ${state.addingAccount ? `
-        <input id="new-account-name" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
-        <button class="btn small" data-action="create-account">${esc(t('common.save'))}</button>
-        <button class="btn small ghost" data-action="cancel-add-account">${esc(t('common.cancel'))}</button>
-      ` : `
-        <button class="account-tab" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>
-      `}
+    <div class="account-switcher">
+      <div class="dropdown">
+        <button class="btn select-btn account-btn" data-action="toggle-account-menu"><span class="account-name">${esc(activeAccount.name)}</span></button>
+        ${state.ui.accountMenuOpen ? `
+        <div class="dropdown-menu left" data-keep-open>
+          ${state.accounts.map(a => `
+          <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
+            <span class="grow">${esc(a.name)}</span>
+            ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
+            ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
+          </div>`).join('')}
+          <div class="menu-sep"></div>
+          ${state.addingAccount ? `
+          <div class="account-add">
+            <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
+            <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
+          </div>` : `
+          <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
+        </div>` : ''}
+      </div>
     </div>
     <nav class="tabs">
       <button class="tab ${state.ui.tab === 'dashboard' ? 'active' : ''}" data-action="nav" data-tab="dashboard">${esc(t('header.dashboard'))}</button>
@@ -79,11 +85,17 @@ export const actions = {
     localStorage.setItem('language', lang);
     setUi({ lang });
   },
-  'toggle-settings': () => setUi({ settingsOpen: !get().ui.settingsOpen }),
+  'toggle-settings': () => setUi({ settingsOpen: !get().ui.settingsOpen, accountMenuOpen: false }),
+  'toggle-account-menu': () => {
+    const open = get().ui.accountMenuOpen;
+    if (open) set({ addingAccount: false });
+    setUi({ accountMenuOpen: !open, settingsOpen: false });
+  },
   'nav': (el) => {
     location.hash = `#/${el.dataset.tab}`;
   },
   'switch-account': async (el) => {
+    setUi({ accountMenuOpen: false });
     if (el.dataset.id === get().activeAccountId) return;
     localStorage.setItem('activeAccountId', el.dataset.id);
     await loadAccount(el.dataset.id);
@@ -95,6 +107,7 @@ export const actions = {
     if (!name) return;
     const account = await api.createAccount(name);
     localStorage.setItem('activeAccountId', account.id);
+    setUi({ accountMenuOpen: false });
     set({ addingAccount: false, accounts: [...get().accounts, account] });
     await loadAccount(account.id);
   },
@@ -103,6 +116,7 @@ export const actions = {
     const state = get();
     const account = state.accounts.find(a => a.id === el.dataset.id);
     if (!window.confirm(`Delete "${account?.name}"? All its transactions will be lost.`)) return;
+    setUi({ accountMenuOpen: false });
     await api.deleteAccount(el.dataset.id);
     localStorage.setItem('activeAccountId', 'default');
     set({ accounts: state.accounts.filter(a => a.id !== el.dataset.id) });
