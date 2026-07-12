@@ -17,25 +17,13 @@
 .header-top h1 { margin: 0; flex: 1; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
 .header-top h1 svg { color: var(--accent); }
 
-.account-bar {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  overflow-x: auto;
-  padding-bottom: var(--space-2);
-}
-.account-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  min-height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.account-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.account-switcher { padding-bottom: var(--space-2); }
+.account-btn { max-width: min(100%, 320px); }
+.account-btn .account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.account-item { cursor: pointer; }
+.account-item.active { background: var(--accent-soft); color: var(--accent-strong); }
+.account-item .icon-btn { width: 32px; height: 32px; margin: -6px 0; }
+.account-add { display: flex; gap: var(--space-2); padding: 6px 4px; }
 
 main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin: 0 auto; }
 
@@ -46,8 +34,8 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
 .filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 
 .chip-row { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 2px; }
-.chip-row, .account-bar, .tabs { scrollbar-width: none; }
-.chip-row::-webkit-scrollbar, .account-bar::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
+.chip-row, .tabs { scrollbar-width: none; }
+.chip-row::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
 .chip-btn {
   display: inline-flex;
   align-items: center;
@@ -66,19 +54,33 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
 /* Transactions: cards on mobile, table >= 640px */
 .tx-cards { display: flex; flex-direction: column; gap: var(--space-2); }
 .tx-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space-2) var(--space-3);
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-3);
 }
 .tx-card.selectable { cursor: pointer; }
 .tx-card.selected { border-color: var(--accent); background: var(--accent-soft); }
-.tx-card .tx-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.tx-card .tx-desc { font-weight: 550; overflow-wrap: anywhere; }
-.tx-card .tx-meta { display: flex; gap: var(--space-2); align-items: center; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; }
-.tx-card .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
-.tx-card .tx-actions { grid-column: 1 / -1; display: flex; gap: var(--space-2); justify-content: flex-end; }
+.tx-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.tx-card .tx-desc { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
+.tx-card .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tx-row-bottom { display: flex; align-items: center; gap: var(--space-2); }
+.tx-card .tx-date { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.tx-card .tx-actions { margin-left: auto; display: flex; gap: 4px; }
+
+.chip-select {
+  font-size: 0.85rem;
+  min-height: 36px;
+  padding: 4px 30px 4px 12px;
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  background-position: right 9px center;
+  background-size: 15px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+}
+.tx-card .chip-select { max-width: 60%; }
 
 .tx-table { display: none; }
 
@@ -105,7 +107,9 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
   .tx-table tr.selectable { cursor: pointer; }
   .tx-table tr.selected td { background: var(--accent-soft); }
   .tx-table td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; white-space: nowrap; }
-  .tx-table input, .tx-table select { min-height: 34px; padding: 4px 8px; }
+  .tx-table input, .tx-table select { min-height: 34px; }
+  .tx-table input { padding: 4px 8px; }
+  .tx-table .tx-edit-grid select { padding: 4px 34px 4px 10px; }
 }
 
 .selection-bar {
@@ -148,8 +152,6 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
 }
 .recurring-box {
   background: var(--surface-2);
@@ -160,7 +162,6 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
   gap: var(--space-2);
 }
 .row input, .row select { min-width: 0; }
-.savings-account:last-child { border-bottom: none; }
 .history-list { font-size: 0.85rem; }
 .history-list li { display: flex; justify-content: space-between; padding: 3px 0; }
 ul.history-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }

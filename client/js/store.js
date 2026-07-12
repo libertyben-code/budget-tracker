@@ -29,6 +29,7 @@ const state = {
     dark: localStorage.getItem('darkMode') === 'true',
     lang: localStorage.getItem('language') || 'en',
     settingsOpen: false,
+    accountMenuOpen: false,
     categoryDropdownOpen: null,
     pieCategories: [],
     chartMode: 'stacked',

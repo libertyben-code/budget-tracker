@@ -76,6 +76,8 @@ document.addEventListener('click', (ev) => {
   if (!ev.target.closest('.dropdown') && !ev.target.closest('[data-keep-open]')) {
     if (state.ui.settingsOpen) setUi({ settingsOpen: false });
     if (state.ui.categoryDropdownOpen) setUi({ categoryDropdownOpen: null });
+    if (state.ui.accountMenuOpen) setUi({ accountMenuOpen: false });
+    if (state.addingAccount) set({ addingAccount: false });
   }
 
   if (!el) return;

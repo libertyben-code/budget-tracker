@@ -12,7 +12,6 @@ export function render(state, t) {
   <section class="view">
     <div class="card">
       <h2>${esc(t('joint.title'))}</h2>
-      <p class="muted">${esc(t('joint.subtitle'))}</p>
       <div class="field">
         <label>${esc(t('joint.targetJointDeposit'))}</label>
         <input id="joint-target" type="number" inputmode="decimal" step="0.01" value="${esc(account.jointTargetAmount ?? '2100')}" data-action-change="joint-target">
@@ -28,20 +27,24 @@ export function render(state, t) {
           <input type="number" inputmode="decimal" step="0.01" value="${esc(account.salaryPerson2 ?? '')}" data-action-change="joint-salary2">
         </div>
       </div>
-      ${joint.hasSalaries ? `
-      <div class="tiles" style="grid-template-columns:1fr 1fr">
-        <div class="tile card" style="box-shadow:none">
+      <div class="tiles" style="grid-template-columns:1fr 1fr;margin-top:var(--space-4);margin-bottom:0">
+        <div class="tile card total-tile" style="box-shadow:none">
           <div class="label">${esc(t('joint.person1Contribution'))}</div>
           <div class="value pos">${eur(joint.person1)}</div>
         </div>
-        <div class="tile card" style="box-shadow:none">
+        <div class="tile card total-tile" style="box-shadow:none">
           <div class="label">${esc(t('joint.person2Contribution'))}</div>
           <div class="value pos">${eur(joint.person2)}</div>
         </div>
-      </div>` : `<p class="muted">${esc(t('joint.enterSalaries'))}</p>`}
+      </div>
+      ${joint.hasSalaries ? '' : `<p class="muted" style="margin:var(--space-3) 0 0">${esc(t('joint.enterSalaries'))}</p>`}
     </div>
     <div class="card">
-      <h2>${esc(t('joint.includedTransactions', { count: joint.bills.length }))}</h2>
+      <div class="row" style="margin-bottom:8px">
+        <h2 class="grow" style="margin:0">${esc(t('joint.includedTransactions', { count: joint.bills.length }))}</h2>
+        <span class="num neg" style="font-weight:650">${eur(joint.billsTotal)}</span>
+      </div>
+      <p class="muted">${esc(t('joint.subtitle'))}</p>
       ${joint.bills.length === 0 ? `<p class="muted">${esc(t('joint.noTransactions'))}</p>` : `
       <div class="panel-list">
         ${joint.bills.map(tx => `
@@ -52,7 +55,6 @@ export function render(state, t) {
           <span class="num neg">${eur(tx.amount)}</span>
         </div>`).join('')}
       </div>`}
-      ${joint.nonBillCount > 0 ? `<p class="muted" style="margin-top:8px">${esc(t('joint.otherNotIncluded', { count: joint.nonBillCount }))}</p>` : ''}
     </div>
   </section>`;
 }

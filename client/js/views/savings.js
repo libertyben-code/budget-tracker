@@ -23,19 +23,19 @@ export function render(state, t) {
       <div class="chart-box" id="savings-chart-box"><canvas id="chart-savings"></canvas></div>
     </div>` : ''}
 
+    <div class="row" style="margin:0">
+      <h2 class="grow" style="margin:0">${esc(t('savings.accountsTitle'))}</h2>
+      <button class="btn small primary" data-action="toggle-add-savings" title="${esc(t('savings.addAccount'))}" aria-label="${esc(t('savings.addAccount'))}">${state.ui.addingSavings ? '✕' : '＋'}</button>
+    </div>
+    ${state.ui.addingSavings ? `
     <div class="card">
-      <div class="row" style="margin-bottom:8px">
-        <h2 class="grow" style="margin:0">${esc(t('savings.accountsTitle'))}</h2>
-        <button class="btn small primary" data-action="toggle-add-savings" title="${esc(t('savings.addAccount'))}" aria-label="${esc(t('savings.addAccount'))}">${state.ui.addingSavings ? '✕' : '＋'}</button>
-      </div>
-      ${state.ui.addingSavings ? `
-      <div class="row" style="margin-bottom:12px">
+      <div class="row">
         <input id="new-savings-name" class="grow" placeholder="${esc(t('savings.savingsAccountName'))}" data-action-key="add-savings">
         <input id="new-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('savings.initialBalance'))}" style="width:130px" data-action-key="add-savings">
         <button class="btn small primary" data-action="add-savings">${esc(t('common.save'))}</button>
-      </div>` : ''}
-      ${accounts.map(a => renderAccount(a, state, t, total)).join('') || `<p class="muted">${esc(t('savings.noAccounts'))}</p>`}
-    </div>
+      </div>
+    </div>` : ''}
+    ${accounts.map(a => renderAccount(a, state, t, total)).join('') || `<p class="muted">${esc(t('savings.noAccounts'))}</p>`}
   </section>`;
 }
 
@@ -48,7 +48,7 @@ function renderAccount(a, state, t, total) {
 
   if (state.ui.editingSavingsId === a.id) {
     return `
-    <div class="savings-account">
+    <div class="card savings-account">
       <div class="row">
         <input id="edit-savings-name" class="grow" value="${esc(a.name)}" placeholder="${esc(t('savings.name'))}">
         <input id="edit-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(a.balance)}" style="width:130px">
@@ -59,7 +59,7 @@ function renderAccount(a, state, t, total) {
   }
 
   return `
-  <div class="savings-account">
+  <div class="card savings-account">
     <div class="row">
       <div class="grow">
         <strong>${esc(a.name)}</strong>

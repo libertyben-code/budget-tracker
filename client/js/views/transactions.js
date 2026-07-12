@@ -9,13 +9,13 @@ export function renderTiles(state, t) {
   const s = stats(filteredTransactions(state));
   return `
   <div class="tiles">
-    <div class="card tile">
+    <div class="card tile total-tile">
       <div class="label">${esc(t('app.totalBalance'))}</div>
-      <div class="value ${s.total >= 0 ? 'pos' : 'neg'}">${eur(s.total)}</div>
+      <div class="value big ${s.total >= 0 ? 'pos' : 'neg'}">${eur(s.total)}</div>
     </div>
-    <div class="card tile">
+    <div class="card tile total-tile">
       <div class="label">${esc(t('app.totalSpending'))}</div>
-      <div class="value neg">${eur(s.spending)}</div>
+      <div class="value big neg">${eur(s.spending)}</div>
     </div>
   </div>`;
 }
@@ -41,17 +41,20 @@ export function render(state, t) {
       <button class="btn" data-action="cancel-edit">${esc(t('common.cancel'))}</button>
     </div>`;
 
+  const catSelect = (tx) => `<select class="chip-select" data-action="noop" data-action-change="set-category" data-id="${tx.id}" aria-label="${esc(t('common.category'))}">${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+
   const cards = visible.map(tx => state.editingId === tx.id
     ? `<div class="card tx-card editing">${editRow(tx)}</div>`
     : `
     <div class="card tx-card selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
-      <div class="tx-main">
+      <div class="tx-row-top">
         <span class="tx-desc">${esc(tx.description) || '<span class="muted">—</span>'}</span>
-        <span class="tx-meta"><span>${esc(isoToDisplay(tx.date))}</span><span class="chip">${esc(tx.category)}</span></span>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</span>
-        <span>
+      </div>
+      <div class="tx-row-bottom">
+        <span class="tx-date">${esc(isoToDisplay(tx.date))}</span>
+        ${catSelect(tx)}
+        <span class="tx-actions">
           <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
           <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">${icons.trash}</button>
         </span>
@@ -64,7 +67,7 @@ export function render(state, t) {
     <tr class="selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
       <td class="num">${esc(isoToDisplay(tx.date))}</td>
       <td>${esc(tx.description)}</td>
-      <td><span class="chip">${esc(tx.category)}</span></td>
+      <td>${catSelect(tx)}</td>
       <td class="amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</td>
       <td style="white-space:nowrap">
         <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
@@ -83,35 +86,33 @@ export function render(state, t) {
       <button class="btn small danger" data-action="batch-delete" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icons.trash}</button>
       <button class="btn small ghost" data-action="clear-selection" title="${esc(t('transactionTable.clear'))}" aria-label="${esc(t('transactionTable.clear'))}">✕</button>
     </div>` : ''}
-    <div class="card">
-      <div class="row" style="margin-bottom:12px">
-        <h2 class="grow" style="margin:0">${esc(t('transactionTable.title', { count: filtered.length }))}</h2>
-        <label class="row" style="gap:6px;font-size:0.85rem;color:var(--muted)">
-          <input type="checkbox" data-action-change="select-all" ${allVisibleSelected ? 'checked' : ''}> ${esc(t('common.all'))}
-        </label>
-        <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
-      </div>
-      <div class="tx-cards">${cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
-      <div class="tx-table">
-        <table>
-          <thead>
-            <tr>
-              <th class="sortable" data-action="sort" data-key="date">${esc(t('common.date'))}${sortIndicator('date')}</th>
-              <th>${esc(t('common.description'))}</th>
-              <th class="sortable" data-action="sort" data-key="category">${esc(t('common.category'))}${sortIndicator('category')}</th>
-              <th class="sortable" data-action="sort" data-key="amount" style="text-align:right">${esc(t('common.amount'))}${sortIndicator('amount')}</th>
-              <th>${esc(t('common.actions'))}</th>
-            </tr>
-          </thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-      ${filtered.length > state.visibleCount ? `
-      <div class="row" style="justify-content:center;margin-top:12px;flex-direction:column;align-items:center">
-        <button class="btn" data-action="load-more">${esc(t('transactionTable.loadMore'))}</button>
-        <span class="muted" style="font-size:0.85rem">${esc(t('transactionTable.showing', { visible: visible.length, total: filtered.length }))}</span>
-      </div>` : ''}
+    <div class="row" style="align-items:center">
+      <h2 class="grow" style="margin:0">${esc(t('transactionTable.title', { count: filtered.length }))}</h2>
+      <label class="row" style="gap:6px;font-size:0.85rem;color:var(--muted)">
+        <input type="checkbox" data-action-change="select-all" ${allVisibleSelected ? 'checked' : ''}> ${esc(t('common.all'))}
+      </label>
+      <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
     </div>
+    <div class="tx-cards">${cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
+    <div class="card tx-table">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" data-action="sort" data-key="date">${esc(t('common.date'))}${sortIndicator('date')}</th>
+            <th>${esc(t('common.description'))}</th>
+            <th class="sortable" data-action="sort" data-key="category">${esc(t('common.category'))}${sortIndicator('category')}</th>
+            <th class="sortable" data-action="sort" data-key="amount" style="text-align:right">${esc(t('common.amount'))}${sortIndicator('amount')}</th>
+            <th>${esc(t('common.actions'))}</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    ${filtered.length > state.visibleCount ? `
+    <div class="row" style="justify-content:center;flex-direction:column;align-items:center">
+      <button class="btn" data-action="load-more">${esc(t('transactionTable.loadMore'))}</button>
+      <span class="muted" style="font-size:0.85rem">${esc(t('transactionTable.showing', { visible: visible.length, total: filtered.length }))}</span>
+    </div>` : ''}
   </section>`;
 }
 
@@ -143,6 +144,26 @@ export const actions = {
   },
   'edit-tx': (el) => set({ editingId: Number(el.dataset.id) }),
   'cancel-edit': () => set({ editingId: null }),
+  'noop': () => {},
+  'set-category': async (el) => {
+    const id = Number(el.dataset.id);
+    const category = el.value;
+    const state = get();
+    const tx = state.transactions.find(t => t.id === id);
+    if (!tx || tx.category === category) return;
+    const learnRule = Boolean(tx.description && category !== 'Uncategorized');
+    set({ transactions: state.transactions.map(t => t.id === id ? { ...t, category } : t) });
+    try {
+      const result = await api.patchTransaction(id, { category, learnRule });
+      if (result.rule) {
+        const rules = get().rules.filter(r => r.pattern !== result.rule.pattern);
+        set({ rules: [...rules, result.rule] });
+      }
+    } catch (err) {
+      toast(err.message);
+      await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
+    }
+  },
   'save-tx': async (el) => {
     const id = Number(el.dataset.id);
     const form = readEditForm();
