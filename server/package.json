@@ -5,14 +5,10 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "migrate:firestore": "node scripts/migrate-from-firestore.mjs"
+    "start": "node src/index.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
     "express": "^5.1.0"
-  },
-  "devDependencies": {
-    "firebase": "^12.5.0"
   }
 }

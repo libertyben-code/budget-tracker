@@ -12,19 +12,6 @@ node server/src/index.js
 
 The SQLite database is created automatically at `data/budget.db` (a fresh one seeds the `default` account).
 
-## Migrate your data from Firestore (one-time, run on the dev PC)
-
-Requires the old `.env` with the `REACT_APP_FIREBASE_*` keys at the repo root.
-
-```bash
-# PowerShell
-$env:MIGRATE_EMAIL = "you@example.com"
-$env:MIGRATE_PASSWORD = "..."
-node server/scripts/migrate-from-firestore.mjs
-```
-
-The script signs into Firebase, reads your `users/{uid}` document, writes everything into `data/budget.db`, and prints a verification report (per-account transaction counts, rule count, savings totals). It refuses to run if the database already contains transactions. Copy the resulting `data/budget.db` to the server's `data/` folder before first launch.
-
 ## Deploy on the Linux server
 
 Prerequisites: Docker + Docker Compose, Tailscale connected.
