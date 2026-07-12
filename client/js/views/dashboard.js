@@ -35,29 +35,33 @@ export function render(state, t) {
         </div>
         <div class="chart-box" id="hbar-box"><canvas id="chart-hbar"></canvas></div>
       </div>
-      <div class="card">
-        <div class="row" style="margin-bottom:8px">
-          <h2 class="grow" style="margin:0">${esc(t('dashboard.monthlyOverview'))}</h2>
-          <div class="seg">
-            ${rangeBtn('6m', '6M')}
-            ${rangeBtn('12m', '12M')}
-            ${rangeBtn('all', t('common.all'))}
-          </div>
-        </div>
-        <div class="chart-box"><canvas id="chart-flow"></canvas></div>
-      </div>
       <div class="card chart-wide">
-        <div class="row" style="margin-bottom:8px">
-          <div class="grow">
-            <h2 style="margin:0">${esc(t('dashboard.spendingByCategoryMonth'))}</h2>
-            <span class="muted" style="font-size:0.85rem">${esc(t('dashboard.trends'))}</span>
+        <div class="chart-split">
+          <div class="chart-pane">
+            <div class="row" style="margin-bottom:8px">
+              <h2 class="grow" style="margin:0">${esc(t('dashboard.monthlyOverview'))}</h2>
+              <div class="seg">
+                ${rangeBtn('6m', '6M')}
+                ${rangeBtn('12m', '12M')}
+                ${rangeBtn('all', t('common.all'))}
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-flow"></canvas></div>
           </div>
-          <div class="seg">
-            <button class="${state.ui.chartMode === 'stacked' ? 'active' : ''}" data-action="chart-mode" data-mode="stacked">${esc(t('dashboard.stacked'))}</button>
-            <button class="${state.ui.chartMode === 'grouped' ? 'active' : ''}" data-action="chart-mode" data-mode="grouped">${esc(t('dashboard.grouped'))}</button>
+          <div class="chart-pane">
+            <div class="row" style="margin-bottom:8px">
+              <div class="grow">
+                <h2 style="margin:0">${esc(t('dashboard.spendingByCategoryMonth'))}</h2>
+                <span class="muted" style="font-size:0.85rem">${esc(t('dashboard.trends'))}</span>
+              </div>
+              <div class="seg">
+                <button class="${state.ui.chartMode === 'stacked' ? 'active' : ''}" data-action="chart-mode" data-mode="stacked">${esc(t('dashboard.stacked'))}</button>
+                <button class="${state.ui.chartMode === 'grouped' ? 'active' : ''}" data-action="chart-mode" data-mode="grouped">${esc(t('dashboard.grouped'))}</button>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-bar"></canvas></div>
           </div>
         </div>
-        <div class="chart-box"><canvas id="chart-bar"></canvas></div>
       </div>
     </div>
   </section>`;

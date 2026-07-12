@@ -193,6 +193,12 @@ The Docker image drops root (`USER node`, uid 1000). The bind-mounted `./data` v
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-07-12 — Header layout + dashboard chart merge (branch: feature/header-layout)
+
+- Header: account switcher moved out of its own row into the top row, between the app title and the dark-mode/settings buttons, freeing a full row of vertical space for `main`. App name shrunk (1.1rem → 0.95rem) with a new small version line (`v2.0.0`, bump the `VERSION` constant in `client/js/views/header.js` at release) stacked underneath. Account pill resized down to `.btn.small` scale (32px/0.85rem) with a tighter `max-width` so it no longer crowds the app name on narrow widths.
+- Dashboard: merged the "Monthly Overview" chart and the category-by-month chart into a single wide card with a two-pane `.chart-split` layout (side-by-side ≥900px, stacked on mobile, divider between panes) — they already shared the same date-range picker, so this was a natural pairing. The category-by-month title dropped its "per Month" suffix (`dashboard.spendingByCategoryMonth`, both EN/FR) since it's now redundant. The standalone "Spending by Category" (horizontal-bar) card above is unchanged.
+- No server/data changes; verified by checking the live dev server serves the updated `header.js`/`dashboard.js`/`views.css`/`i18n.js`.
+
 ### 2026-07-12 — Security hardening pass before self-host deploy (branch: feature/security-hardening)
 
 - Full read-through security audit of the v2 stack. Clean on the classic axes: SQL fully parameterized (no injection), client rendering uniformly `esc()`-escaped (no XSS), no committed secrets, `npm audit` = 0 vulns, container already bound to `127.0.0.1`. Verdict: the security model rests entirely on Tailscale as the network perimeter — accepted (Tailscale is the user's sole LAN access), so the no-auth design stays.

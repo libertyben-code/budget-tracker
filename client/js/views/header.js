@@ -4,6 +4,8 @@ import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap } from '../app.js';
 
+const VERSION = 'v2.0.0';
+
 export function render(state, t) {
   const cats = categories(state);
   const activeAccount = state.accounts.find(a => a.id === state.activeAccountId) || state.accounts[0] || { name: '' };
@@ -13,7 +15,34 @@ export function render(state, t) {
   return `
   <header class="app-header">
     <div class="header-top">
-      <h1>${icons.wallet} Budget Tracker</h1>
+      <div class="app-title">
+        ${icons.wallet}
+        <div class="app-title-text">
+          <h1>Budget Tracker</h1>
+          <span class="app-version">${VERSION}</span>
+        </div>
+      </div>
+      <div class="account-switcher">
+        <div class="dropdown">
+          <button class="btn select-btn account-btn" data-action="toggle-account-menu"><span class="account-name">${esc(activeAccount.name)}</span></button>
+          ${state.ui.accountMenuOpen ? `
+          <div class="dropdown-menu left" data-keep-open>
+            ${state.accounts.map(a => `
+            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
+              <span class="grow">${esc(a.name)}</span>
+              ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
+              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
+            </div>`).join('')}
+            <div class="menu-sep"></div>
+            ${state.addingAccount ? `
+            <div class="account-add">
+              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
+              <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
+            </div>` : `
+            <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
+          </div>` : ''}
+        </div>
+      </div>
       <button class="icon-btn" data-action="toggle-dark" title="${esc(t(state.ui.dark ? 'header.light' : 'header.dark'))}">${state.ui.dark ? icons.sun : icons.moon}</button>
       <div class="dropdown">
         <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
@@ -30,27 +59,6 @@ export function render(state, t) {
           <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
-        </div>` : ''}
-      </div>
-    </div>
-    <div class="account-switcher">
-      <div class="dropdown">
-        <button class="btn select-btn account-btn" data-action="toggle-account-menu"><span class="account-name">${esc(activeAccount.name)}</span></button>
-        ${state.ui.accountMenuOpen ? `
-        <div class="dropdown-menu left" data-keep-open>
-          ${state.accounts.map(a => `
-          <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
-            <span class="grow">${esc(a.name)}</span>
-            ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
-            ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
-          </div>`).join('')}
-          <div class="menu-sep"></div>
-          ${state.addingAccount ? `
-          <div class="account-add">
-            <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
-            <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
-          </div>` : `
-          <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
         </div>` : ''}
       </div>
     </div>
