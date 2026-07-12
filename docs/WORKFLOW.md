@@ -177,6 +177,14 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 <!-- Format: ### YYYY-MM-DD — Short title -->
 <!-- Body: describe the constraint, the rule it implies, and a code example if useful. -->
 
+### 2026-07-12 — Network-first service worker masks a down server
+
+`client/sw.js` is network-first: reads (`GET /`, shell, `/api/bootstrap`, `/api/accounts/:id/data`) fall back to the cache when the server doesn't answer, but writes (PATCH/POST/DELETE) are never cached. So when the dev server is **not running**, the symptoms are: the app still "loads" but slowly (each read waits for the network before the cache falls back), and any write — e.g. changing a transaction category — fails with `NetworkError when attempting to fetch resource`. **Rule:** when a write throws `NetworkError` or loads feel slow, check the server is actually up (`curl http://localhost:3000/api/health`) *before* suspecting app code. A stale registered SW can keep serving cached reads long after the server stopped; DevTools → Application → Service Workers → Unregister + hard reload clears it.
+
+### 2026-07-12 — Container runs as non-root uid 1000
+
+The Docker image drops root (`USER node`, uid 1000). The bind-mounted `./data` volume must be writable by that uid or better-sqlite3 fails to open/create `budget.db`. **Rule:** on the server, `sudo chown -R 1000:1000 data` before `docker compose up` (documented in `docs/V2-SETUP.md`).
+
 ---
 
 ## Dated development log
@@ -184,6 +192,17 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-07-12 — Security hardening pass before self-host deploy (branch: feature/security-hardening)
+
+- Full read-through security audit of the v2 stack. Clean on the classic axes: SQL fully parameterized (no injection), client rendering uniformly `esc()`-escaped (no XSS), no committed secrets, `npm audit` = 0 vulns, container already bound to `127.0.0.1`. Verdict: the security model rests entirely on Tailscale as the network perimeter — accepted (Tailscale is the user's sole LAN access), so the no-auth design stays.
+- Hardening applied and verified end-to-end against a throwaway DB:
+  - **Security headers** (`server/src/index.js`): strict CSP (`script-src 'self'`, `style-src 'self' 'unsafe-inline'` for the inline `style=` attributes; covers css/manifest/img/connect/worker), plus `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `x-powered-by` disabled.
+  - **CSV export formula-injection guard** (`shared/csv.js`): free-text cells starting `= + - @ \t \r` are `'`-prefixed and all text fields RFC-4180-quoted; the numeric `amount` is left raw so negatives aren't corrupted.
+  - **API input coercion** (`server/src/routes/api.js`): transaction create/patch coerce `amount` to a finite number and text fields to strings (a non-string body no longer 500s in better-sqlite3).
+  - **Cross-site import bypass closed**: import parser restricted from `*/*` to `text/csv` (no longer a CORS "simple" request, so cross-site POSTs hit a failing preflight).
+  - **Container drops root** (`USER node`) + new `.dockerignore` (stops shipping the real DB/`.git`/v1 files into the build context); `docs/V2-SETUP.md` gained the `chown 1000:1000 data` step.
+- Not changed: application-layer auth (#1, by design), the offline SW cache snapshot (awareness only), and the naive CSV *import* splitter (correctness, not security — left to avoid perturbing the tested import pipeline).
 
 ### 2026-07-12 — v2 UI polish: savings cards, dashboard/joint tweaks, inline category, modern selects, account switcher (branch: feature/v2-ui-polish)
 

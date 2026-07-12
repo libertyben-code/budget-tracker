@@ -41,10 +41,22 @@ export function parseImportCsv(text) {
   return { rows, failedLines };
 }
 
+function csvQuote(s) {
+  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+// Free-text cells: neutralize spreadsheet formula injection (a description like
+// "=HYPERLINK(...)" from a bank statement would otherwise execute on open), then quote.
+function csvText(value) {
+  let s = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return csvQuote(s);
+}
+
 export function toExportCsv(transactions, formatDate) {
   const header = 'Date,Description,Category,Amount,Type,State';
   const lines = transactions.map(t =>
-    [formatDate(t.date), t.description, t.category, t.amount, t.type, t.state].join(',')
+    [csvQuote(formatDate(t.date)), csvText(t.description), csvText(t.category), t.amount, csvText(t.type), csvText(t.state)].join(',')
   );
   return [header, ...lines].join('\n');
 }

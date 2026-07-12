@@ -32,6 +32,7 @@ Prerequisites: Docker + Docker Compose, Tailscale connected.
 ```bash
 git clone <this repo> && cd budget-tracker
 mkdir -p data                # put migrated budget.db here if you have one
+sudo chown -R 1000:1000 data # container runs as non-root uid 1000; it must own the volume
 docker compose up -d --build
 
 # one-time: expose over the tailnet with HTTPS (required for PWA install)
@@ -69,6 +70,14 @@ Your entire financial history is one file: `data/budget.db`. `update.sh` snapsho
 - Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed as `dd/mm/yy`. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
 - Recurring savings deposits: rules live in `savings_recurring` (amount + day 1–28). Due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up; history ids are deterministic (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
 - CSV import (parse → skip REVERTED/PENDING → dedup → categorize) runs server-side in `importTransactions()` — a future bank-sync connector (e.g. Enable Banking) can feed the same function.
+
+## Security model
+
+No application-layer auth by design — **Tailscale is the perimeter**, so keep it that way:
+
+- The container binds `127.0.0.1:3000` only; expose it with `tailscale serve` (tailnet-only). **Never `tailscale funnel`** it and never change the port binding to `0.0.0.0`/`3000:3000` — either would expose all your financial data with no login.
+- Hardening already in the code: strict CSP + `X-Frame-Options`/`nosniff`/`Referrer-Policy` headers; CSV export neutralizes spreadsheet formula injection; the import endpoint only accepts `text/csv` (blocks cross-site form POSTs); the container runs as non-root uid 1000.
+- Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock.
 
 ## Adding a login later (if ever needed)
 
