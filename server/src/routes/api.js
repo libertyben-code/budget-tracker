@@ -172,10 +172,19 @@ export function createApiRouter(db) {
 
   router.post('/accounts/:id/transactions', requireAccount, (req, res) => {
     const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
+    const amountNum = Number(amount);
     const info = db.prepare(`
       INSERT INTO transactions (account_id, date, description, category, amount, type, state)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, date || todayIso(), description, category, amount, type, state);
+    `).run(
+      req.params.id,
+      String(date || todayIso()),
+      String(description ?? ''),
+      String(category ?? 'Uncategorized'),
+      Number.isFinite(amountNum) ? amountNum : 0,
+      String(type ?? ''),
+      String(state ?? 'COMPLETED')
+    );
     const tx = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(info.lastInsertRowid);
     res.status(201).json(tx);
   });
@@ -184,11 +193,12 @@ export function createApiRouter(db) {
     const current = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
     if (!current) return res.status(404).json({ error: 'Transaction not found' });
     const { date, description, category, amount, learnRule } = req.body;
+    const amountNum = Number(amount ?? current.amount);
     const next = {
-      date: date ?? current.date,
-      description: description ?? current.description,
-      category: category ?? current.category,
-      amount: amount ?? current.amount,
+      date: String(date ?? current.date),
+      description: String(description ?? current.description),
+      category: String(category ?? current.category),
+      amount: Number.isFinite(amountNum) ? amountNum : current.amount,
     };
     db.prepare(`
       UPDATE transactions SET date = ?, description = ?, category = ?, amount = ?, updated_at = datetime('now')
@@ -247,7 +257,7 @@ export function createApiRouter(db) {
 
   // --- Import / export ---
 
-  router.post('/accounts/:id/import', requireAccount, express.text({ type: '*/*', limit: '20mb' }), (req, res) => {
+  router.post('/accounts/:id/import', requireAccount, express.text({ type: 'text/csv', limit: '20mb' }), (req, res) => {
     const { rows, failedLines } = parseImportCsv(req.body || '');
     const { imported, skippedDuplicates } = importTransactions(db, req.params.id, rows);
     res.json({ imported, skippedDuplicates, failedLines });

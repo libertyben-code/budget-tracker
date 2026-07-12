@@ -153,7 +153,7 @@ const translations = {
     },
     dashboard: {
       spendingByCategory: 'Spending by Category',
-      spendingByCategoryMonth: 'Spending by Category per Month',
+      spendingByCategoryMonth: 'Spending by Category',
       stacked: 'Stacked',
       grouped: 'Grouped',
       trends: 'View spending trends across categories over time',
@@ -320,7 +320,7 @@ const translations = {
     },
     dashboard: {
       spendingByCategory: 'Dépenses par catégorie',
-      spendingByCategoryMonth: 'Dépenses par catégorie et par mois',
+      spendingByCategoryMonth: 'Dépenses par catégorie',
       stacked: 'Empilé',
       grouped: 'Groupé',
       trends: 'Voir les tendances de dépenses par catégorie dans le temps',
