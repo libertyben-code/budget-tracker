@@ -2,8 +2,12 @@
 
 # dependencies
 /node_modules
+/server/node_modules
 /.pnp
 .pnp.js
+
+# v2 database
+/data/
 
 # testing
 /coverage

@@ -19,5 +19,3 @@ Format: `- [ ] description` for pending. When done: delete from here, append to 
 ## Auth / UI
 
 ## Evolutions
-
-- [ ] Extract batch edit modal from `App.js` into its own component (see README "Next Refactor Candidates")

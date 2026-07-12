@@ -2,45 +2,51 @@
 
 ## Stack
 
-- **Frontend**: React 19 (Create React App / `react-scripts`) + Tailwind CSS
-- **Backend**: Firebase (Authentication + Firestore) — no custom server
-- **Database**: Firestore (per-user documents, see Firestore structure below)
-- **Key libraries**: `recharts` (charts), `lucide-react` (icons)
+- **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
+- **Backend**: Express 5 + better-sqlite3. All routes in one file.
+- **Database**: SQLite, single file at `data/budget.db` (bind-mounted into the container).
+- **Deployment**: Docker + Docker Compose, exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
 
 ## Repository layout
 
 ```
 budget-tracker/
-├── public/
-├── src/
-│   ├── components/
-│   │   ├── AppShellHeader.jsx
-│   │   ├── CategoryManagerPanel.jsx
-│   │   ├── CategoryRulesPanel.jsx
-│   │   ├── DashboardCharts.jsx
-│   │   ├── JointSplitSection.jsx
-│   │   ├── LoginScreen.jsx
-│   │   ├── SavingsSection.jsx
-│   │   └── TransactionTable.jsx
-│   ├── hooks/
-│   │   └── useAppState.js   — reducer-backed app state + ACTIONS
-│   ├── utils/
-│   │   ├── categories.js    — categorization + rule learning
-│   │   ├── dates.js         — date formatting/filtering
-│   │   ├── i18n.js          — EN/FR strings
-│   │   ├── savings.js       — savings formatting helpers
-│   │   └── tailwindClasses.js — shared Tailwind class constants
-│   └── App.js               — orchestration, derived data, Firebase sync
-├── firebase.json            — Firebase Hosting config
-├── .firebaserc              — Firebase project alias (`boo2-budget`)
-├── .env.example              — Firebase config template
+├── client/
+│   ├── index.html
+│   ├── manifest.webmanifest, sw.js       — PWA manifest + network-first service worker
+│   ├── css/                              — tokens.css, base.css, components.css, views.css
+│   ├── icons/
+│   ├── vendor/chart.umd.min.js
+│   └── js/
+│       ├── app.js                        — entry point / tab composition
+│       ├── store.js                      — app state
+│       ├── api.js                        — all server calls
+│       ├── derive.js                     — memoized derived data (filters, chart data, stats)
+│       ├── dom.js                        — DOM helpers + inline SVG icon set
+│       ├── i18n.js                       — EN/FR strings
+│       └── views/                        — one module per screen (dashboard, transactions,
+│                                            savings, joint-split, filters, category-manager,
+│                                            rules-panel, batch-edit-modal, header)
+├── server/
+│   ├── src/
+│   │   ├── index.js                      — Express app, security headers
+│   │   ├── db.js                         — SQLite connection/init
+│   │   ├── schema.sql
+│   │   └── routes/api.js                 — ~25 REST endpoints
+│   └── package.json
+├── shared/                               — pure ESM, imported by both Node and the browser
+│   ├── categorize.js                     — rule-based categorization engine
+│   ├── csv.js                            — CSV import/export helpers
+│   └── dates.js
+├── Dockerfile, docker-compose.yml, update.sh, .dockerignore
 └── docs/
-    ├── WORKFLOW.md     — how we work together
-    ├── MAINTAINER.md   — this file (architecture + gotchas)
-    ├── BACKLOG.md      — pending items
-    ├── FEEDBACK.md     — items pending user test/confirmation
-    ├── DONE.md         — completed archive
-    └── Bugs.md         — confirmed bugs
+    ├── WORKFLOW.md      — how we work together
+    ├── MAINTAINER.md    — this file (architecture + gotchas)
+    ├── V2-SETUP.md       — deploy, backups, security model
+    ├── BACKLOG.md       — pending items
+    ├── FEEDBACK.md      — items pending user test/confirmation
+    ├── DONE.md          — completed archive
+    └── Bugs.md          — confirmed bugs
 ```
 
 ## Branch strategy
@@ -55,82 +61,44 @@ All work happens on feature branches. Merge to `master` only after the smoke tes
 ## Dev setup
 
 ```bash
-# Prerequisites (one-time)
-# - Node.js + npm
-# - A Firebase project with Email/Password Auth and Firestore enabled
-
-# Install dependencies
-npm install
-
-# Configure Firebase
-cp .env.example .env
-# fill in REACT_APP_FIREBASE_* values from the Firebase console
-
-# Run in development mode
-npm start
-
-# Build for production
-npm run build
+cd server && npm install && cd ..
+node server/src/index.js
+# open http://localhost:3000
 ```
+
+A fresh `data/budget.db` is created automatically and seeded with a `default` account. See `docs/V2-SETUP.md` for the full Docker/Tailscale deploy.
 
 ## Architecture
 
 ### State model
 
-App state is reducer-backed via `src/hooks/useAppState.js` (`ACTIONS` constants + a single reducer). `App.js` owns orchestration: resolving Firebase auth, loading Firestore data on sign-in, deriving memoized values (filtered transactions, categories, chart data, stats), and composing the tab UI. Small UI-only values (e.g. transient modal open state) can stay in local `useState` instead of the shared reducer.
+`client/js/store.js` holds app state; `client/js/app.js` wires up the tabs and re-renders views on state change. Each screen is its own module under `client/js/views/`. All server communication goes through `client/js/api.js`.
 
-### Key modules / files
+### Server
 
-- `src/App.js` — app orchestration, derived/memoized data, Firebase sync, tab composition.
-- `src/hooks/useAppState.js` — reducer-backed application state and action types.
-- `src/utils/categories.js` — rule-based categorization and rule learning from existing categorized transactions.
-- `src/utils/dates.js` — date formatting and filtering helpers.
-- `src/utils/savings.js` — savings formatting helpers.
-- `src/utils/i18n.js` — English/French UI strings.
-- `src/utils/tailwindClasses.js` — shared Tailwind class constants for repeated UI patterns.
-- `src/components/*.jsx` — extracted, focused UI sections (login, header, transactions table, category panels, dashboard charts, joint split, savings).
+`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
 
-### Firestore structure
+Recurring savings deposits live in `savings_recurring` (amount + day 1–28); due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up, using deterministic history ids (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
 
-```text
-users/
-  {userId}/
-    accounts
-    accountsData
-      {accountId}
-        transactions
-        savingsAccounts
-        savingsTransactionHistory
-        salaryInputs
-        jointTargetAmount
-    categoryRules      — shared across all accounts for the user
-    activeAccountId
-    lastUpdated
-```
+### Shared
 
-See `README.md` for full data shapes (Transaction, Category Rules, Savings Accounts, Savings Transaction History) and data-flow details (CSV import, filtering, auto-save).
+`shared/categorize.js`, `shared/csv.js`, `shared/dates.js` are pure ESM modules imported by both the server (Node) and the client (browser) — one categorization/CSV/date implementation, no drift between import-time and display-time behavior.
+
+### PWA
+
+`client/sw.js` is a network-first service worker: reads fall back to cache when the server is unreachable; writes are never cached. Bump the `CACHE` constant on release. See the "Known technical constraints" section in `docs/WORKFLOW.md` for the failure mode when the server is down.
 
 ## Known gotchas
 
-<!-- Add dated entries here as non-obvious bugs, constraints, or workarounds are discovered. -->
-
-## Building for distribution
-
-```bash
-npm run build
-```
-
-Output:
-
-- Static production bundle in `build/`, deployed via Firebase Hosting (`firebase deploy`, project alias `boo2-budget` in `.firebaserc`). `firebase.json` rewrites all routes to `/index.html` (SPA routing).
+See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions).
 
 ## Smoke test checklist
 
-1. Sign in with email/password; confirm the session persists across a reload.
-2. Add a manual transaction on an account; confirm it saves and appears in the transaction table.
-3. Import a CSV; confirm rows parse, dedupe against existing transactions, and auto-categorize via rules.
-4. Create/rename/delete a category rule; confirm it applies to matching transactions.
-5. Check dashboard charts (spending by category, monthly overview) update correctly when filters change.
-6. Add a savings account, record a deposit and a withdrawal; confirm balance and chart update.
-7. Toggle dark mode and the EN/FR language switch; confirm both persist across reload.
-8. Run `npm run build` and confirm it completes without errors.
+1. Add a manual transaction on an account; confirm it saves and appears in the transaction list.
+2. Import a CSV; confirm rows parse, dedupe against existing transactions, and auto-categorize via rules.
+3. Create/rename/delete a category rule; confirm it applies to matching transactions.
+4. Check dashboard charts (spending by category, monthly overview, category-by-month) update correctly when filters/date range change.
+5. Add a savings account, record a deposit and a withdrawal; confirm balance and chart update. Add a recurring deposit rule and confirm catch-up applies correctly.
+6. Toggle dark mode and the EN/FR language switch; confirm both persist across reload.
+7. Switch between accounts via the account switcher; confirm data is isolated per account.
+8. Install as a PWA on a phone over Tailscale; confirm offline reads still render (writes should fail gracefully when offline).
