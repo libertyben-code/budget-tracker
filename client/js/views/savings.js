@@ -1,4 +1,4 @@
-import { esc, eur, eurSpaced, chartColors, icons, toast } from '../dom.js';
+import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { isoToDisplay } from '/shared/dates.js';
@@ -197,7 +197,7 @@ export const actions = {
     set({ savingsAccounts: state.savingsAccounts.map(a => a.id === updated.id ? updated : a) });
   },
   'delete-savings': async (el, ev, t) => {
-    if (!window.confirm(t('savings.confirmDelete'))) return;
+    if (!(await confirmDialog(t('savings.confirmDelete'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     await api.deleteSavings(el.dataset.id);
     const state = get();
     set({ savingsAccounts: state.savingsAccounts.filter(a => a.id !== el.dataset.id) });
@@ -251,7 +251,7 @@ export const actions = {
     }
   },
   'delete-recurring': async (el, ev, t) => {
-    if (!window.confirm(t('savings.confirmDeleteRecurring'))) return;
+    if (!(await confirmDialog(t('savings.confirmDeleteRecurring'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     await api.deleteSavingsRecurring(el.dataset.id);
     const state = get();
     const sid = el.dataset.sid;

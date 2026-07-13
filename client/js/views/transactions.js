@@ -1,4 +1,4 @@
-import { esc, eur, icons, toast } from '../dom.js';
+import { esc, eur, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { filteredTransactions, categories, stats } from '../derive.js';
@@ -29,17 +29,20 @@ export function render(state, t) {
   const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
 
   const editCats = cats.includes('Uncategorized') ? cats : ['Uncategorized', ...cats];
-  const editRow = (tx) => `
-    <div class="tx-edit-grid" data-editing="${tx.id}">
+  const editRow = (tx, isNew = false) => `
+    <div class="tx-edit-grid" data-editing="${isNew ? 'new' : tx.id}">
       <input id="edit-date" type="date" value="${esc(tx.date)}">
-      <input id="edit-amount" type="number" inputmode="decimal" step="0.01" value="${esc(tx.amount)}">
+      <input id="edit-amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">
       <input id="edit-desc" class="span2" placeholder="${esc(t('common.description'))}" value="${esc(tx.description)}">
       <select id="edit-cat" class="span2">
         ${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
       </select>
-      <button class="btn primary" data-action="save-tx" data-id="${tx.id}">${esc(t('common.save'))}</button>
-      <button class="btn" data-action="cancel-edit">${esc(t('common.cancel'))}</button>
+      <button class="btn primary" data-action="${isNew ? 'save-new-tx' : 'save-tx'}" ${isNew ? '' : `data-id="${tx.id}"`}>${esc(t('common.save'))}</button>
+      <button class="btn" data-action="${isNew ? 'cancel-create' : 'cancel-edit'}">${esc(t('common.cancel'))}</button>
     </div>`;
+  const draftTx = { date: todayIso(), amount: '', description: '', category: 'Uncategorized' };
+  const draftCard = state.creatingTx ? `<div class="card tx-card editing">${editRow(draftTx, true)}</div>` : '';
+  const draftRow = state.creatingTx ? `<tr><td colspan="5">${editRow(draftTx, true)}</td></tr>` : '';
 
   const catSelect = (tx) => `<select class="chip-select" data-action="noop" data-action-change="set-category" data-id="${tx.id}" aria-label="${esc(t('common.category'))}">${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
 
@@ -93,7 +96,7 @@ export function render(state, t) {
       </label>
       <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
     </div>
-    <div class="tx-cards">${cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
+    <div class="tx-cards">${draftCard + cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
     <div class="card tx-table">
       <table>
         <thead>
@@ -105,7 +108,7 @@ export function render(state, t) {
             <th>${esc(t('common.actions'))}</th>
           </tr>
         </thead>
-        <tbody>${tableRows}</tbody>
+        <tbody>${draftRow}${tableRows}</tbody>
       </table>
     </div>
     ${filtered.length > state.visibleCount ? `
@@ -126,23 +129,23 @@ function readEditForm() {
 }
 
 export const actions = {
-  'add-tx': async () => {
+  'add-tx': () => set({ creatingTx: true, editingId: null }),
+  'cancel-create': () => set({ creatingTx: false }),
+  'save-new-tx': async () => {
+    const form = readEditForm();
     const state = get();
     const tx = await api.createTransaction(state.activeAccountId, {
-      date: todayIso(),
-      description: '',
-      category: 'Uncategorized',
-      amount: 0,
+      ...form,
       type: 'Card Payment',
       state: 'COMPLETED',
     });
     set({
       transactions: [tx, ...state.transactions],
-      editingId: tx.id,
+      creatingTx: false,
       filter: { ...state.filter },
     });
   },
-  'edit-tx': (el) => set({ editingId: Number(el.dataset.id) }),
+  'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false }),
   'cancel-edit': () => set({ editingId: null }),
   'noop': () => {},
   'set-category': async (el) => {
@@ -185,7 +188,7 @@ export const actions = {
     }
   },
   'delete-tx': async (el, ev, t) => {
-    if (!window.confirm(t('transactionTable.confirmDelete'))) return;
+    if (!(await confirmDialog(t('transactionTable.confirmDelete'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     const id = Number(el.dataset.id);
     const state = get();
     const selection = new Set(state.selection);
@@ -224,7 +227,7 @@ export const actions = {
   'batch-delete': async (el, ev, t) => {
     const state = get();
     const ids = [...state.selection];
-    if (!window.confirm(t('transactionTable.confirmBatchDelete', { count: ids.length }))) return;
+    if (!(await confirmDialog(t('transactionTable.confirmBatchDelete', { count: ids.length }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     await api.batchDelete(ids);
     set({
       transactions: state.transactions.filter(tx => !state.selection.has(tx.id)),

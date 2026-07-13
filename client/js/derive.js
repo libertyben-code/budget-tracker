@@ -50,7 +50,10 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
 }
 
 export function categories(state) {
-  return [...new Set(state.transactions.map(t => t.category))].sort();
+  return [...new Set([
+    ...state.transactions.map(t => t.category),
+    ...(state.customCategories || []),
+  ])].sort();
 }
 
 export function months(state) {

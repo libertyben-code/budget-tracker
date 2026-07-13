@@ -193,6 +193,15 @@ The Docker image drops root (`USER node`, uid 1000). The bind-mounted `./data` v
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-07-13 — Category management, apply-rules, styled confirms, add-tx cancel fix (branch: feature/manage-categories)
+
+- **Add categories**: new per-account `custom_categories` table so a category with zero transactions persists and appears in every picker. `client/js/derive.js` `categories()` now returns transaction-derived ∪ custom names. Manage Categories (settings menu) gained an "Add" input; deleting a category with no transactions removes it directly (no reassign step); rename/delete keep `custom_categories` in sync. New endpoint `POST /accounts/:id/categories`; account-data payload carries `customCategories`.
+- **"Do one, then apply the rest"**: changing a single transaction's category still affects only that row (and quietly learns a rule). The settings item formerly "Auto-Categorize" is now **Apply Rules to All** — `POST /accounts/:id/autocategorize` was changed from Uncategorized-only to re-applying every rule across all transactions, overwriting where a rule matches; behind a styled confirm with an "N updated" toast. Rule patterns match as case-insensitive substrings, so a short pattern (e.g. `tesco`) generalizes across merchant variants.
+- **Styled confirmations**: added `confirmDialog()` to `client/js/dom.js` (promise-based, theme-styled modal, EN/FR) and replaced all 7 `window.confirm` calls (delete tx / batch delete / delete rules / delete savings / delete recurring / delete account / apply rules). The delete-account confirm moved from a hardcoded English string to i18n (`header.confirmDeleteAccount`).
+- **Bug fix (add-tx cancel)**: ＋ used to create the transaction on the server immediately, so Cancel left an empty row. Now ＋ sets `creatingTx` and renders a draft row; the server row is created only on Save (`save-new-tx`). Editing an existing transaction (`editingId`) is unchanged.
+- **Dashboard**: removed the category-filter dropdown from the Spending by Category card (title + chart only); dropped the now-dead `pieCategories` state and `pie-cat*` actions. The shared top-of-page category filter is untouched.
+- Bumped service-worker cache `bt-static-v2` → `v3`. Verified end-to-end via headless-Chrome (phone viewport): all flows pass with zero console errors. No security-model changes.
+
 ### 2026-07-12 — Header layout + dashboard chart merge (branch: feature/header-layout)
 
 - Header: account switcher moved out of its own row into the top row, between the app title and the dark-mode/settings buttons, freeing a full row of vertical space for `main`. App name shrunk (1.1rem → 0.95rem) with a new small version line (`v2.0.0`, bump the `VERSION` constant in `client/js/views/header.js` at release) stacked underneath. Account pill resized down to `.btn.small` scale (32px/0.85rem) with a tighter `max-width` so it no longer crowds the app name on narrow widths.

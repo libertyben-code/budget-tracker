@@ -38,6 +38,61 @@ export function toast(message) {
   setTimeout(() => el.remove(), 3500);
 }
 
+// styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop
+export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, title } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const modal = document.createElement('div');
+    modal.className = 'modal confirm-modal';
+
+    if (title) {
+      const head = document.createElement('div');
+      head.className = 'modal-head';
+      const h = document.createElement('h2');
+      h.style.margin = '0';
+      h.textContent = title;
+      head.appendChild(h);
+      modal.appendChild(head);
+    }
+
+    const body = document.createElement('p');
+    body.className = 'confirm-message';
+    body.textContent = message;
+    modal.appendChild(body);
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.justifyContent = 'flex-end';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn';
+    cancelBtn.textContent = cancelLabel;
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = danger ? 'btn danger' : 'btn primary';
+    confirmBtn.textContent = confirmLabel;
+    row.append(cancelBtn, confirmBtn);
+    modal.appendChild(row);
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    confirmBtn.focus();
+
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(false); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); close(true); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    cancelBtn.addEventListener('click', () => close(false));
+    confirmBtn.addEventListener('click', () => close(true));
+    backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) close(false); });
+  });
+}
+
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 

@@ -124,6 +124,9 @@
   margin-bottom: var(--space-3);
 }
 
+.confirm-modal { max-width: 420px; }
+.confirm-message { margin: 0 0 var(--space-4); line-height: 1.5; }
+
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3); }
 .field label { font-size: 0.85rem; color: var(--muted); }
 

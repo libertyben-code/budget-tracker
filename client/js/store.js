@@ -5,6 +5,7 @@ const state = {
   activeAccountId: localStorage.getItem('activeAccountId') || 'default',
   rules: [],
   transactions: [],
+  customCategories: [],
   savingsAccounts: [],
   savingsHistory: {},
   savingsRecurring: {},
@@ -23,6 +24,7 @@ const state = {
   selection: new Set(),
   visibleCount: 100,
   editingId: null,
+  creatingTx: false,
   addingAccount: false,
   ui: {
     tab: 'dashboard',
@@ -31,7 +33,6 @@ const state = {
     settingsOpen: false,
     accountMenuOpen: false,
     categoryDropdownOpen: null,
-    pieCategories: [],
     chartMode: 'stacked',
     chartRange: '6m',
     importErrors: null,

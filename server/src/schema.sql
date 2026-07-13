@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- user-defined categories that may have no transactions yet
+CREATE TABLE IF NOT EXISTS custom_categories (
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (account_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS savings_accounts (
   id         TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

@@ -74,9 +74,14 @@ A fresh `data/budget.db` is created automatically and seeded with a `default` ac
 
 `client/js/store.js` holds app state; `client/js/app.js` wires up the tabs and re-renders views on state change. Each screen is its own module under `client/js/views/`. All server communication goes through `client/js/api.js`.
 
+- **Confirmations** use `confirmDialog()` in `client/js/dom.js` (a promise-based, theme-styled modal that mirrors `toast()`), never `window.confirm`. It appends to `document.body` so it survives the render loop; callers `await` it and pass already-translated labels (`confirmLabel`/`cancelLabel`, `danger` for destructive actions).
+- **Adding a transaction** uses a client-only draft: the ＋ button sets `creatingTx` and renders a blank edit row; the server row is created only on Save (`save-new-tx`), so Cancel creates nothing. Editing an existing transaction is separate (`editingId`) and only patches on Save.
+
 ### Server
 
-`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
+`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category create/rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
+
+**Categories** are not a first-class table of record — the list shown in every picker is derived (`client/js/derive.js` `categories()`) as the union of the categories actually used by transactions **plus** any user-defined names in the `custom_categories` table (per account). This lets a brand-new category with zero transactions exist and be selectable. `POST /accounts/:id/categories` adds one; rename/delete keep `custom_categories` in sync alongside the transaction/rule propagation. `POST /accounts/:id/autocategorize` ("Apply Rules to All" in the UI) re-applies every rule across **all** transactions, overwriting where a rule matches the description (rule patterns are matched as case-insensitive substrings — see `shared/categorize.js`).
 
 Recurring savings deposits live in `savings_recurring` (amount + day 1–28); due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up, using deterministic history ids (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
 
@@ -94,7 +99,8 @@ See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" 
 
 ## Smoke test checklist
 
-1. Add a manual transaction on an account; confirm it saves and appears in the transaction list.
+1. Add a manual transaction on an account; confirm it saves and appears in the transaction list. Press ＋ then Cancel and confirm **no** empty transaction is left behind.
+   - Create a category in Manage Categories and confirm it shows in a transaction's category picker; change one transaction's category, then run **Apply Rules to All** and confirm matching transactions follow.
 2. Import a CSV; confirm rows parse, dedupe against existing transactions, and auto-categorize via rules.
 3. Create/rename/delete a category rule; confirm it applies to matching transactions.
 4. Check dashboard charts (spending by category, monthly overview, category-by-month) update correctly when filters/date range change.
