@@ -2,8 +2,9 @@ services:
   budget:
     build: .
     restart: unless-stopped
+    # host 3001 -> container 3000 (app always listens on 3000 inside the container; 3000 was taken on this host)
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - ./data:/data
     healthcheck:
