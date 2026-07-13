@@ -121,6 +121,7 @@ export async function loadAccount(accountId) {
   set({
     activeAccountId: accountId,
     transactions: data.transactions,
+    customCategories: data.customCategories || [],
     savingsAccounts: data.savingsAccounts,
     savingsHistory: data.savingsHistory,
     savingsRecurring: data.savingsRecurring,
@@ -153,6 +154,7 @@ async function boot() {
       rules: bootData.rules,
       activeAccountId: accountId,
       transactions: data.transactions,
+      customCategories: data.customCategories || [],
       savingsAccounts: data.savingsAccounts,
       savingsHistory: data.savingsHistory,
       savingsRecurring: data.savingsRecurring,

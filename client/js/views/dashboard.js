@@ -1,6 +1,6 @@
 import { esc, eur, chartColors } from '../dom.js';
-import { setUi, get } from '../store.js';
-import { filteredTransactions, categories, categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, OTHER } from '../derive.js';
+import { setUi } from '../store.js';
+import { filteredTransactions, categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, OTHER } from '../derive.js';
 import { render as renderFilters } from './filters.js';
 import { renderTiles } from './transactions.js';
 
@@ -9,10 +9,6 @@ let charts = [];
 const RANGE_MONTHS = { '6m': 6, '12m': 12, all: Infinity };
 
 export function render(state, t) {
-  const pieLabel = state.ui.pieCategories.length === 0
-    ? t('dashboard.allCategories')
-    : t('dashboard.selectedCount', { count: state.ui.pieCategories.length });
-  const cats = categories(state);
   const rangeBtn = (id, label) => `<button class="${state.ui.chartRange === id ? 'active' : ''}" data-action="chart-range" data-range="${id}">${esc(label)}</button>`;
 
   return `
@@ -21,18 +17,7 @@ export function render(state, t) {
     ${renderFilters(state, t)}
     <div class="charts">
       <div class="card">
-        <div class="row" style="margin-bottom:8px">
-          <h2 class="grow" style="margin:0">${esc(t('dashboard.spendingByCategory'))}</h2>
-          <div class="dropdown">
-            <button class="btn small select-btn" data-action="toggle-cat-dropdown" data-which="pie">${esc(pieLabel)}</button>
-            ${state.ui.categoryDropdownOpen === 'pie' ? `
-            <div class="dropdown-menu" data-keep-open>
-              <label class="menu-item"><input type="checkbox" data-action-change="pie-cat-all" ${state.ui.pieCategories.length === 0 ? 'checked' : ''}> ${esc(t('dashboard.allCategories'))}</label>
-              ${cats.map(c => `
-              <label class="menu-item"><input type="checkbox" data-action-change="pie-cat" data-cat="${esc(c)}" ${state.ui.pieCategories.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
-            </div>` : ''}
-          </div>
-        </div>
+        <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
         <div class="chart-box" id="hbar-box"><canvas id="chart-hbar"></canvas></div>
       </div>
       <div class="card chart-wide">
@@ -85,7 +70,7 @@ export function afterRender(state, t) {
 
   const hbarEl = document.getElementById('chart-hbar');
   if (hbarEl) {
-    const data = categoryData(filtered, state.ui.pieCategories, palette);
+    const data = categoryData(filtered, [], palette);
     const hbarTotal = data.reduce((sum, d) => sum + d.value, 0);
     const box = document.getElementById('hbar-box');
     if (box) box.style.height = `${Math.max(data.length * 36 + 24, 120)}px`;
@@ -212,10 +197,4 @@ export function afterRender(state, t) {
 export const actions = {
   'chart-mode': (el) => setUi({ chartMode: el.dataset.mode }),
   'chart-range': (el) => setUi({ chartRange: el.dataset.range }),
-  'pie-cat-all': () => setUi({ pieCategories: [] }),
-  'pie-cat': (el) => {
-    const current = get().ui.pieCategories;
-    const cat = el.dataset.cat;
-    setUi({ pieCategories: el.checked ? [...current, cat] : current.filter(c => c !== cat) });
-  },
 };

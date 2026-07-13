@@ -1,4 +1,4 @@
-import { esc, icons } from '../dom.js';
+import { esc, icons, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -98,7 +98,7 @@ export const actions = {
   'delete-selected-rules': async (el, ev, t) => {
     const state = get();
     const patterns = [...state.ui.ruleSelection];
-    if (!window.confirm(t('categoryRules.confirmDelete', { count: patterns.length }))) return;
+    if (!(await confirmDialog(t('categoryRules.confirmDelete', { count: patterns.length }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     await api.deleteRules(patterns);
     state.ui.ruleSelection = new Set();
     set({ rules: state.rules.filter(r => !patterns.includes(r.pattern)) });

@@ -1,6 +1,7 @@
 import { esc, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
+import { categories } from '../derive.js';
 import { loadAccount } from '../app.js';
 
 export function render(state, t) {
@@ -9,8 +10,9 @@ export function render(state, t) {
   for (const tx of state.transactions) {
     counts[tx.category] = (counts[tx.category] || 0) + 1;
   }
-  const cats = Object.keys(counts).sort();
+  const cats = categories(state);
   const deleting = state.ui.deletingCategory;
+  const deletingCount = deleting ? (counts[deleting] || 0) : 0;
 
   return `
   <div class="modal-backdrop" data-action="close-panel" data-self-only>
@@ -20,6 +22,10 @@ export function render(state, t) {
         <button class="icon-btn" data-action="close-panel">✕</button>
       </div>
       <p class="muted">${esc(t('categoryManager.subtitle'))}</p>
+      <div class="row" style="margin-bottom:12px">
+        <input id="new-cat-input" class="grow" placeholder="${esc(t('categoryManager.newCategoryName'))}" data-action-key="add-category">
+        <button class="btn primary" data-action="add-category">${esc(t('categoryManager.addCategory'))}</button>
+      </div>
       <div class="panel-list">
         ${cats.map(c => state.ui.editingCategory === c ? `
         <div class="panel-list-item">
@@ -29,7 +35,7 @@ export function render(state, t) {
         </div>` : `
         <div class="panel-list-item">
           <span class="grow">${esc(c)}</span>
-          <span class="badge">${esc(t('categoryManager.transactionCount', { count: counts[c], suffix: counts[c] > 1 ? 's' : '' }))}</span>
+          <span class="badge">${esc(t('categoryManager.transactionCount', { count: counts[c] || 0, suffix: (counts[c] || 0) === 1 ? '' : 's' }))}</span>
           <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}">${icons.edit}</button>
           <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">${icons.trash}</button>
         </div>`).join('')}
@@ -37,12 +43,14 @@ export function render(state, t) {
       ${deleting ? `
       <div class="card" style="margin-top:12px">
         <h3>${esc(t('categoryManager.deleteTitle', { category: deleting }))}</h3>
-        <p class="muted">${esc(t('categoryManager.hasTransactions', { count: counts[deleting] || 0 }))} ${esc(t('categoryManager.whatToDo'))}</p>
+        ${deletingCount > 0 ? `
+        <p class="muted">${esc(t('categoryManager.hasTransactions', { count: deletingCount }))} ${esc(t('categoryManager.whatToDo'))}</p>
         <div class="field">
           <label class="row" style="gap:6px"><input type="radio" name="del-mode" value="uncategorized" checked> ${esc(t('categoryManager.setUncategorized'))}</label>
           <label class="row" style="gap:6px"><input type="radio" name="del-mode" value="new"> ${esc(t('categoryManager.enterNewCategory'))}</label>
           <input id="del-replacement" placeholder="${esc(t('categoryManager.newCategoryName'))}">
-        </div>
+        </div>` : `
+        <p class="muted">${esc(t('categoryManager.emptyDelete'))}</p>`}
         <div class="row" style="justify-content:flex-end">
           <button class="btn" data-action="cancel-delete-category">${esc(t('common.cancel'))}</button>
           <button class="btn danger" data-action="apply-delete-category">${esc(t('categoryManager.deleteCategory'))}</button>
@@ -53,6 +61,18 @@ export function render(state, t) {
 }
 
 export const actions = {
+  'add-category': async () => {
+    const input = document.getElementById('new-cat-input');
+    const name = input?.value.trim();
+    if (!name) return;
+    const state = get();
+    if (categories(state).includes(name)) {
+      if (input) input.value = '';
+      return;
+    }
+    await api.addCategory(state.activeAccountId, name);
+    set({ customCategories: [...new Set([...state.customCategories, name])] });
+  },
   'start-rename-category': (el) => setUi({ editingCategory: el.dataset.cat, deletingCategory: null }),
   'cancel-rename-category': () => setUi({ editingCategory: null }),
   'apply-rename-category': async (el) => {
@@ -68,6 +88,7 @@ export const actions = {
     set({
       transactions: state.transactions.map(tx => tx.category === from ? { ...tx, category: to } : tx),
       rules: state.rules.map(r => r.category === from ? { ...r, category: to } : r),
+      customCategories: [...new Set(state.customCategories.map(c => c === from ? to : c))],
     });
   },
   'start-delete-category': (el) => setUi({ deletingCategory: el.dataset.cat, editingCategory: null }),

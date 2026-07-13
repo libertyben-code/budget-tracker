@@ -20,6 +20,11 @@ function accountCategories(db, accountId) {
     .all(accountId).map(r => r.category);
 }
 
+function customCategories(db, accountId) {
+  return db.prepare('SELECT name FROM custom_categories WHERE account_id = ? ORDER BY name')
+    .all(accountId).map(r => r.name);
+}
+
 function allRules(db) {
   return db.prepare('SELECT pattern, category FROM category_rules ORDER BY id').all();
 }
@@ -133,7 +138,7 @@ export function createApiRouter(db) {
         'SELECT id, amount, day, next_date AS nextDate FROM savings_recurring WHERE savings_account_id = ? ORDER BY day'
       ).all(s.id);
     }
-    res.json({ transactions, savingsAccounts, savingsHistory, savingsRecurring });
+    res.json({ transactions, savingsAccounts, savingsHistory, savingsRecurring, customCategories: customCategories(db, req.params.id) });
   });
 
   router.post('/accounts', (req, res) => {
@@ -271,17 +276,18 @@ export function createApiRouter(db) {
     res.send(toExportCsv(transactions, isoToDisplay));
   });
 
+  // applies every rule across all transactions, overwriting where a rule matches
   router.post('/accounts/:id/autocategorize', requireAccount, (req, res) => {
     const rules = allRules(db);
-    const uncategorized = db.prepare(
-      "SELECT id, description FROM transactions WHERE account_id = ? AND category = 'Uncategorized'"
+    const transactions = db.prepare(
+      'SELECT id, description, category FROM transactions WHERE account_id = ?'
     ).all(req.params.id);
     const update = db.prepare("UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE id = ?");
     let updated = 0;
     db.transaction(() => {
-      for (const t of uncategorized) {
+      for (const t of transactions) {
         const category = autoCategorize(t.description, rules);
-        if (category !== 'Uncategorized') {
+        if (category !== 'Uncategorized' && category !== t.category) {
           update.run(category, t.id);
           updated++;
         }
@@ -330,16 +336,28 @@ export function createApiRouter(db) {
 
   // --- Categories (atomic propagation) ---
 
+  router.post('/accounts/:id/categories', requireAccount, (req, res) => {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    db.prepare('INSERT OR IGNORE INTO custom_categories (account_id, name) VALUES (?, ?)')
+      .run(req.params.id, name);
+    res.status(201).json({ name });
+  });
+
   router.post('/accounts/:id/categories/rename', requireAccount, (req, res) => {
     const { from, to } = req.body;
     if (!from || !to || !to.trim()) return res.status(400).json({ error: 'from and to required' });
+    const target = to.trim();
     let transactions = 0;
     let rules = 0;
     db.transaction(() => {
       transactions = db.prepare(
         "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
-      ).run(to.trim(), req.params.id, from).changes;
-      rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ?').run(to.trim(), from).changes;
+      ).run(target, req.params.id, from).changes;
+      rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ?').run(target, from).changes;
+      // delete-then-rename so a pre-existing custom entry for `target` doesn't collide on the PK
+      db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, target);
+      db.prepare('UPDATE custom_categories SET name = ? WHERE account_id = ? AND name = ?').run(target, req.params.id, from);
     })();
     res.json({ transactions, rules });
   });
@@ -356,6 +374,7 @@ export function createApiRouter(db) {
         "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
       ).run(replacement.trim(), req.params.id, category).changes;
       rules = db.prepare('DELETE FROM category_rules WHERE category = ?').run(category).changes;
+      db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, category);
     })();
     res.json({ transactions, rules });
   });

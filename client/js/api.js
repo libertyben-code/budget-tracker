@@ -34,6 +34,7 @@ export const api = {
   batchRules: (patterns, category) => request('POST', '/rules/batch', { patterns, category }),
   deleteRules: (patterns) => request('POST', '/rules/delete', { patterns }),
 
+  addCategory: (accountId, name) => request('POST', `/accounts/${accountId}/categories`, { name }),
   renameCategory: (accountId, from, to) => request('POST', `/accounts/${accountId}/categories/rename`, { from, to }),
   deleteCategory: (accountId, category, replacement) =>
     request('POST', `/accounts/${accountId}/categories/delete`, { category, replacement }),

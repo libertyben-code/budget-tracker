@@ -1,4 +1,4 @@
-import { esc, icons, toast } from '../dom.js';
+import { esc, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -119,11 +119,11 @@ export const actions = {
     set({ addingAccount: false, accounts: [...get().accounts, account] });
     await loadAccount(account.id);
   },
-  'delete-account': async (el, ev) => {
+  'delete-account': async (el, ev, t) => {
     ev.stopPropagation();
     const state = get();
     const account = state.accounts.find(a => a.id === el.dataset.id);
-    if (!window.confirm(`Delete "${account?.name}"? All its transactions will be lost.`)) return;
+    if (!(await confirmDialog(t('header.confirmDeleteAccount', { name: account?.name || '' }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     setUi({ accountMenuOpen: false });
     await api.deleteAccount(el.dataset.id);
     localStorage.setItem('activeAccountId', 'default');
@@ -152,11 +152,13 @@ export const actions = {
     a.download = '';
     a.click();
   },
-  'auto-categorize': async () => {
+  'auto-categorize': async (el, ev, t) => {
+    if (!(await confirmDialog(t('header.applyRulesConfirm'), { confirmLabel: t('common.apply'), cancelLabel: t('common.cancel') }))) return;
     const state = get();
-    await api.autocategorize(state.activeAccountId);
+    const { updated } = await api.autocategorize(state.activeAccountId);
     setUi({ settingsOpen: false });
     await loadAccount(state.activeAccountId);
+    toast(t('header.applyRulesResult', { count: updated }));
   },
   'open-rules': () => setUi({ settingsOpen: false, panel: 'rules', ruleSelection: new Set(), rulesFilter: '' }),
   'open-category-manager': () => setUi({ settingsOpen: false, panel: 'categories', editingCategory: null, deletingCategory: null }),
