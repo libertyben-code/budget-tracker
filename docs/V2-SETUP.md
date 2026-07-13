@@ -23,11 +23,11 @@ sudo chown -R 1000:1000 data # container runs as non-root uid 1000; it must own 
 docker compose up -d --build
 
 # one-time: expose over the tailnet with HTTPS (required for PWA install)
-sudo tailscale serve --bg https:443 http://localhost:3000
+sudo tailscale serve --bg https:443 http://localhost:3001
 tailscale serve status       # shows your URL: https://<host>.<tailnet>.ts.net
 ```
 
-The container listens only on `127.0.0.1:3000`; nothing is reachable outside the tailnet.
+The host publishes the app on `127.0.0.1:3001` (mapped to the container's internal port 3000, since 3000 was already taken on this host); nothing is reachable outside the tailnet. If you change the host port, re-point `tailscale serve` to match.
 
 ## Install on Android (both phones)
 
@@ -62,7 +62,7 @@ Your entire financial history is one file: `data/budget.db`. `update.sh` snapsho
 
 No application-layer auth by design — **Tailscale is the perimeter**, so keep it that way:
 
-- The container binds `127.0.0.1:3000` only; expose it with `tailscale serve` (tailnet-only). **Never `tailscale funnel`** it and never change the port binding to `0.0.0.0`/`3000:3000` — either would expose all your financial data with no login.
+- The container is published on `127.0.0.1:3001` only (host 3001 → container 3000); expose it with `tailscale serve` (tailnet-only). **Never `tailscale funnel`** it and never drop the `127.0.0.1` prefix (e.g. `0.0.0.0:3001:3000` or `3001:3000`) — that would expose all your financial data on the LAN with no login.
 - Hardening already in the code: strict CSP + `X-Frame-Options`/`nosniff`/`Referrer-Policy` headers; CSV export neutralizes spreadsheet formula injection; the import endpoint only accepts `text/csv` (blocks cross-site form POSTs); the container runs as non-root uid 1000.
 - Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock.
 
