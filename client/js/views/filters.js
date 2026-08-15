@@ -1,4 +1,4 @@
-import { esc } from '../dom.js';
+import { esc, checkRow } from '../dom.js';
 import { get, setFilter, setUi } from '../store.js';
 import { categories, months, years, monthLabel } from '../derive.js';
 
@@ -39,9 +39,8 @@ export function render(state, t) {
         <button class="btn select-btn" data-action="toggle-cat-dropdown" data-which="filter">${esc(catLabel)}</button>
         ${state.ui.categoryDropdownOpen === 'filter' ? `
         <div class="dropdown-menu left" data-keep-open>
-          <label class="menu-item"><input type="checkbox" data-action-change="filter-cat-all" ${f.categories.length === 0 ? 'checked' : ''}> ${esc(t('transactionTable.allCategories'))}</label>
-          ${cats.map(c => `
-          <label class="menu-item"><input type="checkbox" data-action-change="filter-cat" data-cat="${esc(c)}" ${f.categories.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
+          ${checkRow({ on: f.categories.length === 0, action: 'filter-cat-all', label: t('transactionTable.allCategories') })}
+          ${cats.map(c => checkRow({ on: f.categories.includes(c), action: 'filter-cat', label: c, data: `data-cat="${esc(c)}"` })).join('')}
         </div>` : ''}
       </div>
       <input id="filter-desc" class="grow" type="search" placeholder="${esc(t('transactionTable.searchDescription'))}"
@@ -88,7 +87,7 @@ export const actions = {
   'filter-cat': (el) => {
     const current = get().filter.categories;
     const cat = el.dataset.cat;
-    setFilter({ categories: el.checked ? [...current, cat] : current.filter(c => c !== cat) });
+    setFilter({ categories: current.includes(cat) ? current.filter(c => c !== cat) : [...current, cat] });
   },
   'filter-description': (el) => setFilter({ description: el.value }),
   'filter-preset': (el) => setFilter({ ...presets[el.dataset.which] }),

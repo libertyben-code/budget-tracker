@@ -1,4 +1,4 @@
-import { esc, eur, icons, toast, confirmDialog } from '../dom.js';
+import { esc, eur, icons, checkPill, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { filteredTransactions, categories, stats } from '../derive.js';
@@ -91,9 +91,7 @@ export function render(state, t) {
     </div>` : ''}
     <div class="row" style="align-items:center">
       <h2 class="grow" style="margin:0">${esc(t('transactionTable.title', { count: filtered.length }))}</h2>
-      <label class="row" style="gap:6px;font-size:0.85rem;color:var(--muted)">
-        <input type="checkbox" data-action-change="select-all" ${allVisibleSelected ? 'checked' : ''}> ${esc(t('common.all'))}
-      </label>
+      ${checkPill({ on: allVisibleSelected, action: 'select-all', label: t('common.all') })}
       <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
     </div>
     <div class="tx-cards">${draftCard + cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
@@ -208,9 +206,11 @@ export const actions = {
     else selection.add(id);
     set({ selection });
   },
-  'select-all': (el) => {
-    const filtered = filteredTransactions(get());
-    set({ selection: el.checked ? new Set(filtered.map(tx => tx.id)) : new Set() });
+  'select-all': () => {
+    const state = get();
+    const filtered = filteredTransactions(state);
+    const allSelected = filtered.length > 0 && filtered.every(tx => state.selection.has(tx.id));
+    set({ selection: allSelected ? new Set() : new Set(filtered.map(tx => tx.id)) });
   },
   'clear-selection': () => set({ selection: new Set() }),
   'sort': (el) => {

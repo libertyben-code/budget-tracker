@@ -1,4 +1,4 @@
-const CACHE = 'bt-static-v3';
+const CACHE = 'bt-static-v4';
 
 const SHELL = [
   '/',
@@ -27,6 +27,7 @@ const SHELL = [
   '/shared/categorize.js',
   '/shared/csv.js',
   '/vendor/chart.umd.min.js',
+  '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
