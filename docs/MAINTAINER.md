@@ -77,6 +77,18 @@ A fresh `data/budget.db` is created automatically and seeded with a `default` ac
 - **Confirmations** use `confirmDialog()` in `client/js/dom.js` (a promise-based, theme-styled modal that mirrors `toast()`), never `window.confirm`. It appends to `document.body` so it survives the render loop; callers `await` it and pass already-translated labels (`confirmLabel`/`cancelLabel`, `danger` for destructive actions).
 - **Adding a transaction** uses a client-only draft: the ＋ button sets `creatingTx` and renders a blank edit row; the server row is created only on Save (`save-new-tx`), so Cancel creates nothing. Editing an existing transaction is separate (`editingId`) and only patches on Save.
 
+### Header layout
+
+One flex row: `.app-title` (wallet + name), `.account-switcher`, then the settings `.dropdown`. Three things about it are load-bearing and none are obvious from reading the rules:
+
+- **`.app-title` is `flex: 0 0 auto` — it never shrinks.** When the row runs out of width the account pill gives way instead. That is a deliberate priority call, not an oversight: the app name is fixed branding, while the account name is user data that is also readable in full in the dropdown. Making the title shrinkable puts an ellipsis in "Budget Tracker" at 360px.
+- **The width cap lives on `.account-switcher`, not on `.account-btn`.** Flex shrinking applies to the flex item; with the `max-width` on the button, the button keeps its content width and rides over the settings gear below 390px.
+- **The account menu is anchored to the header, not to its own button.** `.account-switcher .dropdown` is `position: static`, so the absolutely positioned menu resolves against `.app-header` (sticky counts as positioned) and drops centred beneath the whole header. A menu hanging from `left: 0` of a centred button runs off the right edge of a phone.
+
+The pill is centred **between the name and the gear** via `margin: 0 auto`, not on the viewport. A `1fr auto 1fr` grid would viewport-centre it, but equal side columns leave roughly 46px for the pill at phone width once a visible wallet and a legible name have taken theirs — the layout was tried that way and reverted. The visible consequence is that on a wide desktop the pill sits right of the true centre, because the title is much wider than the gear.
+
+`.app-header` sits at `z-index: 40`, above the tab bar's 35: the header's dropdowns are its children and inherit its stacking context, so a tall menu would otherwise slide under the bar.
+
 ### Navigation
 
 The tab bar is `renderNav()` in `views/header.js`, appended after `<main>` by `app.js` — a sibling of the header rather than part of it, because it is `position: fixed` and only the render order says which one owns the bottom of the screen. `main` carries a `padding-bottom` of `--tabbar-h` plus the safe-area inset; the selection bar and the toast are offset by the same token. **Changing `--tabbar-h` moves all four**, which is the reason the height is a token and not a number in the rule.
@@ -139,7 +151,7 @@ See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" 
 5. Add a savings account, record a deposit and a withdrawal; confirm balance and chart update. Add a recurring deposit rule and confirm catch-up applies correctly.
 6. Toggle **Appearance** and the EN/FR language switch in the Settings menu; pick an accent from the colour swatches. Confirm all three persist across reload, and that the menu stays open while trying several colours.
 7. Switch between accounts via the account switcher; confirm data is isolated per account.
-   - At a phone width, confirm the switcher is centred in the header and the app name beside it is not clipped.
+   - At a phone width, confirm the wallet and the full app name are both visible, the switcher sits between them and the gear without touching either, and opening it drops a menu that stays inside the screen. Narrow the window to ~320px: the account name shortens, the app name does not.
 8. Tap each of the four tabs in the bottom bar; confirm the active one takes the accent colour and that no card, selection bar or toast is hidden behind the bar at the end of a long list.
 9. Tick several categories in the filter dropdown and the **All** pill above the list; confirm the dropdown stays open while ticking, and that untapping returns to the previous state.
 10. Install as a PWA on a phone over Tailscale; confirm offline reads still render (writes should fail gracefully when offline). A fresh install shows the wallet icon on the home screen — an existing one keeps the icon it was installed with until it is removed and re-added.

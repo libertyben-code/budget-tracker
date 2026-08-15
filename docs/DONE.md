@@ -31,6 +31,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Move the light/dark toggle into the Settings menu — OK
 - [x] Colour themes: six accents with dark-mode steps, picked from Settings and persisted — OK
 - [x] Centre the account switcher between the app name and the settings icon — OK
+- [x] Restore the wallet mark beside the app name, enlarge the app name, and make the account switcher a prominent accent pill — all on one header row — OK
 
 ## Bug fixes
 
