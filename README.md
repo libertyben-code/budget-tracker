@@ -38,7 +38,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 ### Navigation & appearance
 
 - **Bottom tab bar** — Dashboard, Transactions, Joint Split and Savings sit in a fixed bar at the bottom of the screen, each an icon over its label, the current one in the accent colour. It clears the phone's home indicator and stays put while the page scrolls.
-- **Header** — the app name on the left, the account switcher centred, settings on the right. On phones the wallet mark steps aside so the name fits beside the centred switcher; it is on the home screen and the browser tab anyway.
+- **Header** — one row: the wallet mark and the app name on the left, the account switcher centred between them and the settings icon on the right. The switcher is a rounded pill in the accent colour, large enough to read and to tap, and it carries an `ACCOUNT` label on wider screens. When the row runs short the account name shortens and the app name does not — the app name is fixed, and the account's full name is in the dropdown.
 - **Colour theme** — six accents (indigo, violet, blue, green, amber, coral) picked from a swatch row in Settings, each with its own dark-mode step. Charts keep their own fixed palette: a series colour is data, so it does not follow a per-device preference. The Android status bar follows the chosen accent.
 - **Light / dark** — an *Appearance* item in the Settings menu, alongside the colour swatches and the language switch. Both persist across reloads.
 - **Selection ticks** — categories, "All" and the rule list use a drawn tick on a full-width tappable row rather than a desktop checkbox.

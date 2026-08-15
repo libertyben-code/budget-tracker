@@ -44,7 +44,10 @@ export function render(state, t) {
       </div>
       <div class="account-switcher">
         <div class="dropdown">
-          <button class="btn select-btn account-btn" data-action="toggle-account-menu"><span class="account-name">${esc(activeAccount.name)}</span></button>
+          <button class="btn select-btn account-btn" data-action="toggle-account-menu">
+            <span class="account-label">${esc(t('header.account'))}</span>
+            <span class="account-name">${esc(activeAccount.name)}</span>
+          </button>
           ${state.ui.accountMenuOpen ? `
           <div class="dropdown-menu left" data-keep-open>
             ${state.accounts.map(a => `
@@ -63,7 +66,7 @@ export function render(state, t) {
           </div>` : ''}
         </div>
       </div>
-      <div class="dropdown header-end">
+      <div class="dropdown">
         <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>

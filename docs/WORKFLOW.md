@@ -205,6 +205,14 @@ Changing `manifest.webmanifest` or the PNGs it points at does not repaint the ic
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-08-15 — Header rework: wallet restored, bigger name, prominent account pill (branch: feature/header-two-row)
+
+- Follow-up to the UI pass below, which had hidden the wallet mark at ≤480px to buy width for a viewport-centred account pill. Ben wanted the mark back, a bigger app name **and** a more visible account switcher — which do not fit a single row alongside a viewport-centred pill: with the wallet and a legible name taking their width, `1fr auto 1fr` leaves the pill about 46px at 390px.
+- Tried two rows first (title + gear above, switcher centred below); Ben rejected it, so the final layout is one flex row with the pill centred **between** the name and the gear via `margin: 0 auto` — which is what the original request said. Wallet 18→24px, app name 0.85→1.05rem, pill 125×32 → 142×40 with an accent tint, rounded shape and an `ACCOUNT` label above 700px. Header is 65px, against 57px before and 117px for the rejected two-row version.
+- `.app-title` is `flex: 0 0 auto` so the **account name** truncates rather than the app name. Result: the full app name renders at every width from 320px up, where before it ellipsised at ≤430px.
+- Two defects found by measuring rather than by eye, both fixed: the `max-width` sat on `.account-btn` instead of the shrinking flex item, so the pill overlapped the gear below 390px; and the account menu hung from `left: 0` of a now-centred button and ran off the right edge, so `.account-switcher .dropdown` became `position: static` and the menu now resolves against the sticky `.app-header` and drops centred under it. `.app-header` z-index 30 → 40 so its dropdowns clear the tab bar's 35.
+- Verified over CDP at 320/360/390/430/768/1100: left and right gaps around the pill equal at every width, no overlap, no clipping, no horizontal scroll, menus inside the viewport, all four tabs at a 65px header, zero console errors. Known cosmetic: on a wide desktop the pill sits right of true centre, since the title is wider than the gear.
+
 ### 2026-08-15 — App-like UI pass: bottom nav, wallet icon, drawn ticks, accent themes (branch: feature/app-like-ui)
 
 - **Bottom tab bar**: the four tabs left the header for a fixed `.tab-bar`, icon over label, active tab in the accent. `renderNav()` in `views/header.js` is appended after `<main>` by `app.js` — a sibling of the header, since only render order decides which fixed element owns the bottom of the screen. New `--tabbar-h` token drives `main`'s padding, the selection bar and the toast together; the old `.tabs`/`.tab` rules were deleted rather than left behind. New 22px `navIcons` export, separate from the 18px `icons` set.

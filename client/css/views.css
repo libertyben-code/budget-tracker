@@ -6,35 +6,30 @@
   padding: var(--space-3) var(--space-4);
   position: sticky;
   top: 0;
-  z-index: 30;
+  /* Above the tab bar's 35: the header's dropdowns are its children, so they
+     inherit its stacking context and a tall one would otherwise slide under the
+     bar at the bottom of a short screen. */
+  z-index: 40;
 }
-/* Three columns rather than a flex row: the account pill is asked to sit in the
-   middle of the header, and only equal side columns put it there. A flex row
-   would centre it between whatever the title and the gear happen to measure,
-   which moves it every time the account name changes length. */
+/* One row: mark + name, the account pill, the gear. Not a 1fr auto 1fr grid —
+   equal side columns would centre the pill on the viewport, and once the wallet
+   and a legible name have taken their width there is only ~46px left for it at
+   phone size. Auto margins instead centre it in the gap between the name and the
+   gear, which is the space it actually has. */
 .header-top {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.header-end { justify-self: end; }
-/* overflow:hidden is what makes the centre column authoritative: without it the
-   title spills out of its track and is painted over by the account pill rather
-   than being trimmed inside its own box. */
-.app-title { min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
-.app-title svg { color: var(--accent); flex-shrink: 0; }
-/* Centring the account pill costs the side columns their width, and on a phone
-   there is not enough left for the mark and the name both. The name is the half
-   that has to survive: the wallet is on the home screen and the browser tab, so
-   it is the one already saying this elsewhere. */
-@media (max-width: 480px) {
-  .app-title svg { display: none; }
-}
+/* Never shrinks: when the row runs out of width the account pill gives way, not
+   the app name. The name is fixed branding, the account name is data the user
+   picked and can also be read in full in the dropdown. */
+.app-title { flex: 0 0 auto; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 8px; }
+.app-title svg { color: var(--accent); flex-shrink: 0; width: 24px; height: 24px; }
 .app-title-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
 .header-top h1 {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 1.05rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -42,16 +37,54 @@
 }
 .app-version { font-size: 0.65rem; color: var(--muted); font-weight: 400; letter-spacing: 0.02em; }
 
-.account-switcher { min-width: 0; justify-self: center; }
+/* The pill is the only thing here that may shrink, so it has to be the flex item
+   that carries the cap — with the max-width on the button instead, the button
+   keeps its content width and rides over the gear on a narrow screen. */
+.account-switcher { flex: 0 1 auto; min-width: 0; max-width: min(46vw, 240px); margin: 0 auto; }
+.account-switcher .dropdown { max-width: 100%; }
+.header-top > .dropdown { flex-shrink: 0; }
 .account-btn {
-  max-width: min(30vw, 150px);
-  min-height: 32px;
-  padding: 4px 26px 4px 10px;
-  font-size: 0.85rem;
-  background-position: right 8px center;
-  background-size: 14px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 5px 34px 5px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background-position: right 12px center;
+  background-size: 15px;
+}
+.account-btn:hover { border-color: var(--accent-strong); }
+/* Desktop only — on a phone the row needs these ~75px for the account name. */
+.account-label { display: none; }
+@media (min-width: 700px) {
+  .account-label {
+    display: inline;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.75;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
 }
 .account-btn .account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Anchored to the header, not to the pill. A menu hanging from `left: 0` of a
+   centred button runs off the right edge; making the pill's .dropdown static
+   hands the containing block to .app-header (sticky counts as positioned), so
+   the menu drops from under the header and centres on the page instead. */
+.account-switcher .dropdown { position: static; }
+.account-switcher .dropdown-menu {
+  top: calc(100% + 4px);
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+}
 .account-item { cursor: pointer; }
 .account-item.active { background: var(--accent-soft); color: var(--accent-strong); }
 .account-item .icon-btn { width: 32px; height: 32px; margin: -6px 0; }
