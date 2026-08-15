@@ -111,7 +111,38 @@ export const icons = {
   globe: svg('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'),
   offline: svg('<path d="m2 2 20 20"/><path d="M5 12.55a11 11 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/>'),
   repeat: svg('<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>'),
+  check: svg('<polyline points="20 6 9 17 4 12"/>'),
+  palette: svg('<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>'),
 };
+
+// Bottom navigation. Sized larger than the 18px `icons` set — a tab bar reads by
+// its glyph first and its label second, so the glyph carries the weight.
+const navSvg = (paths) =>
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+export const navIcons = {
+  dashboard: navSvg('<line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/>'),
+  transactions: navSvg('<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>'),
+  joint: navSvg('<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>'),
+  savings: navSvg('<path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5Z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><circle cx="16" cy="10" r=".5" fill="currentColor"/>'),
+};
+
+// A tick as a full-width tappable row, for lists. `role=checkbox` rather than a
+// real <input>: the box is drawn, so the semantics have to be declared.
+export function checkRow({ on, action, label, data = '' }) {
+  return `
+  <button class="check-row ${on ? 'on' : ''}" data-action="${action}" ${data} role="checkbox" aria-checked="${on}">
+    <span class="check-box">${icons.check}</span>
+    <span class="grow">${esc(label)}</span>
+  </button>`;
+}
+
+export function checkPill({ on, action, label }) {
+  return `
+  <button class="check-pill ${on ? 'on' : ''}" data-action="${action}" role="checkbox" aria-checked="${on}">
+    <span class="check-box">${icons.check}</span>${esc(label)}
+  </button>`;
+}
 
 export function chartColors() {
   const styles = getComputedStyle(document.documentElement);

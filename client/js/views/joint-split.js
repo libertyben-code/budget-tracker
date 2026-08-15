@@ -17,12 +17,12 @@ export function render(state, t) {
         <input id="joint-target" type="number" inputmode="decimal" step="0.01" value="${esc(account.jointTargetAmount ?? '2100')}" data-action-change="joint-target">
         <span class="muted" style="font-size:0.8rem">${esc(t('joint.billsReference', { amount: joint.billsTotal.toFixed(2) }))}</span>
       </div>
-      <div class="tiles" style="margin-bottom:0">
-        <div class="field" style="margin:0">
+      <div class="salary-row">
+        <div class="field salary-field">
           <label>${esc(t('joint.salaryPerson1'))}</label>
           <input type="number" inputmode="decimal" step="0.01" value="${esc(account.salaryPerson1 ?? '')}" data-action-change="joint-salary1">
         </div>
-        <div class="field" style="margin:0">
+        <div class="field salary-field">
           <label>${esc(t('joint.salaryPerson2'))}</label>
           <input type="number" inputmode="decimal" step="0.01" value="${esc(account.salaryPerson2 ?? '')}" data-action-change="joint-salary2">
         </div>

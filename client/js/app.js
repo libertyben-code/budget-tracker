@@ -42,7 +42,7 @@ function render() {
   const selStart = active?.selectionStart;
 
   const view = views[state.ui.tab] || views.dashboard;
-  appEl.innerHTML = header.render(state, t) + `<main>${view.render(state, t)}</main>`;
+  appEl.innerHTML = header.render(state, t) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
   modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t);
 
   dashboard.afterRender(state, t);
@@ -139,7 +139,7 @@ window.addEventListener('online', () => setOffline(false));
 window.addEventListener('offline', () => setOffline(true));
 
 async function boot() {
-  document.documentElement.dataset.theme = get().ui.dark ? 'dark' : 'light';
+  header.applyTheme(get());
   subscribe(render);
 
   try {

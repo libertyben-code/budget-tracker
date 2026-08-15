@@ -1,10 +1,30 @@
-import { esc, icons, toast, confirmDialog } from '../dom.js';
+import { esc, icons, navIcons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap } from '../app.js';
 
 const VERSION = 'v2.0.0';
+
+const ACCENTS = ['indigo', 'violet', 'blue', 'green', 'amber', 'coral'];
+
+const TABS = [
+  ['dashboard', 'header.dashboard'],
+  ['transactions', 'header.transactions'],
+  ['joint', 'header.jointSplit'],
+  ['savings', 'header.savings'],
+];
+
+// Applied to the root rather than held in CSS alone: Android reads the
+// theme-color meta for the status bar and cannot resolve a CSS variable, so the
+// resolved value has to be written back after the attribute changes.
+export function applyTheme(state) {
+  const root = document.documentElement;
+  root.dataset.theme = state.ui.dark ? 'dark' : 'light';
+  root.dataset.accent = state.ui.accent;
+  const resolved = getComputedStyle(root).getPropertyValue('--accent').trim();
+  if (resolved) document.querySelector('meta[name="theme-color"]').content = resolved;
+}
 
 export function render(state, t) {
   const cats = categories(state);
@@ -43,8 +63,7 @@ export function render(state, t) {
           </div>` : ''}
         </div>
       </div>
-      <button class="icon-btn" data-action="toggle-dark" title="${esc(t(state.ui.dark ? 'header.light' : 'header.dark'))}">${state.ui.dark ? icons.sun : icons.moon}</button>
-      <div class="dropdown">
+      <div class="dropdown header-end">
         <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>
@@ -58,16 +77,20 @@ export function render(state, t) {
           <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
           <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
           <div class="menu-sep"></div>
+          <button class="menu-item" data-action="toggle-dark">${state.ui.dark ? icons.sun : icons.moon} ${esc(t('header.appearance'))}: ${esc(t(state.ui.dark ? 'header.dark' : 'header.light'))}</button>
+          <div class="menu-item accent-row">
+            ${icons.palette}
+            <span class="grow">${esc(t('header.accentColor'))}</span>
+            <span class="accent-swatches">
+              ${ACCENTS.map(a => `
+              <button class="accent-swatch ${state.ui.accent === a ? 'active' : ''}" data-accent="${a}" data-action="set-accent"
+                      title="${esc(t(`header.accent.${a}`))}" aria-label="${esc(t(`header.accent.${a}`))}"></button>`).join('')}
+            </span>
+          </div>
           <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
         </div>` : ''}
       </div>
     </div>
-    <nav class="tabs">
-      <button class="tab ${state.ui.tab === 'dashboard' ? 'active' : ''}" data-action="nav" data-tab="dashboard">${esc(t('header.dashboard'))}</button>
-      <button class="tab ${state.ui.tab === 'transactions' ? 'active' : ''}" data-action="nav" data-tab="transactions">${esc(t('header.transactions'))}</button>
-      <button class="tab ${state.ui.tab === 'joint' ? 'active' : ''}" data-action="nav" data-tab="joint">${esc(t('header.jointSplit'))}</button>
-      <button class="tab ${state.ui.tab === 'savings' ? 'active' : ''}" data-action="nav" data-tab="savings">${esc(t('header.savings'))}</button>
-    </nav>
   </header>
   ${state.offline ? `<div class="banner offline" style="margin:12px 16px 0">${icons.offline} ${esc(t('common.offline'))}</div>` : ''}
   ${importErrors ? `
@@ -81,12 +104,30 @@ export function render(state, t) {
   </div>` : ''}`;
 }
 
+export function renderNav(state, t) {
+  return `
+  <nav class="tab-bar" aria-label="${esc(t('header.mainNavigation'))}">
+    ${TABS.map(([tab, key]) => `
+    <button class="tab-btn ${state.ui.tab === tab ? 'active' : ''}" data-action="nav" data-tab="${tab}"
+            ${state.ui.tab === tab ? 'aria-current="page"' : ''}>
+      ${navIcons[tab]}
+      <span>${esc(t(key))}</span>
+    </button>`).join('')}
+  </nav>`;
+}
+
 export const actions = {
   'toggle-dark': () => {
     const dark = !get().ui.dark;
     localStorage.setItem('darkMode', String(dark));
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     setUi({ dark });
+    applyTheme(get());
+  },
+  'set-accent': (el) => {
+    const accent = el.dataset.accent;
+    localStorage.setItem('accent', accent);
+    setUi({ accent });
+    applyTheme(get());
   },
   'toggle-lang': () => {
     const lang = get().ui.lang === 'en' ? 'fr' : 'en';

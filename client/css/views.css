@@ -3,26 +3,48 @@
 .app-header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
   position: sticky;
   top: 0;
   z-index: 30;
 }
+/* Three columns rather than a flex row: the account pill is asked to sit in the
+   middle of the header, and only equal side columns put it there. A flex row
+   would centre it between whatever the title and the gear happen to measure,
+   which moves it every time the account name changes length. */
 .header-top {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
 }
-.app-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.header-end { justify-self: end; }
+/* overflow:hidden is what makes the centre column authoritative: without it the
+   title spills out of its track and is painted over by the account pill rather
+   than being trimmed inside its own box. */
+.app-title { min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
 .app-title svg { color: var(--accent); flex-shrink: 0; }
+/* Centring the account pill costs the side columns their width, and on a phone
+   there is not enough left for the mark and the name both. The name is the half
+   that has to survive: the wallet is on the home screen and the browser tab, so
+   it is the one already saying this elsewhere. */
+@media (max-width: 480px) {
+  .app-title svg { display: none; }
+}
 .app-title-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
-.header-top h1 { margin: 0; font-size: 0.95rem; font-weight: 700; white-space: nowrap; }
+.header-top h1 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .app-version { font-size: 0.65rem; color: var(--muted); font-weight: 400; letter-spacing: 0.02em; }
 
-.account-switcher { min-width: 0; }
+.account-switcher { min-width: 0; justify-self: center; }
 .account-btn {
-  max-width: min(40vw, 160px);
+  max-width: min(30vw, 150px);
   min-height: 32px;
   padding: 4px 26px 4px 10px;
   font-size: 0.85rem;
@@ -35,7 +57,45 @@
 .account-item .icon-btn { width: 32px; height: 32px; margin: -6px 0; }
 .account-add { display: flex; gap: var(--space-2); padding: 6px 4px; }
 
-main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin: 0 auto; }
+main {
+  flex: 1;
+  padding: var(--space-4);
+  /* The bar is fixed, so it is out of flow and would sit on top of the last
+     card without this. */
+  padding-bottom: calc(var(--tabbar-h) + var(--space-4) + env(safe-area-inset-bottom));
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  display: flex;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.tab-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 2px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.tab-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tab-btn svg { display: block; }
+.tab-btn.active { color: var(--accent); }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .tiles > * { min-width: 0; }
@@ -43,9 +103,8 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
 .filter-bar { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
 .filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 
-.chip-row { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 2px; }
-.chip-row, .tabs { scrollbar-width: none; }
-.chip-row::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
+.chip-row { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chip-row::-webkit-scrollbar { display: none; }
 .chip-btn {
   display: inline-flex;
   align-items: center;
@@ -126,7 +185,7 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom));
   z-index: 45;
   width: calc(100% - 24px);
   max-width: 560px;
@@ -153,6 +212,19 @@ main { flex: 1; padding: var(--space-4); max-width: 1100px; width: 100%; margin:
   .chart-split { grid-template-columns: 1fr 1fr; }
   .chart-pane + .chart-pane { border-left: 1px solid var(--border); padding-left: var(--space-4); }
 }
+
+/* The two salaries read as a pair either side of the card's centre line, so the
+   fields are centred rather than stretched: an input capped at 200px keeps the
+   figure near its label instead of stranding it at the left edge of a wide box. */
+.salary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  justify-items: center;
+}
+.salary-field { margin: 0; align-items: center; width: 100%; max-width: 200px; }
+.salary-field label { text-align: center; }
+.salary-field input { width: 100%; text-align: center; font-weight: 600; }
 
 .panel-list { display: flex; flex-direction: column; }
 .panel-list-item {

@@ -185,6 +185,18 @@ New items are added by the user after testing. Move to `DONE.md` on the commit t
 
 The Docker image drops root (`USER node`, uid 1000). The bind-mounted `./data` volume must be writable by that uid or better-sqlite3 fails to open/create `budget.db`. **Rule:** on the server, `sudo chown -R 1000:1000 data` before `docker compose up` (documented in `docs/V2-SETUP.md`).
 
+### 2026-08-15 — Equal specificity makes token order decide the accent
+
+`:root[data-theme="dark"]` and `:root[data-accent="green"]` have **identical** specificity (0,2,0), so neither wins on weight — the one written later in `tokens.css` does. An accent block placed above the dark block silently loses in light mode, which reads as "the green theme does nothing" rather than as a CSS ordering problem.
+
+**Rule:** in `tokens.css`, accent blocks go *after* the dark block, and the combined `[data-theme="dark"][data-accent]` pairs (0,3,0) go after those. Adding an accent means adding it in both places or it will look right in one theme only.
+
+### 2026-08-15 — An installed Android PWA caches its launcher icon
+
+Changing `manifest.webmanifest` or the PNGs it points at does not repaint the icon on a phone that already has the app on its home screen — Android copies the icon at install time. The change is invisible on exactly the devices that matter, while looking correct in the browser.
+
+**Rule:** an icon change ships with "remove and re-add the PWA" in the release note. Do not debug the manifest against an installed shortcut; check it in a browser tab first, where the favicon updates immediately.
+
 ---
 
 ## Dated development log
@@ -192,6 +204,16 @@ The Docker image drops root (`USER node`, uid 1000). The bind-mounted `./data` v
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-08-15 — App-like UI pass: bottom nav, wallet icon, drawn ticks, accent themes (branch: feature/app-like-ui)
+
+- **Bottom tab bar**: the four tabs left the header for a fixed `.tab-bar`, icon over label, active tab in the accent. `renderNav()` in `views/header.js` is appended after `<main>` by `app.js` — a sibling of the header, since only render order decides which fixed element owns the bottom of the screen. New `--tabbar-h` token drives `main`'s padding, the selection bar and the toast together; the old `.tabs`/`.tab` rules were deleted rather than left behind. New 22px `navIcons` export, separate from the 18px `icons` set.
+- **Wallet icon everywhere**: new `client/icons/icon.svg` (the `icons.wallet` path, white on the indigo tile) is now the tab favicon and the source of regenerated `icon-192/512.png`, replacing the € glyph. No rasteriser in the toolchain — headless Chrome generated them, and the command is recorded in `MAINTAINER.md` so the next change to the mark is reproducible. `sw.js` cache `bt-static-v3` → `v4`.
+- **Ticks are no longer checkboxes**: `checkRow()`/`checkPill()` in `dom.js` replaced all four native `input[type=checkbox]` (category filter, Transactions "All", rules "All" and per-rule). They are `role="checkbox"` buttons on 44px targets, so the handlers moved from `data-action-change` + `el.checked` to `data-action` + deriving the current state.
+- **Accent themes**: six accents as `:root[data-accent]` blocks in `tokens.css`, indigo unchanged as the default and deliberately blockless. `applyTheme()` is the single writer of `data-theme` + `data-accent` and pushes the resolved `--accent` into the `theme-color` meta, which Android needs literal. The chart palette stays independent — a series colour is data, not a preference.
+- **Header**: light/dark moved into the Settings menu as *Appearance*, next to the new swatch row; `.header-top` became a `1fr auto 1fr` grid so the account pill is genuinely centred (measured exact at 320–1100px) rather than centred between whatever the neighbours happen to measure.
+- **Joint Split**: salary fields centred as a pair, labels and figures centred, inputs capped at 200px.
+- Verified over CDP in headless Chrome at 390×844 and 1100×800: zero console errors or exceptions, no horizontal scroll at any width, tab bar flush to the viewport bottom, and the contribution maths unchanged (3200/2400 against 2100 → €1200.00 / €900.00). No server, schema or security-model changes.
 
 ### 2026-07-13 — Category management, apply-rules, styled confirms, add-tx cancel fix (branch: feature/manage-categories)
 

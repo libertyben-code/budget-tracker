@@ -29,6 +29,7 @@ const state = {
   ui: {
     tab: 'dashboard',
     dark: localStorage.getItem('darkMode') === 'true',
+    accent: localStorage.getItem('accent') || 'indigo',
     lang: localStorage.getItem('language') || 'en',
     settingsOpen: false,
     accountMenuOpen: false,

@@ -1,4 +1,4 @@
-import { esc, icons, confirmDialog } from '../dom.js';
+import { esc, icons, checkPill, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -32,9 +32,7 @@ export function render(state, t) {
           <option value="">${esc(t('categoryRules.allCategories'))}</option>
           ${ruleCats.map(c => `<option value="${esc(c)}" ${filter === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
         </select>
-        <label class="row" style="gap:6px;margin-left:auto;font-size:0.85rem;color:var(--muted)">
-          <input type="checkbox" data-action-change="rules-select-all" ${allSelected ? 'checked' : ''}> ${esc(t('common.all'))}
-        </label>
+        <span style="margin-left:auto">${checkPill({ on: allSelected, action: 'rules-select-all', label: t('common.all') })}</span>
       </div>
       ${selection.size > 0 ? `
       <div class="selection-bar">
@@ -54,7 +52,10 @@ export function render(state, t) {
       <div class="panel-list">
         ${rules.map(r => `
         <div class="panel-list-item">
-          <input type="checkbox" data-action-change="select-rule" data-pattern="${esc(r.pattern)}" ${selection.has(r.pattern) ? 'checked' : ''}>
+          <button class="check-box-btn ${selection.has(r.pattern) ? 'on' : ''}" data-action="select-rule" data-pattern="${esc(r.pattern)}"
+                  role="checkbox" aria-checked="${selection.has(r.pattern)}" aria-label="${esc(r.pattern)}">
+            <span class="check-box">${icons.check}</span>
+          </button>
           <span class="grow">${esc(r.pattern)}</span>
           <span class="chip">${esc(r.category)}</span>
           <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}">${icons.trash}</button>
@@ -77,15 +78,17 @@ export const actions = {
   'rules-filter': (el) => setUi({ rulesFilter: el.value, ruleSelection: new Set() }),
   'select-rule': (el) => {
     const selection = new Set(get().ui.ruleSelection);
-    if (el.checked) selection.add(el.dataset.pattern);
-    else selection.delete(el.dataset.pattern);
+    const pattern = el.dataset.pattern;
+    if (selection.has(pattern)) selection.delete(pattern);
+    else selection.add(pattern);
     setUi({ ruleSelection: selection });
   },
-  'rules-select-all': (el) => {
+  'rules-select-all': () => {
     const state = get();
     const filter = state.ui.rulesFilter;
     const rules = filter ? state.rules.filter(r => r.category === filter) : state.rules;
-    setUi({ ruleSelection: el.checked ? new Set(rules.map(r => r.pattern)) : new Set() });
+    const allSelected = rules.length > 0 && rules.every(r => state.ui.ruleSelection.has(r.pattern));
+    setUi({ ruleSelection: allSelected ? new Set() : new Set(rules.map(r => r.pattern)) });
   },
   'delete-rule': async (el) => {
     await api.deleteRules([el.dataset.pattern]);

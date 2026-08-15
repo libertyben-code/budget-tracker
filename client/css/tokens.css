@@ -30,6 +30,7 @@
 
   --radius: 12px;
   --radius-sm: 8px;
+  --tabbar-h: 60px;
   --shadow: 0 1px 3px rgba(20, 25, 45, 0.08);
   --space-1: 4px;
   --space-2: 8px;
@@ -71,3 +72,24 @@
   --chart-8: #d95926;
   --chart-other: #6f6f6a;
 }
+
+/* Accent palette. Order matters: `:root[data-theme]` and `:root[data-accent]`
+   have equal specificity, so these must come after the dark block to win in
+   light mode; the theme+accent pairs outrank both and can sit anywhere after.
+   `indigo` is the default and needs no block — it is what :root already says.
+
+   The chart palette above is deliberately not derived from the accent: a series
+   colour is data, and following a per-device preference would make one chart
+   mean different things on two screens. */
+
+:root[data-accent="violet"] { --accent: #7c3aed; --accent-strong: #6425d0; --accent-soft: #efe8fe; }
+:root[data-accent="blue"]   { --accent: #1d6fd0; --accent-strong: #1558a8; --accent-soft: #dfeafc; }
+:root[data-accent="green"]  { --accent: #1b7f4b; --accent-strong: #13653a; --accent-soft: #dcf3e6; }
+:root[data-accent="amber"]  { --accent: #b45309; --accent-strong: #8f4107; --accent-soft: #fdeed3; }
+:root[data-accent="coral"]  { --accent: #d4453a; --accent-strong: #ad342b; --accent-soft: #ffe4e1; }
+
+:root[data-theme="dark"][data-accent="violet"] { --accent: #a98bf5; --accent-strong: #c4a8ff; --accent-soft: #2b2140; }
+:root[data-theme="dark"][data-accent="blue"]   { --accent: #6aa8f5; --accent-strong: #7fb6ff; --accent-soft: #16283f; }
+:root[data-theme="dark"][data-accent="green"]  { --accent: #4dc48c; --accent-strong: #5fd39a; --accent-soft: #14301f; }
+:root[data-theme="dark"][data-accent="amber"]  { --accent: #e0a54e; --accent-strong: #f0b45c; --accent-soft: #3a2a12; }
+:root[data-theme="dark"][data-accent="coral"]  { --accent: #f28c80; --accent-strong: #ff9b8f; --accent-soft: #3d1f1c; }

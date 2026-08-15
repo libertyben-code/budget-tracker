@@ -24,6 +24,13 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 ## UI / UX
 
 - [x] Replace all native `window.confirm` popups with a theme-styled in-app confirm dialog (EN/FR) — OK
+- [x] Move the tab navigation to a fixed bottom bar, icon over label, active tab in the accent colour — OK
+- [x] Use the wallet mark as the PWA/Android icon and the browser-tab favicon, replacing the € glyph — OK
+- [x] Replace the desktop-style category and select-all checkboxes with app-like drawn ticks on tappable rows — OK
+- [x] Centre the salary fields and their figures in Joint Split — OK
+- [x] Move the light/dark toggle into the Settings menu — OK
+- [x] Colour themes: six accents with dark-mode steps, picked from Settings and persisted — OK
+- [x] Centre the account switcher between the app name and the settings icon — OK
 
 ## Bug fixes
 
