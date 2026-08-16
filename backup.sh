@@ -1,7 +1,10 @@
 #!/bin/sh
 set -e
 
-DATA_DIR="${DATA_DIR:-/home/youruser/server/budget-tracker/data}"
+# Defaults to the data folder beside this script — this runs from your own clone of the repo,
+# which is where the data folder already lives. Export DATA_DIR if yours sits elsewhere.
+HERE=$(cd "$(dirname "$0")" && pwd)
+DATA_DIR="${DATA_DIR:-$HERE/data}"
 BACKUP_DIR="${BACKUP_DIR:-$(dirname "$DATA_DIR")/backups}"
 KEEP=14
 

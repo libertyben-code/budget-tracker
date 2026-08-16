@@ -20,16 +20,20 @@ Prerequisites: Docker + Portainer, Tailscale connected.
 
 ### The data folder lives on the host, not in Docker
 
-`docker-compose.yml` bind-mounts an **absolute** host path:
+`docker-compose.yml` bind-mounts whatever `DATA_DIR` points at, and deliberately has **no default**:
 
 ```yaml
-- ${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data
+- ${DATA_DIR:?set DATA_DIR to the absolute host path of the data folder}:/data
 ```
 
-That absolute path is the whole point. A relative `./data` in a Portainer git stack resolves against Portainer's *own* volume (`/data/compose/<stack-id>` inside the Portainer container), so the database would end up buried in Portainer's internals and would not survive deleting the stack. Override `DATA_DIR` as a stack environment variable if the folder ever moves; the default is the existing folder on this server, so **nothing has to be migrated**.
+`DATA_DIR` must be an **absolute** host path, set as a stack environment variable; the deploy fails with `required variable DATA_DIR is missing a value` if you forget it. That strictness is the point. A relative path (`./data`) in a Portainer git stack resolves against Portainer's *own* volume (`/data/compose/<stack-id>` inside the Portainer container), so the stack comes up healthy on a brand-new empty database while the real one sits untouched — which reads as total data loss rather than as a config error. A deploy that refuses to start is the better way to get this wrong.
+
+The rest of this document uses two shell variables in place of your own paths:
 
 ```bash
-sudo chown -R 1000:1000 /home/youruser/server/budget-tracker/data   # container runs as non-root uid 1000
+export CLONE=~/server/budget-tracker      # your clone of this repo on the server
+export DATA_DIR="$CLONE/data"             # the folder holding budget.db
+sudo chown -R 1000:1000 "$DATA_DIR"       # container runs as non-root uid 1000
 ```
 
 ### One-time cutover from the old direct-Docker setup
@@ -37,7 +41,7 @@ sudo chown -R 1000:1000 /home/youruser/server/budget-tracker/data   # container 
 Stop the old stack **first**. Two containers bound to the same SQLite file (and the same host port) is a corruption risk, not just a port clash:
 
 ```bash
-cd /home/youruser/server/budget-tracker
+cd "$CLONE"
 docker compose down
 ```
 
@@ -53,7 +57,7 @@ Portainer → **Stacks** → **Add stack** → **Repository**:
 | Reference | `refs/heads/master` |
 | Compose path | `docker-compose.yml` |
 | Authentication | only if the repo is private — GitHub username + a personal access token with `repo` scope |
-| Environment variables | none needed; set `DATA_DIR` only to override the default path |
+| Environment variables | **`DATA_DIR`** — required, no default. The absolute host path of your data folder (the `$DATA_DIR` above) |
 
 Enable **GitOps updates** if you want Portainer to poll `master` and redeploy on its own, or leave it off and use the **Pull and redeploy** button. Then **Deploy the stack** — the first deploy builds the image, so it takes a minute or two.
 
@@ -96,16 +100,16 @@ Your entire financial history is one file: `budget.db`. `backup.sh` snapshots it
 
 ```bash
 sudo apt install sqlite3        # one-time; the script needs the CLI
-cd /home/youruser/server/budget-tracker && git pull
+cd "$CLONE" && git pull
 ./backup.sh
 ```
 
-It writes a timestamped copy to `../backups/` (i.e. alongside the data folder, not inside it, so backups are never mounted into the container) and keeps the newest 14. Override `DATA_DIR` / `BACKUP_DIR` by exporting them.
+It writes a timestamped copy to `../backups/` (i.e. alongside the data folder, not inside it, so backups are never mounted into the container) and keeps the newest 14. Unlike the compose file, the script needs no configuration: `DATA_DIR` defaults to the `data/` folder beside the script itself, which is where your clone already keeps it. Export `DATA_DIR` / `BACKUP_DIR` to override.
 
 Run it nightly, since nothing else will:
 
 ```cron
-30 3 * * * /home/youruser/server/budget-tracker/backup.sh
+30 3 * * * /absolute/path/to/budget-tracker/backup.sh
 ```
 
 **Why it uses `sqlite3 .backup` and not `cp`:** the database runs in WAL mode, so recent writes live in `budget.db-wal` and not in `budget.db`. Copying `budget.db` on its own yields a stale database — on an un-checkpointed DB it can have no tables at all. `.backup` performs a consistent online snapshot and is safe while the container is running.
@@ -113,7 +117,7 @@ Run it nightly, since nothing else will:
 To restore, stop the stack in Portainer, then:
 
 ```bash
-cd /home/youruser/server/budget-tracker/data
+cd "$DATA_DIR"
 cp budget.db budget.db.broken
 rm -f budget.db-wal budget.db-shm       # stale WAL against a restored DB is not valid
 cp ../backups/budget-YYYYMMDD-HHMMSS.db budget.db

@@ -7,9 +7,11 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     volumes:
-      # Absolute, and overridable as a Portainer stack variable: a relative path here would
-      # resolve inside Portainer's own volume (/data/compose/<stack-id>), not on the host.
-      - ${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data
+      # Set DATA_DIR as a Portainer stack variable, to an absolute host path. Deliberately has
+      # no default: a relative path resolves inside Portainer's own volume (/data/compose/<stack-id>)
+      # rather than on the host, so a wrong value starts a healthy stack on an empty database and
+      # reads as data loss. Failing the deploy on an unset variable is the safe way to be wrong.
+      - "${DATA_DIR:?set DATA_DIR to the absolute host path of the data folder}:/data"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 60s
