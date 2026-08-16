@@ -4,6 +4,15 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.0.3 — 2026-08-16
+
+### Fixes & improvements
+
+- **Every backup is now a single file**: `sqlite3 .backup` produced a snapshot that inherited WAL mode from the live database, so simply opening a backup to check its contents created `-wal`/`-shm` files beside it — and the cleanup only ever deleted `budget-*.db`, so those leftovers outlived the backup they belonged to. A backup carrying a stale `-wal` is the same trap that made the old `cp`-based backups worthless, just moved onto the backups themselves. Snapshots are now switched out of WAL mode as they are taken, so reading one changes nothing, and pruning removes a snapshot's leftovers along with it.
+No application, schema or security-model changes.
+
+---
+
 ## 2.0.2 — 2026-08-16
 
 ### Fixes & improvements
