@@ -1,12 +1,15 @@
 services:
   budget:
     build: .
+    container_name: budget-tracker
     restart: unless-stopped
     # host 3001 -> container 3000 (app always listens on 3000 inside the container; 3000 was taken on this host)
     ports:
       - "127.0.0.1:3001:3000"
     volumes:
-      - ./data:/data
+      # Absolute, and overridable as a Portainer stack variable: a relative path here would
+      # resolve inside Portainer's own volume (/data/compose/<stack-id>), not on the host.
+      - ${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 60s

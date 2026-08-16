@@ -12,16 +12,63 @@ node server/src/index.js
 
 The SQLite database is created automatically at `data/budget.db` (a fresh one seeds the `default` account).
 
-## Deploy on the Linux server
+## Deploy on the Linux server (Portainer)
 
-Prerequisites: Docker + Docker Compose, Tailscale connected.
+The app runs as a **Portainer stack deployed from this git repository** — Portainer clones the repo onto the server and builds the Dockerfile itself. There is no registry and no CI: a deploy is Portainer pulling the latest `master` and rebuilding.
+
+Prerequisites: Docker + Portainer, Tailscale connected.
+
+### The data folder lives on the host, not in Docker
+
+`docker-compose.yml` bind-mounts an **absolute** host path:
+
+```yaml
+- ${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data
+```
+
+That absolute path is the whole point. A relative `./data` in a Portainer git stack resolves against Portainer's *own* volume (`/data/compose/<stack-id>` inside the Portainer container), so the database would end up buried in Portainer's internals and would not survive deleting the stack. Override `DATA_DIR` as a stack environment variable if the folder ever moves; the default is the existing folder on this server, so **nothing has to be migrated**.
 
 ```bash
-git clone <this repo> && cd budget-tracker
-mkdir -p data                # put migrated budget.db here if you have one
-sudo chown -R 1000:1000 data # container runs as non-root uid 1000; it must own the volume
-docker compose up -d --build
+sudo chown -R 1000:1000 /home/youruser/server/budget-tracker/data   # container runs as non-root uid 1000
+```
 
+### One-time cutover from the old direct-Docker setup
+
+Stop the old stack **first**. Two containers bound to the same SQLite file (and the same host port) is a corruption risk, not just a port clash:
+
+```bash
+cd /home/youruser/server/budget-tracker
+docker compose down
+```
+
+The git clone itself can stay — the data folder inside it is still what the Portainer stack mounts.
+
+### Create the stack
+
+Portainer → **Stacks** → **Add stack** → **Repository**:
+
+| Field | Value |
+|---|---|
+| Repository URL | `https://github.com/libertyben-code/budget-tracker` |
+| Reference | `refs/heads/master` |
+| Compose path | `docker-compose.yml` |
+| Authentication | only if the repo is private — GitHub username + a personal access token with `repo` scope |
+| Environment variables | none needed; set `DATA_DIR` only to override the default path |
+
+Enable **GitOps updates** if you want Portainer to poll `master` and redeploy on its own, or leave it off and use the **Pull and redeploy** button. Then **Deploy the stack** — the first deploy builds the image, so it takes a minute or two.
+
+Check it came up:
+
+```bash
+docker ps --filter name=budget-tracker
+curl http://localhost:3001/api/health
+```
+
+### Expose it over Tailscale
+
+Unchanged by the Portainer move — the container still publishes on `127.0.0.1:3001`:
+
+```bash
 # one-time: expose over the tailnet with HTTPS (required for PWA install)
 sudo tailscale serve --bg https:443 http://localhost:3001
 tailscale serve status       # shows your URL: https://<host>.<tailnet>.ts.net
@@ -37,17 +84,43 @@ The host publishes the app on `127.0.0.1:3001` (mapped to the container's intern
 
 ## Updates
 
-On the server:
+Push to `master`, then in Portainer open the stack and hit **Pull and redeploy** (or let GitOps polling do it). Portainer re-clones the repo and rebuilds the image; the data folder is untouched by a redeploy.
 
-```bash
-./update.sh
-```
+Phones pick up the new version the next time the app is opened (network-first service worker). When releasing, bump the `CACHE` version constant in `client/sw.js` (`bt-static-v1` → `v2`, …).
 
-This backs up `data/budget.db` (timestamped copy in `data/`), pulls the latest code, and rebuilds the container. Phones pick up the new version the next time the app is opened (network-first service worker). When releasing, bump the `CACHE` version constant in `client/sw.js` (`bt-static-v1` → `v2`, …).
+Redeploying does **not** back the database up — that used to be the first line of `update.sh`, and the Portainer button has no equivalent. Backups are now a separate, scheduled job (below).
 
 ## Backups
 
-Your entire financial history is one file: `data/budget.db`. `update.sh` snapshots it on every update; for extra safety add a cron copying it elsewhere (e.g. nightly `cp` to a NAS or rclone target).
+Your entire financial history is one file: `budget.db`. `backup.sh` snapshots it. Portainer's clone of the repo is private to Portainer, so the copy of the script you schedule is the one in your own clone — keep it current with `git pull`:
+
+```bash
+sudo apt install sqlite3        # one-time; the script needs the CLI
+cd /home/youruser/server/budget-tracker && git pull
+./backup.sh
+```
+
+It writes a timestamped copy to `../backups/` (i.e. alongside the data folder, not inside it, so backups are never mounted into the container) and keeps the newest 14. Override `DATA_DIR` / `BACKUP_DIR` by exporting them.
+
+Run it nightly, since nothing else will:
+
+```cron
+30 3 * * * /home/youruser/server/budget-tracker/backup.sh
+```
+
+**Why it uses `sqlite3 .backup` and not `cp`:** the database runs in WAL mode, so recent writes live in `budget.db-wal` and not in `budget.db`. Copying `budget.db` on its own yields a stale database — on an un-checkpointed DB it can have no tables at all. `.backup` performs a consistent online snapshot and is safe while the container is running.
+
+To restore, stop the stack in Portainer, then:
+
+```bash
+cd /home/youruser/server/budget-tracker/data
+cp budget.db budget.db.broken
+rm -f budget.db-wal budget.db-shm       # stale WAL against a restored DB is not valid
+cp ../backups/budget-YYYYMMDD-HHMMSS.db budget.db
+sudo chown 1000:1000 budget.db
+```
+
+and start the stack again. For off-box safety, sync `../backups/` to a NAS or rclone target.
 
 ## Architecture notes
 

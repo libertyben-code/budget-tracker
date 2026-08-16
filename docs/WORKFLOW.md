@@ -58,8 +58,6 @@ git push
 
 ## Version management
 
-> **Paused as of 2026-07-11**: version bumping is on hold for now — do not bump `package.json` or tag releases on merge until this note is removed. Rules below still describe the intended process for when bumping resumes.
-
 ### Rules
 
 | Rule | Detail |
@@ -197,6 +195,18 @@ Changing `manifest.webmanifest` or the PNGs it points at does not repaint the ic
 
 **Rule:** an icon change ships with "remove and re-add the PWA" in the release note. Do not debug the manifest against an installed shortcut; check it in a browser tab first, where the favicon updates immediately.
 
+### 2026-08-16 — A relative bind mount in a Portainer git stack is not on the host
+
+Portainer clones a git stack into its **own** volume and runs compose from there, so `./data:/data` resolves to `/data/compose/<stack-id>/data` inside the Portainer container — not to any folder you can find on the server. The stack starts, the app works, and a brand-new empty database quietly appears in Portainer's internals; deleting the stack deletes the data with it.
+
+**Rule:** bind mounts in `docker-compose.yml` are absolute (`${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data`). Never "tidy" one back to a relative path — the failure is silent and looks like data loss, not like a config error.
+
+### 2026-08-16 — `cp budget.db` is not a backup: the DB is in WAL mode
+
+`openDb()` sets `journal_mode = WAL`, so writes land in `budget.db-wal` and only reach `budget.db` at a checkpoint. Copying `budget.db` alone therefore captures a stale database — and on a DB that has never checkpointed, one with **no tables at all** (verified: the dev DB's 4KB `budget.db` alongside a 222KB WAL copied to a file where `select` fails with `no such table`). The old `update.sh` did exactly this before every update, so those backups were worthless.
+
+**Rule:** snapshot with `sqlite3 "$DB" ".backup '$DEST'"` (what `backup.sh` does) — consistent, WAL-aware, safe while the container runs. If you ever restore by hand, delete the stale `-wal`/`-shm` next to the restored file.
+
 ---
 
 ## Dated development log
@@ -204,6 +214,15 @@ Changing `manifest.webmanifest` or the PNGs it points at does not repaint the ic
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-08-16 — Deployment moved to a Portainer git stack (branch: feature/portainer-deploy)
+
+- Deployment went from `docker compose up` run by hand in the server clone to a **Portainer stack deployed from this repository** — Portainer clones `master` onto the server and builds the Dockerfile itself. No registry and no CI, so a deploy is the *Pull and redeploy* button (or GitOps polling). Ben's requirement was that the database stay in a folder he owns on the server, which is what decided the shape of the change.
+- The load-bearing edit is one line: `./data:/data` → `${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data`. Portainer runs a git stack's compose from **its own** volume, so a relative mount resolves to `/data/compose/<stack-id>` inside the Portainer container — the stack would have come up healthy on a brand-new empty database while the real one sat unused, reading as total data loss. The absolute default is the folder that was already there, so nothing had to be migrated. Also added `container_name: budget-tracker` so `docker ps`/`docker logs` don't depend on the stack's name.
+- **Found a real bug while rewriting `update.sh`**: its first line was `cp data/budget.db backup-….db`, and the DB runs in WAL mode. Verified against the dev DB — a 4KB `budget.db` beside a 222KB `-wal`, copied alone, produced a file where `select` fails with `no such table`. Every backup that script ever took was stale or empty. `update.sh` became `backup.sh` (git-pull-and-rebuild is Portainer's job now): `sqlite3 .backup` for a consistent online snapshot, written to a sibling `backups/` folder rather than inside the mounted volume, newest 14 kept. Tested locally — full row count in the snapshot, 21 files pruned to 14.
+- Cutover gotchas that cost a round trip each and are now in `V2-SETUP.md`: a Portainer stack's source (web editor vs. repository) is fixed at creation, so this needed a *new* stack rather than an edit; the old stack has to be stopped first or port 3001 collides; and the branch must be **pushed** before Portainer can clone it — pointing at a ref that only exists locally gives `reference not found`, which reads like a permissions problem on a public repo. Deploying from `master` before the merge was the dangerous workaround here, since master still had the relative mount.
+- Docs: `V2-SETUP.md` deploy/update/backup sections rewritten (stack fields, cutover order, cron line, restore procedure); `MAINTAINER.md` stack + layout; `README.md` setup pointer; two new *Known technical constraints* entries. No application, schema or security-model changes — the container still publishes on `127.0.0.1:3001` and Tailscale is untouched.
+- Verified by Ben on the server: stack deployed from the feature branch, existing data intact, app running on his phone.
 
 ### 2026-08-15 — Header rework: wallet restored, bigger name, prominent account pill (branch: feature/header-two-row)
 

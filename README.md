@@ -47,7 +47,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 
 ## Setup
 
-See **[docs/V2-SETUP.md](docs/V2-SETUP.md)** for full deployment instructions (Docker + Tailscale on a self-hosted server, phone install).
+See **[docs/V2-SETUP.md](docs/V2-SETUP.md)** for full deployment instructions (a Portainer stack deployed from this repo, Tailscale, backups, phone install).
 
 Quick local dev run:
 
