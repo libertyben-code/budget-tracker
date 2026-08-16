@@ -197,6 +197,18 @@ Changing `manifest.webmanifest` or the PNGs it points at does not repaint the ic
 
 **Rule:** an icon change ships with "remove and re-add the PWA" in the release note. Do not debug the manifest against an installed shortcut; check it in a browser tab first, where the favicon updates immediately.
 
+### 2026-08-16 — A relative bind mount in a Portainer git stack is not on the host
+
+Portainer clones a git stack into its **own** volume and runs compose from there, so `./data:/data` resolves to `/data/compose/<stack-id>/data` inside the Portainer container — not to any folder you can find on the server. The stack starts, the app works, and a brand-new empty database quietly appears in Portainer's internals; deleting the stack deletes the data with it.
+
+**Rule:** bind mounts in `docker-compose.yml` are absolute (`${DATA_DIR:-/home/youruser/server/budget-tracker/data}:/data`). Never "tidy" one back to a relative path — the failure is silent and looks like data loss, not like a config error.
+
+### 2026-08-16 — `cp budget.db` is not a backup: the DB is in WAL mode
+
+`openDb()` sets `journal_mode = WAL`, so writes land in `budget.db-wal` and only reach `budget.db` at a checkpoint. Copying `budget.db` alone therefore captures a stale database — and on a DB that has never checkpointed, one with **no tables at all** (verified: the dev DB's 4KB `budget.db` alongside a 222KB WAL copied to a file where `select` fails with `no such table`). The old `update.sh` did exactly this before every update, so those backups were worthless.
+
+**Rule:** snapshot with `sqlite3 "$DB" ".backup '$DEST'"` (what `backup.sh` does) — consistent, WAL-aware, safe while the container runs. If you ever restore by hand, delete the stale `-wal`/`-shm` next to the restored file.
+
 ---
 
 ## Dated development log

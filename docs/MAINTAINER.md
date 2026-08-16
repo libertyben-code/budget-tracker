@@ -4,8 +4,8 @@
 
 - **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
 - **Backend**: Express 5 + better-sqlite3. All routes in one file.
-- **Database**: SQLite, single file at `data/budget.db` (bind-mounted into the container).
-- **Deployment**: Docker + Docker Compose, exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
+- **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from an absolute host path.
+- **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
 
 ## Repository layout
 
@@ -38,7 +38,7 @@ budget-tracker/
 │   ├── categorize.js                     — rule-based categorization engine
 │   ├── csv.js                            — CSV import/export helpers
 │   └── dates.js
-├── Dockerfile, docker-compose.yml, update.sh, .dockerignore
+├── Dockerfile, docker-compose.yml, backup.sh, .dockerignore
 └── docs/
     ├── WORKFLOW.md      — how we work together
     ├── MAINTAINER.md    — this file (architecture + gotchas)
@@ -139,7 +139,7 @@ The SVG is also the browser-tab favicon (declared before the PNG, so browsers th
 
 ## Known gotchas
 
-See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions).
+See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups).
 
 ## Smoke test checklist
 
