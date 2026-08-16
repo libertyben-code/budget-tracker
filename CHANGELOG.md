@@ -4,6 +4,18 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.0.2 — 2026-08-16
+
+### Fixes & improvements
+
+- **Action required before your next redeploy**: `DATA_DIR` must now be set as an environment variable on the Portainer stack, pointing at the absolute host path of your data folder. It no longer has a default, so a deploy without it stops with `required variable DATA_DIR is missing a value` rather than starting. That is deliberate: any default is a path that might not be yours, and mounting the wrong folder brings the stack up healthy on an empty database — which looks like losing everything. Refusing to deploy is the safe way to get this wrong.
+- **No host paths in a public repository**: the server username and directory layout that were baked into `docker-compose.yml`, `backup.sh` and the docs are gone. `backup.sh` needs no configuration in exchange — it defaults to the `data/` folder beside itself, which is where your clone already keeps it.
+- **Housekeeping**: removed dead Firebase entries left in `.dockerignore` by the v2 cutover, and deleted the merged feature branches from the repository.
+
+No application, schema or security-model changes — the container still publishes on `127.0.0.1:3001` and Tailscale is untouched.
+
+---
+
 ## 2.0.1 — 2026-08-16
 
 ### Fixes & improvements
