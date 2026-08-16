@@ -107,7 +107,7 @@ Every release entry in `CHANGELOG.md` must follow this format:
   - `docs: update README for new export feature`
   - `chore: bump version to 1.1.0`
 - Always `git push` immediately after each commit — no local-only commits
-- Always add `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` at the end
+- Always end with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`, naming the model **actually used for that session** — e.g. `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`. Sessions run on different models, so this is written fresh each time rather than copied from a fixed string
 
 ---
 
@@ -214,6 +214,13 @@ Portainer clones a git stack into its **own** volume and runs compose from there
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-08-16 — Backup snapshots are single self-contained files (branch: feature/backup-sidecar-prune)
+
+- **The prune gap, and why it mattered.** `sqlite3 .backup` produces a snapshot that *inherits WAL mode from the source*, so merely opening a backup to check it had data spawned `-wal`/`-shm` sidecars beside it — and the prune glob `budget-*.db` never matched those, so they outlived the snapshot they belonged to. The real danger was not the clutter: a backup carrying an uncheckpointed `-wal` is the same trap as the one that made the old `cp`-based backups worthless, moved from the live database onto the backups themselves.
+- Fixed at the root rather than by sweeping: `backup.sh` now switches each snapshot to `journal_mode=DELETE` right after taking it, so every backup is one self-contained file and reading one creates nothing. The prune additionally removes `$old-wal`/`$old-shm` with their parent, covering anything already lying around. **Testing caught what reading the code would not**: the mode switch *itself* leaves an `-shm` behind, so the obvious version of this fix looks right and isn't — hence the `rm -f` immediately after the pragma.
+- Verified: 500 rows including uncheckpointed WAL writes preserved, snapshot reports `delete`, inspecting it leaves the folder byte-identical, and 21 snapshots pruned to 14 with each removed snapshot's sidecars going too. Not handled, deliberately: sidecars whose parent was already deleted by the old script. None can be created from now on, so permanent code for a one-time leftover isn't worth it, and an `-shm` with no parent is inert.
+- **Commit trailers now name the model actually used** (this file previously hardcoded one). Sessions run on different models; the trailer is written fresh each time.
 
 ### 2026-08-16 — Public-repo exposure audit; host path behind a required variable (branch: feature/remove-host-paths)
 
