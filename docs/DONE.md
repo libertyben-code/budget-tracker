@@ -33,6 +33,11 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Centre the account switcher between the app name and the settings icon — OK
 - [x] Restore the wallet mark beside the app name, enlarge the app name, and make the account switcher a prominent accent pill — all on one header row — OK
 
+## Deployment
+
+- [x] Deploy via Portainer instead of docker compose on the server directly, keeping the database in a host folder — Portainer git stack building the Dockerfile, absolute bind mount to `/home/youruser/server/budget-tracker/data` — OK
+
 ## Bug fixes
 
 - [x] Adding a transaction then pressing Cancel no longer leaves an empty transaction — ＋ now opens a draft that only saves to the server on Save — OK
+- [x] `update.sh` backups were silently worthless — a `cp` of a WAL-mode `budget.db` captures a stale (possibly table-less) database; `backup.sh` now uses `sqlite3 .backup` — OK
