@@ -4,7 +4,7 @@
 
 - **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
 - **Backend**: Express 5 + better-sqlite3. All routes in one file.
-- **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from an absolute host path.
+- **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from the absolute host path in `DATA_DIR` (a required stack variable — the compose file has no default, so a missing value fails the deploy rather than mounting the wrong folder).
 - **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
 
 ## Repository layout

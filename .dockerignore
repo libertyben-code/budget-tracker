@@ -11,9 +11,6 @@ docs
 *.md
 .env
 .env.*
-.firebase
-.firebaserc
-firebase.json
 postcss.config.js
 tailwind.config.js
 npm-debug.log*

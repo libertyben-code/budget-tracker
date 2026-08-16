@@ -35,7 +35,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 ## Deployment
 
-- [x] Deploy via Portainer instead of docker compose on the server directly, keeping the database in a host folder — Portainer git stack building the Dockerfile, absolute bind mount to `/home/youruser/server/budget-tracker/data` — OK
+- [x] Deploy via Portainer instead of docker compose on the server directly, keeping the database in a host folder — Portainer git stack building the Dockerfile, absolute bind mount driven by `DATA_DIR` — OK
 
 ## Bug fixes
 
