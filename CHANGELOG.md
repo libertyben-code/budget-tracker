@@ -1,0 +1,15 @@
+# Changelog
+
+Release notes for Budget Tracker. Versions before 2.0.1 were released without a changelog; their history is in the dated development log in `docs/WORKFLOW.md`.
+
+---
+
+## 2.0.1 — 2026-08-16
+
+### Fixes & improvements
+
+- **Deployment via Portainer**: the app now runs as a Portainer stack deployed straight from this repository — Portainer clones it onto the server and builds the image itself. Updates are the *Pull and redeploy* button instead of an SSH session. See `docs/V2-SETUP.md`.
+- **The database stays in a folder you own**: the container's data volume is an absolute host path (`DATA_DIR`, defaulting to the existing folder), so the database is never stored inside Portainer's internals and survives deleting or recreating the stack.
+- **Working backups**: `update.sh` is replaced by `backup.sh`. The old script copied `budget.db` with `cp`, which does not work on a WAL-mode database — those backups captured a stale, sometimes completely empty database. Backups now use `sqlite3 .backup` for a consistent snapshot that is safe to take while the app is running, are written outside the container's volume, and are pruned to the newest 14. Schedule it with cron; a redeploy no longer takes one for you.
+
+---
