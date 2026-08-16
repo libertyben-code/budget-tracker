@@ -112,6 +112,8 @@ Run it nightly, since nothing else will:
 30 3 * * * /absolute/path/to/budget-tracker/backup.sh
 ```
 
+Each snapshot is a **single self-contained file**: the script switches it out of WAL mode after taking it, so reading one to check its contents never leaves `-wal`/`-shm` files beside it, and a snapshot is always safe to copy on its own. Pruning removes a snapshot's sidecars along with it.
+
 **Why it uses `sqlite3 .backup` and not `cp`:** the database runs in WAL mode, so recent writes live in `budget.db-wal` and not in `budget.db`. Copying `budget.db` on its own yields a stale database — on an un-checkpointed DB it can have no tables at all. `.backup` performs a consistent online snapshot and is safe while the container is running.
 
 To restore, stop the stack in Portainer, then:

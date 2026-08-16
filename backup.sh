@@ -12,6 +12,17 @@ mkdir -p "$BACKUP_DIR"
 
 # .backup, not cp: the DB runs in WAL mode, so budget.db on its own is missing every
 # write still sitting in budget.db-wal. This is also safe while the container is running.
-sqlite3 "$DATA_DIR/budget.db" ".backup '$BACKUP_DIR/budget-$(date +%Y%m%d-%H%M%S).db'"
+DEST="$BACKUP_DIR/budget-$(date +%Y%m%d-%H%M%S).db"
+sqlite3 "$DATA_DIR/budget.db" ".backup '$DEST'"
 
-ls -1t "$BACKUP_DIR"/budget-*.db | tail -n +$((KEEP + 1)) | while read -r old; do rm -- "$old"; done
+# A snapshot inherits WAL mode from the source, so just opening one to look inside it spawns
+# -wal/-shm sidecars beside it and the backup stops being a single self-contained file.
+# DELETE mode keeps every snapshot one file that is always safe to copy on its own.
+sqlite3 "$DEST" "PRAGMA journal_mode=DELETE;" >/dev/null
+rm -f -- "$DEST-wal" "$DEST-shm"   # the mode switch itself leaves a -shm behind
+
+# Sidecars go with their snapshot: left behind they outlive it, and a stale -wal beside a
+# restored database is exactly what the restore procedure has to delete by hand.
+ls -1t "$BACKUP_DIR"/budget-*.db | tail -n +$((KEEP + 1)) | while read -r old; do
+  rm -f -- "$old" "$old-wal" "$old-shm"
+done
