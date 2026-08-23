@@ -11,6 +11,9 @@ services:
       # Reusable (not ephemeral) auth key, set as a Portainer stack variable. It is consumed
       # only on first start — after that the node identity lives in the state volume below.
       TS_AUTHKEY: "${TS_AUTHKEY:?generate a reusable auth key in the Tailscale admin console}"
+      # Explicit rather than inherited from `hostname:` below — this is the name the tailnet
+      # sees, and it is what the PWA install is keyed on, so it should not depend on a default.
+      TS_HOSTNAME: budget
       TS_SERVE_CONFIG: /config/serve.json
       TS_STATE_DIR: /var/lib/tailscale
     volumes:
