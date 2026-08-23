@@ -18,6 +18,11 @@ services:
       # sees, and it is what the PWA install is keyed on, so it should not depend on a default.
       TS_HOSTNAME: budget
       TS_SERVE_CONFIG: /config/serve-config.json
+      # Empty by default. Set this in the stack to "--advertise-tags=tag:budget" once you
+      # have an auth key generated WITH that tag — a tagged node can be named directly in an
+      # ACL grant, and never expires. Advertising a tag the key does not carry fails
+      # registration, so the two must change together.
+      TS_EXTRA_ARGS: "${TS_EXTRA_ARGS:-}"
       TS_STATE_DIR: /var/lib/tailscale
     volumes:
       # Named volume, not a bind mount: Portainer re-clones the repo on every git update, so

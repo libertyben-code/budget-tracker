@@ -51,11 +51,11 @@ Then, **in this order** — the Tailscale step has to happen before the new stac
 
 1. **Delete the old stack** in Portainer, volumes included. The state volume is named after the stack (`<stack>_ts-budget-state`), so a stack under a new name gets a fresh one regardless — leaving the old one behind just orphans it.
 2. **Delete the old `budget` machine** in the Tailscale admin console. Its identity lived in that volume and is now gone. Skip this and the new sidecar registers alongside the stale record as **`budget-1`**, which silently changes your URL and breaks the PWA install you are trying to fix.
-3. **Retire the host-level `serve` mapping** left over from the pre-sidecar setup — it now points at a host port that no longer exists. This is per-port: `--https=443 off` removes only that listener, and anything else the machine serves on other ports is untouched. Never use `tailscale serve reset` here, which clears *every* mapping on the machine:
+3. **Retire the host-level `serve` mapping** left over from the pre-sidecar setup — it now points at a host port that no longer exists. **Read `tailscale serve status` and turn off the port this app actually used** (it was `8443`, not the default 443, which belongs to another service on that machine). This is per-port, so everything else the machine serves is untouched. Never use `tailscale serve reset` here, which clears *every* mapping at once:
 
    ```bash
    tailscale serve status        # confirm which ports this machine serves
-   sudo tailscale serve --https=443 off
+   sudo tailscale serve --https=8443 off
    ```
 
    Leaving it mapped is not a security hole today, but it is a dangling proxy rule: if anything later binds that host port, the tailnet would silently reach it.
@@ -120,6 +120,37 @@ The `-1` suffix is the failure worth watching for: it means a stale machine reco
 1. Open `https://budget.<tailnet>.ts.net` in Chrome (with Tailscale active on the phone)
 2. Menu ⋮ → **Add to Home screen** → Install
 3. The app opens standalone, full-screen, with its own icon
+
+## Sharing with another tailnet user
+
+Granting someone access needs a policy rule that can *name* this machine. Tailscale grants accept users, groups, tags, `hosts` entries or IPs — not a user-owned device by name — so the sidecar has to be **tagged**.
+
+Tagging also fixes node expiry permanently, which is why it is worth doing even for a tailnet of one.
+
+1. In the policy file, declare the tag and grant it:
+
+   ```jsonc
+   "tagOwners": { "tag:budget": ["you@example.com"] },
+
+   // the sidecar serves HTTPS on 443 of its own machine
+   { "src": ["them@example.com"], "dst": ["tag:budget"], "ip": ["tcp:443"] },
+   ```
+
+   Add `"tag:budget:443"` to that user's `accept` tests; the tests run on save.
+
+2. Generate an auth key **with `tag:budget` selected** on the key form.
+3. Set the stack's `TS_AUTHKEY` to that key and `TS_EXTRA_ARGS` to `--advertise-tags=tag:budget`, then redeploy. Advertising a tag the key does not carry fails registration, so both must change together.
+4. Re-authenticate the node so the tag takes effect — a node cannot gain a tag while registered:
+
+   ```bash
+   docker exec ts-budget tailscale --socket=/tmp/tailscaled.sock up --advertise-tags=tag:budget --authkey=<the tagged key> --reset
+   ```
+
+   If that is awkward, register cleanly instead: delete the machine in the admin console, `docker volume rm budgetapp_ts-budget-state`, redeploy.
+
+5. Confirm with `tailscale status` — the machine's owner should read `tag:budget` rather than your email.
+
+Do **not** grant the app's own port (3000). It binds loopback inside the sidecar's namespace and is not meant to be reachable; 443 through the proxy is the only supported path.
 
 ## Updates
 
