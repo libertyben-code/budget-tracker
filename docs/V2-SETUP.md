@@ -117,7 +117,7 @@ The `-1` suffix is the failure worth watching for: it means a stale machine reco
 
 ## Install on Android (both phones)
 
-1. Open `https://budget.<tailnet>.ts.net` in Chrome (with Tailscale active on the phone)
+1. Open `https://budget.<tailnet>.ts.net` in Chrome (with Tailscale active on the phone). **Type the `https://` scheme yourself.** Chrome assumes `http://` for a bare hostname, and a TLS listener answers plaintext with `client sent an HTTP request to an HTTPS server` — which reads like the server is down rather than like a typo.
 2. Menu ⋮ → **Add to Home screen** → Install
 3. The app opens standalone, full-screen, with its own icon
 
@@ -149,6 +149,8 @@ Tagging also fixes node expiry permanently, which is why it is worth doing even 
    If that is awkward, register cleanly instead: delete the machine in the admin console, `docker volume rm budgetapp_ts-budget-state`, redeploy.
 
 5. Confirm with `tailscale status` — the machine's owner should read `tag:budget` rather than your email.
+
+When you hand the URL over, send it **with the scheme**: `https://budget.<tailnet>.ts.net`. **Type the `https://` scheme yourself.** Chrome assumes `http://` for a bare hostname, and a TLS listener answers plaintext with `client sent an HTTP request to an HTTPS server` — which reads like the server is down rather than like a typo. Their existing install cannot follow the move either — an installed PWA is pinned to the origin it was installed from, so they must remove the old icon and reinstall from the new address.
 
 Do **not** grant the app's own port (3000). It binds loopback inside the sidecar's namespace and is not meant to be reachable; 443 through the proxy is the only supported path.
 
