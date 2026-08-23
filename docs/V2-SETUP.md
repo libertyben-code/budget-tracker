@@ -36,16 +36,38 @@ export DATA_DIR="$CLONE/data"             # the folder holding budget.db
 sudo chown -R 1000:1000 "$DATA_DIR"       # container runs as non-root uid 1000
 ```
 
-### One-time cutover from the old direct-Docker setup
+### Rebuilding the stack from scratch
 
-Stop the old stack **first**. Two containers bound to the same SQLite file (and the same host port) is a corruption risk, not just a port clash:
+Portainer keeps a git clone per stack under its own volume, and a broken checkout there cannot be repaired from the Portainer UI. Deleting the stack and recreating it is the supported way out — it discards that clone along with everything else the stack owns.
+
+**Your database is not at risk.** It lives at `$DATA_DIR`, an absolute host path bind-mounted into the container. That is outside Docker's volume management entirely, so Portainer's *remove volumes* prompt cannot reach it. Confirm the path before you start and take a backup anyway:
 
 ```bash
-cd "$CLONE"
-docker compose down
+ls -la "$DATA_DIR/budget.db"
+./backup.sh
 ```
 
-The git clone itself can stay — the data folder inside it is still what the Portainer stack mounts.
+Then, **in this order** — the Tailscale step has to happen before the new stack starts, not after:
+
+1. **Delete the old stack** in Portainer, volumes included. The state volume is named after the stack (`<stack>_ts-budget-state`), so a stack under a new name gets a fresh one regardless — leaving the old one behind just orphans it.
+2. **Delete the old `budget` machine** in the Tailscale admin console. Its identity lived in that volume and is now gone. Skip this and the new sidecar registers alongside the stale record as **`budget-1`**, which silently changes your URL and breaks the PWA install you are trying to fix.
+3. **Retire the host-level `serve` mapping** left over from the pre-sidecar setup — it now points at a host port that no longer exists. This is per-port: `--https=443 off` removes only that listener, and anything else the machine serves on other ports is untouched. Never use `tailscale serve reset` here, which clears *every* mapping on the machine:
+
+   ```bash
+   tailscale serve status        # confirm which ports this machine serves
+   sudo tailscale serve --https=443 off
+   ```
+
+   Leaving it mapped is not a security hole today, but it is a dangling proxy rule: if anything later binds that host port, the tailnet would silently reach it.
+
+4. **Generate a fresh reusable auth key** (Settings → Keys). Reusable, not ephemeral — an ephemeral node deletes itself the moment the container stops. Give it a real expiry rather than an immortal one; it is only consumed on first boot, after which the identity lives in the state volume.
+5. **Confirm nothing is left holding the container names**, or the new deploy fails on a name conflict:
+
+   ```bash
+   docker ps -a --filter name=budget-tracker --filter name=ts-budget
+   ```
+
+6. **Create the new stack**, per the table below.
 
 ### Create the stack
 
@@ -53,11 +75,14 @@ Portainer → **Stacks** → **Add stack** → **Repository**:
 
 | Field | Value |
 |---|---|
+| Name | `budgetapp` |
 | Repository URL | `https://github.com/libertyben-code/budget-tracker` |
 | Reference | `refs/heads/master` |
 | Compose path | `docker-compose.yml` |
 | Authentication | only if the repo is private — GitHub username + a personal access token with `repo` scope |
 | Environment variables | **`DATA_DIR`** — required, no default. The absolute host path of your data folder (the `$DATA_DIR` above)<br>**`TS_AUTHKEY`** — required on the first deploy. A reusable auth key from the Tailscale admin console |
+
+The stack name is not cosmetic: Portainer prefixes named volumes with it, so `budgetapp` yields `budgetapp_ts-budget-state`. Renaming a stack later therefore abandons the sidecar's identity and forces a re-registration — the same dance as step 2 above.
 
 Enable **GitOps updates** if you want Portainer to poll `master` and redeploy on its own, or leave it off and use the **Pull and redeploy** button. Then **Deploy the stack** — the first deploy builds the image, so it takes a minute or two.
 
@@ -74,24 +99,21 @@ There is no host port to curl — see below.
 
 The stack runs a `tailscale/tailscale` container beside the app. It joins the tailnet as its **own machine** named `budget`, so the app answers on `https://budget.<tailnet>.ts.net` instead of sharing the host's name on a spare port.
 
-The app container has no network of its own: `network_mode: service:ts-budget` makes it share the sidecar's namespace, so both see the same `localhost`. `tailscale/serve-config.json` proxies `:443` to `http://127.0.0.1:3000`, which is the app. **Nothing is bound on the host** — the old `127.0.0.1:3001` publish is gone, and the tailnet is now the only route in.
+The app container has no network of its own: `network_mode: service:ts-budget` makes it share the sidecar's namespace, so both see the same `localhost`. The `ts-serve` config at the bottom of `docker-compose.yml` proxies `:443` to `http://127.0.0.1:3000`, which is the app — inlined rather than mounted from a file, because a missing bind-mount source makes Docker create a directory in its place, which tailscaled cannot read. **Nothing is bound on the host** — the old `127.0.0.1:3001` publish is gone, and the tailnet is now the only route in.
 
 Why a hostname each rather than a port each: Android matches an installed PWA on hostname and **ignores the port**, so two apps behind one tailnet name can never both be installed. The manifest `id` field does not help — app identity is `(origin, id)`, and different ports are already different origins.
 
-First deploy, in the Tailscale admin console:
-
-1. **Generate a reusable auth key** (Settings → Keys). Not ephemeral — an ephemeral node disappears when the container stops. Set it as the stack's `TS_AUTHKEY`.
-2. After the sidecar starts, find the new `budget` machine and **disable key expiry** on it, or it drops off the tailnet in ~6 months. (Tagging the key with an ACL tag via `TS_EXTRA_ARGS=--advertise-tags=tag:container` does this permanently instead, if you have tags set up.)
-3. Confirm the name: `tailscale status` from any device now lists `budget` as a separate machine.
-
-The auth key is only consumed on first start; the node identity then lives in the `ts-budget-state` volume. Keep that volume and later redeploys need no key.
-
-Once the new hostname answers, retire the old host-level mapping — but check what else the machine serves first, because `reset` clears **every** mapping on it, not just this app's:
+Once the stack is up, verify the ingress before touching the phones:
 
 ```bash
-tailscale serve status       # what else is mapped on this machine?
-sudo tailscale serve --https=443 off
+docker logs ts-budget 2>&1 | grep -i serve   # want no "failed to read serve config"
+tailscale status | grep budget               # a machine of its own, no "-1" suffix
+curl -s https://budget.<tailnet>.ts.net/api/health
 ```
+
+Then, in the Tailscale admin console, find the new `budget` machine and **disable key expiry** on it, or it silently drops off the tailnet in ~6 months. (An ACL-tagged key via `TS_EXTRA_ARGS=--advertise-tags=tag:container` achieves the same permanently, if you have tags set up.)
+
+The `-1` suffix is the failure worth watching for: it means a stale machine record still holds the name, and your URL is not what you think it is.
 
 ## Install on Android (both phones)
 
@@ -155,6 +177,9 @@ and start the stack again. For off-box safety, sync `../backups/` to a NAS or rc
 No application-layer auth by design — **Tailscale is the perimeter**, so keep it that way:
 
 - The app container publishes **no host port at all** — it sits on the Tailscale sidecar's network namespace, so the tailnet is the only route in. **Never `tailscale funnel`** it, and never give the `budget` service a `ports:` block back (e.g. `3001:3000`) — either one would expose all your financial data with no login.
+- `HOST=127.0.0.1` on the app service is load-bearing. Sharing the sidecar's network namespace means `0.0.0.0` there includes the node's *tailnet* IP — the API would answer on `http://budget.<tailnet>.ts.net:3000` to every device on the tailnet, in plain HTTP, bypassing the TLS proxy. Loopback keeps `tailscale serve` the only way in; the proxy reaches it either way.
+- `TS_AUTHKEY` is a real credential: it can join machines to your tailnet, and every tailnet machine reaches this app with no login. It is readable in Portainer's stack settings and in `docker inspect ts-budget`, so anyone in the host's `docker` group has it. Give it an expiry and regenerate rather than keeping one immortal reusable key.
+- The sidecar image is pinned rather than `:latest` — it is the network perimeter, so a new image should land because you chose it, not because you redeployed.
 - Hardening already in the code: strict CSP + `X-Frame-Options`/`nosniff`/`Referrer-Policy` headers; CSV export neutralizes spreadsheet formula injection; the import endpoint only accepts `text/csv` (blocks cross-site form POSTs); the container runs as non-root uid 1000.
 - Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock.
 

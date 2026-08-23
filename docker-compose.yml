@@ -4,7 +4,10 @@ services:
   # Android matches an installed PWA on hostname and ignores the port, so two apps behind
   # one hostname can never both be installed — a name each is the only fix. See docs/V2-SETUP.md.
   ts-budget:
-    image: tailscale/tailscale:latest
+    # Pinned, not :latest — this container is the network perimeter, and an unreviewed image
+    # landing on a routine redeploy is not a thing you want to discover afterwards. Bump it
+    # deliberately.
+    image: tailscale/tailscale:v1.102.3
     container_name: ts-budget
     hostname: budget
     environment:
@@ -20,12 +23,14 @@ services:
       # Named volume, not a bind mount: Portainer re-clones the repo on every git update, so
       # anything under the stack directory is at risk. Losing this means re-authenticating.
       - ts-budget-state:/var/lib/tailscale
-      # Deliberately NOT named serve.json. Docker silently creates a *directory* when a
-      # bind-mount source file is missing, and the first deploy shipped without this file
-      # committed — leaving an undeletable-by-git `tailscale/serve.json/` directory in
-      # Portainer's clone that every later deploy then mounted. Renaming the source is the
-      # cheap way out; don't rename it back.
-      - ./tailscale/serve-config.json:/config/serve-config.json:ro
+    configs:
+      # Inlined at the bottom of this file rather than bind-mounted from the repo. Docker
+      # silently creates a *directory* when a bind-mount source file is missing, and
+      # Portainer's clone stopped picking up files under tailscale/ — so every deploy mounted
+      # a directory and tailscaled refused to read it. Compose materialises this content
+      # itself, so there is no source path on disk for Docker to fabricate.
+      - source: ts-serve
+        target: /config/serve-config.json
     restart: unless-stopped
     # Runs in userspace networking (the image default), which is enough to accept inbound
     # traffic and proxy it to a local port. If the sidecar fails to come up, kernel mode is
@@ -37,12 +42,17 @@ services:
     container_name: budget-tracker
     restart: unless-stopped
     # Shares the sidecar's network namespace: same interfaces, same localhost. That is how
-    # serve.json reaches the app on 127.0.0.1:3000. It also means this container can have no
+    # the serve config reaches the app on 127.0.0.1:3000. It also means this container can have no
     # `ports:` of its own — it has no network of its own to publish on. Nothing is bound on
     # the host at all now, so the tailnet is the only way in.
     network_mode: service:ts-budget
     depends_on:
       - ts-budget
+    environment:
+      # Loopback, not 0.0.0.0. In the shared namespace 0.0.0.0 would include the sidecar's
+      # tailnet IP, publishing the API to every device on the tailnet over plain HTTP and
+      # bypassing the TLS proxy entirely. The proxy reaches it on 127.0.0.1 regardless.
+      HOST: 127.0.0.1
     volumes:
       # Set DATA_DIR as a Portainer stack variable, to an absolute host path. Deliberately has
       # no default: a relative path resolves inside Portainer's own volume (/data/compose/<stack-id>)
@@ -56,3 +66,18 @@ services:
 
 volumes:
   ts-budget-state:
+
+configs:
+  ts-serve:
+    # `$$` escapes the dollar so Compose passes a literal ${TS_CERT_DOMAIN} through to
+    # tailscaled, which substitutes this node's own cert name at runtime. A single `$` would
+    # interpolate to an empty string at deploy time and the proxy would serve nothing.
+    content: |
+      {
+        "TCP": { "443": { "HTTPS": true } },
+        "Web": {
+          "$${TS_CERT_DOMAIN}:443": {
+            "Handlers": { "/": { "Proxy": "http://127.0.0.1:3000" } }
+          }
+        }
+      }
