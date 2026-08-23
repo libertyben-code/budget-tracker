@@ -2,6 +2,7 @@
   "name": "Budget Tracker",
   "short_name": "Budget",
   "description": "Self-hosted budget tracker",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

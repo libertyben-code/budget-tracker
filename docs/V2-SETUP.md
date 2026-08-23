@@ -57,7 +57,7 @@ Portainer → **Stacks** → **Add stack** → **Repository**:
 | Reference | `refs/heads/master` |
 | Compose path | `docker-compose.yml` |
 | Authentication | only if the repo is private — GitHub username + a personal access token with `repo` scope |
-| Environment variables | **`DATA_DIR`** — required, no default. The absolute host path of your data folder (the `$DATA_DIR` above) |
+| Environment variables | **`DATA_DIR`** — required, no default. The absolute host path of your data folder (the `$DATA_DIR` above)<br>**`TS_AUTHKEY`** — required on the first deploy. A reusable auth key from the Tailscale admin console |
 
 Enable **GitOps updates** if you want Portainer to poll `master` and redeploy on its own, or leave it off and use the **Pull and redeploy** button. Then **Deploy the stack** — the first deploy builds the image, so it takes a minute or two.
 
@@ -65,24 +65,37 @@ Check it came up:
 
 ```bash
 docker ps --filter name=budget-tracker
-curl http://localhost:3001/api/health
+docker exec budget-tracker node -e "fetch('http://localhost:3000/api/health').then(r=>r.text()).then(console.log)"
 ```
 
-### Expose it over Tailscale
+There is no host port to curl — see below.
 
-Unchanged by the Portainer move — the container still publishes on `127.0.0.1:3001`:
+### Ingress: the Tailscale sidecar
+
+The stack runs a `tailscale/tailscale` container beside the app. It joins the tailnet as its **own machine** named `budget`, so the app answers on `https://budget.<tailnet>.ts.net` instead of sharing the host's name on a spare port.
+
+The app container has no network of its own: `network_mode: service:ts-budget` makes it share the sidecar's namespace, so both see the same `localhost`. `tailscale/serve.json` proxies `:443` to `http://127.0.0.1:3000`, which is the app. **Nothing is bound on the host** — the old `127.0.0.1:3001` publish is gone, and the tailnet is now the only route in.
+
+Why a hostname each rather than a port each: Android matches an installed PWA on hostname and **ignores the port**, so two apps behind one tailnet name can never both be installed. The manifest `id` field does not help — app identity is `(origin, id)`, and different ports are already different origins.
+
+First deploy, in the Tailscale admin console:
+
+1. **Generate a reusable auth key** (Settings → Keys). Not ephemeral — an ephemeral node disappears when the container stops. Set it as the stack's `TS_AUTHKEY`.
+2. After the sidecar starts, find the new `budget` machine and **disable key expiry** on it, or it drops off the tailnet in ~6 months. (Tagging the key with an ACL tag via `TS_EXTRA_ARGS=--advertise-tags=tag:container` does this permanently instead, if you have tags set up.)
+3. Confirm the name: `tailscale status` from any device now lists `budget` as a separate machine.
+
+The auth key is only consumed on first start; the node identity then lives in the `ts-budget-state` volume. Keep that volume and later redeploys need no key.
+
+Once the new hostname answers, retire the old host-level mapping — but check what else the machine serves first, because `reset` clears **every** mapping on it, not just this app's:
 
 ```bash
-# one-time: expose over the tailnet with HTTPS (required for PWA install)
-sudo tailscale serve --bg https:443 http://localhost:3001
-tailscale serve status       # shows your URL: https://<host>.<tailnet>.ts.net
+tailscale serve status       # what else is mapped on this machine?
+sudo tailscale serve --https=443 off
 ```
-
-The host publishes the app on `127.0.0.1:3001` (mapped to the container's internal port 3000, since 3000 was already taken on this host); nothing is reachable outside the tailnet. If you change the host port, re-point `tailscale serve` to match.
 
 ## Install on Android (both phones)
 
-1. Open `https://<host>.<tailnet>.ts.net` in Chrome (with Tailscale active on the phone)
+1. Open `https://budget.<tailnet>.ts.net` in Chrome (with Tailscale active on the phone)
 2. Menu ⋮ → **Add to Home screen** → Install
 3. The app opens standalone, full-screen, with its own icon
 
@@ -141,7 +154,7 @@ and start the stack again. For off-box safety, sync `../backups/` to a NAS or rc
 
 No application-layer auth by design — **Tailscale is the perimeter**, so keep it that way:
 
-- The container is published on `127.0.0.1:3001` only (host 3001 → container 3000); expose it with `tailscale serve` (tailnet-only). **Never `tailscale funnel`** it and never drop the `127.0.0.1` prefix (e.g. `0.0.0.0:3001:3000` or `3001:3000`) — that would expose all your financial data on the LAN with no login.
+- The app container publishes **no host port at all** — it sits on the Tailscale sidecar's network namespace, so the tailnet is the only route in. **Never `tailscale funnel`** it, and never give the `budget` service a `ports:` block back (e.g. `3001:3000`) — either one would expose all your financial data with no login.
 - Hardening already in the code: strict CSP + `X-Frame-Options`/`nosniff`/`Referrer-Policy` headers; CSV export neutralizes spreadsheet formula injection; the import endpoint only accepts `text/csv` (blocks cross-site form POSTs); the container runs as non-root uid 1000.
 - Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock.
 
