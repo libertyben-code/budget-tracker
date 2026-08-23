@@ -74,7 +74,7 @@ There is no host port to curl — see below.
 
 The stack runs a `tailscale/tailscale` container beside the app. It joins the tailnet as its **own machine** named `budget`, so the app answers on `https://budget.<tailnet>.ts.net` instead of sharing the host's name on a spare port.
 
-The app container has no network of its own: `network_mode: service:ts-budget` makes it share the sidecar's namespace, so both see the same `localhost`. `tailscale/serve.json` proxies `:443` to `http://127.0.0.1:3000`, which is the app. **Nothing is bound on the host** — the old `127.0.0.1:3001` publish is gone, and the tailnet is now the only route in.
+The app container has no network of its own: `network_mode: service:ts-budget` makes it share the sidecar's namespace, so both see the same `localhost`. `tailscale/serve-config.json` proxies `:443` to `http://127.0.0.1:3000`, which is the app. **Nothing is bound on the host** — the old `127.0.0.1:3001` publish is gone, and the tailnet is now the only route in.
 
 Why a hostname each rather than a port each: Android matches an installed PWA on hostname and **ignores the port**, so two apps behind one tailnet name can never both be installed. The manifest `id` field does not help — app identity is `(origin, id)`, and different ports are already different origins.
 
