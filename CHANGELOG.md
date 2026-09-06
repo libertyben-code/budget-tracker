@@ -4,6 +4,14 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.0.5 — 2026-09-06
+
+### Fixes & improvements
+
+- **2.0.4's status-bar changes didn't work — this reverts them and corrects the notes.** The diagnosis was wrong: current Chrome for Android does not let an installed app colour its status bar at runtime. The bar takes the fixed `theme_color` from the app manifest (indigo here) and ignores the accent — it is not edge-to-edge, so the page never draws behind the status bar, the gradient painted nothing, and there was no "header hiding under the status bar" to fix. Following the accent live is no longer possible for an installed PWA on Android; it still works in a plain browser tab. No visible change from 2.0.4, and the Tailscale-sidecar deployment that also shipped in 2.0.4 is unaffected.
+
+---
+
 ## 2.0.4 — 2026-09-06
 
 ### Fixes & improvements
