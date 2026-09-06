@@ -4,6 +4,15 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.0.4 — 2026-09-06
+
+### Fixes & improvements
+
+- **The app now has its own address.** It runs behind a Tailscale sidecar and answers on its own tailnet hostname (`https://budget.<tailnet>.ts.net`) instead of sharing the server's name on a spare port — which is what lets it install as its own PWA, since Android matches an installed app on hostname and ignores the port. Your data lives on the server and is untouched, but the address has changed: **remove the old app and re-add it from the new URL.** Deploy steps (delete the stale `budget` tailnet machine, retire the old `:8443` serve mapping) are in `docs/V2-SETUP.md`. The old loopback publish is gone, so the tailnet is now the only route in.
+- **The status-bar colour is back on Android, and the header no longer hides under it.** A recent Chrome update started drawing installed apps edge-to-edge — the page now paints behind the phone's status bar. That stopped the accent colour reaching the strip around the camera, and because the header did not reserve room for that strip, its content (the app name, account pill and gear) slid up underneath it. The header now leaves room for the status bar and paints that strip in your accent colour, so it follows your accent and dark mode. If it still looks off after updating, remove and re-add the app to the home screen.
+
+---
+
 ## 2.0.3 — 2026-08-16
 
 ### Fixes & improvements
