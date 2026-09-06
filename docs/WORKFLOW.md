@@ -207,6 +207,14 @@ Portainer clones a git stack into its **own** volume and runs compose from there
 
 **Rule:** snapshot with `sqlite3 "$DB" ".backup '$DEST'"` (what `backup.sh` does) — consistent, WAL-aware, safe while the container runs. If you ever restore by hand, delete the stale `-wal`/`-shm` next to the restored file.
 
+### 2026-09-06 — An installed PWA's status bar is the page's to paint, and needs the top inset reserved
+
+`applyTheme` writes the resolved `--accent` into `<meta name="theme-color">`, and that used to colour the strip behind the phone's status bar. Chrome for Android now draws installed PWAs **edge-to-edge** (rolled out mid-2026, no app change and no opt-in): the system bar goes transparent and the page paints behind it, so the meta no longer colours that strip in standalone mode — only in a browser tab. That is why it reads as the app losing its colour only once installed, and why it broke with nothing committed. A platform change presents as a regression with an empty `git log`.
+
+Two things follow, and this app had only handled one of them. The tab bar already reserved `env(safe-area-inset-bottom)`, but `.app-header` reserved **no top inset at all** — so under edge-to-edge its content (wallet mark, app name, account pill, gear) slid up under the status bar. It now carries `env(safe-area-inset-top)` in its top padding, and fills that band with a `linear-gradient(var(--accent), var(--accent))` over `--surface` so the strip follows the accent and theme live.
+
+**Rule:** an edge-to-edge PWA owns both insets. Reserve `env(safe-area-inset-top)` on anything pinned to the top and `env(safe-area-inset-bottom)` on anything pinned to the bottom, and paint the top band yourself if it is meant to be coloured — `theme-color` is a browser-tab concern now. Keep the meta write anyway; the band collapses to nothing where the inset is 0, so a tab and a desktop are unaffected.
+
 ---
 
 ## Dated development log
@@ -214,6 +222,12 @@ Portainer clones a git stack into its **own** volume and runs compose from there
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-09-06 — Status-bar strip follows the accent; header stops sliding under it (branch: feature/edge-to-edge-status-bar)
+
+- Not our bug: Chrome for Android started drawing installed PWAs edge-to-edge, so the `theme-color` meta stopped colouring the strip behind the camera in standalone mode. Nothing was committed the day it broke, and all three of Ben's PWAs lost it at once — the tell that it was a Chrome update, not the code.
+- `.app-header` had no top safe-area inset (the tab bar already had the bottom one), so edge-to-edge also slid the header content up under the status bar. Added `env(safe-area-inset-top)` to its top padding and painted that band with an `--accent` gradient over `--surface`, which tracks the accent and dark mode live — better than the meta literal, which stays for browser-tab mode. One constraints entry above.
+- Merged ahead of the device test at Ben's request; the real check is the installed PWA on the phone, since a browser tab reports a 0 inset and shows nothing.
 
 ### 2026-08-16 — Backup snapshots are single self-contained files (branch: feature/backup-sidecar-prune)
 

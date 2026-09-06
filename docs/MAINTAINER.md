@@ -101,7 +101,7 @@ Two attributes on `<html>`: `data-theme` (`light`/`dark`) and `data-accent`. `ap
 
 `tokens.css` holds one block per accent, overriding `--accent`, `--accent-strong` and `--accent-soft`. **Order in that file is load-bearing**: `:root[data-theme]` and `:root[data-accent]` have equal specificity, so the accent blocks must come after the dark block to win in light mode; the `[data-theme="dark"][data-accent]` pairs outrank both and can sit anywhere after them. `indigo` is the default and deliberately has no block — it is what `:root` already says, so an unset preference costs nothing.
 
-`applyTheme` also writes the *resolved* `--accent` into the `theme-color` meta. Android reads that for the status bar and cannot resolve a CSS variable, so the computed value has to be pushed back after the attribute changes.
+`applyTheme` also writes the *resolved* `--accent` into the `theme-color` meta. Android reads that for the status bar in a browser tab and cannot resolve a CSS variable, so the computed value has to be pushed back after the attribute changes. In an installed PWA it no longer colours the strip: Chrome draws installed apps edge-to-edge (mid-2026), so the status bar is transparent and the page paints behind it. `.app-header` therefore reserves `env(safe-area-inset-top)` in its top padding (without it the header content slid **under** the status bar — the tab bar already handled the bottom inset) and paints that band with an `--accent` gradient, which follows the accent and theme live. See the WORKFLOW constraints entry.
 
 The chart palette (`--chart-1…8`) is deliberately **not** derived from the accent: a series colour is data, and following a per-device preference would make one chart mean different things on two phones.
 
