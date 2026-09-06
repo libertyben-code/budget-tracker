@@ -1,9 +1,16 @@
 #app { min-height: 100vh; display: flex; flex-direction: column; }
 
 .app-header {
-  background: var(--surface);
+  /* Chrome for Android now draws installed PWAs edge-to-edge: the page paints
+     behind a transparent status bar, so `theme-color` no longer colours that
+     strip. Reserve the top inset (without it the header content slides under the
+     status bar) and paint the band with the accent, which follows theme/accent
+     live. See the constraints entry. */
+  background:
+    linear-gradient(var(--accent), var(--accent)) top / 100% env(safe-area-inset-top) no-repeat,
+    var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: var(--space-3) var(--space-4);
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3);
   position: sticky;
   top: 0;
   /* Above the tab bar's 35: the header's dropdowns are its children, so they
