@@ -33,10 +33,22 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/api', createApiRouter(db));
+// Anything under /api the router did not claim is a 404, not the SPA shell:
+// the catch-all below would answer it with index.html and a 200, which the
+// client then fails to parse as JSON with an error that names nothing.
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
 app.use(express.static(path.join(ROOT, 'client')));
 app.get('*name', (req, res) => {
   res.sendFile(path.join(ROOT, 'client', 'index.html'));
+});
+
+// Express's default handler prints a stack trace as HTML outside production.
+// The message stays in the log: SQLite's constraint text names tables and
+// columns, and the body limits' own errors carry a status worth keeping.
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, HOST, () => {

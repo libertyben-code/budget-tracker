@@ -1,264 +1,232 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
-**Status:** planned, not started · **Written:** 2026-09-06 · **Owner:** ben
+**Status:** decided, not started · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review
+session, decisions below) · **Owner:** ben
 
-Plan to give `CaTetonne`, `budget-tracker`, and `score-counter` real login-based
-access over the public internet (dropping Tailscale as the access control),
-with per-user data isolation and shared workspaces. The work is done **once in
-this template** and rolled out to all three apps, which are structurally
-identical descendants of it.
+Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
+public internet, **Tailscale removed**, with per-user data isolation and owner-paired sharing —
+and, separately, to put all three on the Play Store as **server-less** apps. The same text lives
+in all three repos; edit it in one and copy it to the others.
 
 ---
 
-## 1. Goal & locked decisions
-
-Reach the three apps from anywhere **without Tailscale**, gated by real
-accounts, hardened for public exposure.
+## 1. Decisions (2026-09-28)
 
 | Decision | Choice | Consequence |
 |---|---|---|
-| Client form factor | **Stay PWA** (no APK/store) | Login is a *server* concern; an APK/TWA is just the same PWA in a shell and saves zero auth work. Store distribution can be added later without changing the server. |
-| Who can register | **Invite-only** (no public sign-up) | No email/SMTP server needed, no captcha/GDPR-signup burden. Accounts are minted by CLI (first admin) or invite link. |
-| Identity scope | **Separate auth per app** | Each app keeps its own SQLite DB, container, and user table. No shared SSO. |
-| Data model | **Per-workspace isolation + shared workspaces** | Data is isolated *between* workspaces and shared *within* one. Invite links bind a new user to a workspace. |
-| Reuse | **Port `Project_Planner` Lot 2 auth** | Argon2id, server-side opaque sessions, CSRF, brute-force lockout, constant-time login all already built — but for Postgres; this is a SQLite port. |
+| Access for friends | **Public HTTPS + login**, Tailscale gone | Every request is authenticated by a server-side session; the tailnet IP check is deleted, not kept as a second wall. |
+| Who can register | **Owner creates every account** (CLI, later an admin page) | No public sign-up, no invite links, no e-mail. The account is born pending with a one-time activation code; the person sets their own password. |
+| Identity scope | **One login per app**, no SSO | Each app keeps its own SQLite, its own `users`/`sessions`, its own container. |
+| Data model | **One workspace per account; the owner can pair a couple** | Data is isolated *between* workspaces and shared *within* one. The only sharing is an admin action: add user B to A's workspace. |
+| Auth source | **Port `Project_Planner` auth** (`server/src/auth/*`, `routes/auth.js`, `middleware/auth.js`, `scripts/create-user.js`) | Argon2id with scrypt fallback, opaque sessions stored as SHA-256, cookie + CSRF double-submit, brute-force lockout, constant-time login. Postgres → SQLite is a mechanical rewrite. |
+| Friends on Android | **TWA** (Trusted Web Activity, Bubblewrap) on the public URL — optional, the PWA install already works | Same origin as the site: cookies, service worker and IndexedDB unchanged, no CORS. |
+| Store apps | **Capacitor APK/AAB, local-only, no server** — score-counter and budget-tracker free, CaTetonne free + one-time paid unlock (`CaTetonne/docs/ROADMAP.md` Phase B) | The existing `VITE_APP_MODE=store` build for the two Vite apps. **budget-tracker has no local data layer** (client talks to the API for everything) — its store version needs an in-browser database first, and goes last. |
+| Ingress | **Cloudflare Tunnel** recommended (open decision §7) | No inbound port on the home router, TLS and edge rate-limiting for free, home IP hidden. One subdomain per app, which is also what Android's install-by-host needs. |
+| Perimeter | **Cloudflare Access in front of all three hostnames** (decided 2026-09-28) | A one-time e-mail code (or Google login) at the edge, allow-list of the friends' addresses, before the app's own login page is reachable. Bots and scanners never reach the server; an unknown Express/Node bug has nobody to exploit it. Free up to 50 users. The app keeps its own login for identity and workspaces. |
 
-**Why PWA over APK (recap):** the Play Store does not manage login for you.
-Accounts, passwords, sessions, and data all live on your server either way. A
-store "APK" for a web app is a TWA — literally this PWA in a Chrome shell, same
-code, same server, zero auth savings. Google sign-in / passkeys / biometrics are
-available to the PWA on the web too. Only wrap the winner in a TWA if you later
-want Play Store presence; the plan below is unchanged.
-
----
-
-## 2. Current state (facts as of 2026-09-06)
-
-- **All three apps descend from this template** and share its shape: Express
-  server serving `/api/sync` + `/health` and the built PWA (`client/dist`),
-  **SQLite** storage, one DB file per app.
-- **There is no login today — Tailscale *is* the auth.** `middleware/auth.js`
-  admits any request from the tailnet IP range and `GET /api/sync` returns the
-  *entire* database. Removing Tailscale removes 100% of current access control.
-- **The sync layer is single-tenant.** Every synced table is global; there is no
-  owner column and no per-user scoping. This is the biggest change (Phase 2).
-- **Deployment uses the Tailscale *sidecar* pattern** (not the template's simpler
-  loopback model): each app container runs `network_mode: service:ts-<app>`,
-  sharing a Tailscale sidecar's network namespace; the sidecar does
-  `tailscale serve` (userspace) and proxies to `127.0.0.1:3000`. **The app
-  process therefore sits *on the tailnet* — see the threat model.**
-- **Secrets hygiene is good:** `.env` is gitignored in every repo; no committed
-  secrets found.
-- **No open-registration / setup endpoint exists** in any app (verified). The one
-  `/bootstrap` route in `budget-tracker` returns *data*, not accounts.
-- **Divergences to watch during the port:**
-  - `budget-tracker` uses **better-sqlite3** (`db.prepare(...).all()`, sync);
-    the template and the others use async **sqlite3** (`dbAll`/`dbGet`/`dbRun`).
-    The auth queries must be written in each app's DB idiom.
-  - Container runs **as root** in `CaTetonne`, `score-counter`, and this template
-    (no `USER` line). Only `budget-tracker` sets `USER node`.
+Store and friends builds are **two different Android apps per product** (different application
+ids, different signing). Never upload the friends/TWA build to the public listing.
 
 ---
 
-## 3. Target data model (workspaces)
+## 2. Current state (2026-09-28)
 
-A workspace is a **key, not a table**: one shared dataset ("one DB") that one or
-more users share. Three pieces:
-
-- **`workspaces`** — one row per workspace (the shared dataset).
-- **`workspace_id` column stamped on every data row** — a workspace is "all the
-  domain rows sharing the same `workspace_id`".
-- **`workspace_members(workspace_id, user_id, role)`** — links one or several
-  users to a workspace. Roles: `owner` (can invite / manage members) and
-  `member`.
-
-Illustration (budget-tracker):
-
-```
-workspaces:        W1  ("Household")
-workspace_members: (W1, ben,   owner)
-                   (W1, alice, member)     ← 2 users, one shared dataset
-accounts:          (id=a1, workspace_id=W1, …) ┐ everything tagged W1
-transactions:      (id=t9, workspace_id=W1, …) ┘ is shared by ben + alice
-```
-
-Isolation is **between** `workspace_id` values; sharing is **within** one. This
-is `Project_Planner`'s Slice-3 model with `workspace` in place of `project`.
-
-**Invite link** = a one-time, expiring, workspace-scoped token. Redeeming it
-**creates the account** (user sets username + password) **and** inserts the
-`workspace_members` row. It is `Project_Planner`'s activation code extended with
-a `workspace_id` binding, reusing its `tokens.js` (`sha256` + `safeEqualHex`).
+- Tailscale *is* the auth: `middleware/auth.js` admits any request carrying a tailnet address in
+  `X-Forwarded-For`; `GET /api/sync` returns the whole database. Sync tables have no owner column.
+- Deployment: each app container shares a Tailscale sidecar's network namespace
+  (`network_mode: service:ts-*`), `tailscale serve` proxies to `127.0.0.1:3000`.
+- Review findings that gate public exposure are filed in each repo's `docs/BUGS.md` (budget:
+  `docs/Bugs.md`). The two that block a second user: **the server merge is last-push-wins**
+  (writers never compare `edited_at`) and **sync validators bound nothing**.
+- Harmonised on 2026-09-28 (branch `feature/public-prep-harmonize`, awaiting test): CaTetonne lost
+  its wildcard CORS and gained the security headers and the modal title/double-tap fixes
+  score-counter already had; score-counter binds `HOST` and pins the Tailscale image; the error
+  handler, health and sync 500s no longer return SQLite's message; budget-tracker answers unknown
+  `/api/*` with a JSON 404 and has a JSON error handler.
+- `pwa-sync-template` is **not a git repository**. Do the engine work in `score-counter` (2 lines
+  of drift from the template) and copy back; do not start there.
+- DB idioms differ: async `dbRun/dbGet/dbAll` (sqlite3) in the two Vite apps, synchronous
+  `db.prepare(...)` (better-sqlite3) in budget-tracker. budget-tracker also has **no migration
+  runner** — `schema.sql` is `CREATE TABLE IF NOT EXISTS` and `meta.schema_version` is never read.
+- Containers run as root in score-counter and CaTetonne (no `USER`); budget-tracker runs as `node`.
 
 ---
 
-## 4. Threat model
+## 3. Target model
 
-### 4.1 The critical fact: public apps sit on the tailnet
+**Server-side tenancy, client unaware.** A browser origin holds one logged-in user at a time, so
+the client schema does not change:
 
-Because each app container **shares the Tailscale sidecar's network namespace**,
-the app process has the sidecar's `tailscale0` interface in its own namespace —
-it is a tailnet node. So **a compromised public app is already inside your
-Tailscale network.** "Keep Tailscale for everything else" does *not* wall the
-rest off from a breached public app, because that app lives on the same tailnet.
+- `users`, `sessions` as in Planner's `003_auth.sql`, rewritten for SQLite (text timestamps,
+  integer booleans, `?` placeholders). Roles: `admin` (the owner) and `user`.
+- `workspaces(id, name, created_at)` and `workspace_members(workspace_id, user_id, role)`. An
+  account gets its own workspace at creation; pairing = a second membership row, admin-only.
+- **`workspace_id` on every synced table**, stamped by the server from the session on every write
+  (a client-supplied value is ignored), filtered on every read. The upsert must also refuse to
+  overwrite a row that belongs to another workspace: `ON CONFLICT(id) DO UPDATE … WHERE
+  workspace_id = excluded.workspace_id AND <incoming stamp is newer>` — the same rewrite that fixes
+  last-push-wins, so **the two land together, with tests**.
+- Existing rows are backfilled to the owner's workspace in the same migration.
+- budget-tracker: `workspace_id` on `accounts` and `category_rules` (`UNIQUE(workspace_id,
+  pattern)`); children reach it through `account_id` / `savings_account_id`; `requireAccount` checks
+  membership, and the child-id routes join through the account. The hard-coded `'default'` account
+  becomes "create on first login". Ids move from `Date.now()` to `crypto.randomUUID()`.
 
-### 4.2 What an attacker can reach, by stage
+**Session presentation.** Cookie (`<app>_session`, httpOnly, Secure, SameSite=Lax) + CSRF cookie
+echoed in `X-CSRF-Token` on unsafe methods — Planner's `requireSession` verbatim. Its Bearer path
+stays in the middleware (free) but no client uses it. Sessions: idle 14 d, absolute 90 d (Planner's
+30 d idle suits an internal tool; these are phones that get lost), and Settings offers "log out
+everywhere" (`destroyUserSessions`).
 
-| Stage | Precondition | Reach |
-|---|---|---|
-| 0 | Unauthenticated, no breach | Only the 3 apps' HTTP surface (static PWA, `/health`, `/api/*`, login + invite-redeem). SSH, Postgres, host, other containers, other tailnet services stay invisible from the internet. Can brute-force login (mitigated) / probe for bugs / DoS. |
-| 1 | Holds a valid account (leaked invite, cred theft) | `/api/sync` scoped to *their* workspace → own data only. Cross-workspace access requires an **authorization/IDOR bug** → scoping must be airtight. |
-| 2 | **App RCE** (dep CVE / logic flaw → code exec in container) | The app's whole SQLite DB (all its workspaces) **and** — because it shares a tailnet node's namespace — the tailnet, gated only by tailnet ACLs (allow-all by default). On CaTetonne/score-counter the process is **root in-container**, widening escape. **App-layer auth does nothing here — isolation is the backstop.** |
-| 3 | Container escape → host root | Everything on the host + full tailnet. Already clean on the two classic enablers (no `--privileged`, no `docker.sock` mount); root-in-container + no cap-drop keeps this wider than needed. |
+**Client.** A login page rendered by the client (never a server redirect: the service worker
+serves cached `index.html` for every navigation), gating the app before `startSync()`; every auth
+endpoint under `/api/auth/*` (the worker never caches `/api`). Sync fetches add the CSRF header;
+a 401 raises `auth-required` instead of backing off. **Logout and a login as a different user wipe
+IndexedDB and the watermark** (`resetAllData`) — the device may be shared. budget-tracker also
+clears its Cache Storage entries.
 
-**Headline:** direct internet reach is genuinely just the 3 apps — but a single
-app RCE turns "3 exposed apps" into "a doorway to the whole tailnet" unless the
-namespace coupling is broken or the tailnet is ACL-restricted.
-
-### 4.3 CLI account-creation threat
-
-The `create-user` CLI has **no network surface** — it is a local shell command
-writing the local SQLite file. It cannot be used to create an account remotely;
-an attacker must *already* have host/DB access, at which point account creation
-is moot (they can read the DB directly). So CLI abuse is strictly a
-**post-compromise** concern. Defenses = host hardening (§5) + the CLI's own
-design: `Project_Planner`'s CLI **never takes a password** (it prints a one-time
-activation code; the person sets their own password), so no password leaks into
-shell history or `ps`. Carry that design over verbatim. The *remote*
-account-creation surface is the **invite link**, not the CLI.
+**Account lifecycle.** `npm run create-user -- <username> "<Display>" [--pair-with <username>]`
+prints a one-time activation code; the person activates in the login page (username + code + new
+password). `--reissue` is the password reset. Later: an admin page in Settings for the same three
+actions (create, reissue, pair), server-enforced `requireAdmin`.
 
 ---
 
-## 5. The plan (do once in the template, then roll out)
+## 4. Threat model (unchanged in substance)
 
-### Phase 0 — Public ingress & isolation
+Stage 0 — unauthenticated: only the login and activation routes and the static PWA are reachable;
+mitigations are lockout (persisted), edge rate-limiting, small body limit on `/api/auth`,
+constant-time login. Stage 1 — a valid account: sees exactly its workspace; cross-workspace access
+needs an authorisation bug, so scoping is tested. Stage 2 — app RCE: the app's whole SQLite. **With
+Tailscale removed the public apps are no longer on the tailnet**, which was the 2026-09-06 plan's
+worst case; keep them on an isolated Docker network with nothing else on it. Stage 3 — container
+escape: `USER node`, `cap_drop: [ALL]`, `no-new-privileges`, no docker socket.
 
-- **Pick an ingress** (open decision, §7): **Cloudflare Tunnel** (no inbound
-  port, WAF/rate-limiting/bot-filtering, origin-IP hiding) *or* Caddy (auto
-  Let's Encrypt). Cloudflare Tunnel is the stronger posture for public exposure.
-  Tailscale Funnel works too but adds little filtering.
-- **Break the namespace coupling for public apps (the key control).** Do not let
-  an internet-facing app share a tailnet node's namespace. Put the public apps
-  behind the chosen ingress on an **isolated Docker network with no `tailscale0`
-  interface**; keep a Tailscale sidecar (if any) for private/admin access only.
-  Then an app breach has no tailnet to ride.
-- **If a sidecar stays (Funnel), treat those nodes as an untrusted DMZ:** tag
-  them (`tag:public-dmz`) and write **default-deny tailnet ACLs** so they can
-  reach nothing else. Tailscale is allow-all by default — verify and restrict.
-- **Lock CORS** from `origin:'*'` to same-origin (the client is served by the
-  same Express process). `origin:'*'` + `credentials:true` is rejected by
-  browsers for cookie auth anyway.
-- **Harden containers:** add `USER node` to `score-counter`, `CaTetonne`, and
-  this template (budget-tracker already has it); `cap_drop: [ALL]`,
-  `security_opt: ["no-new-privileges:true"]`, `read_only: true` (+ tmpfs for
-  writable dirs). Pin base images; keep `npm audit` clean.
-- **Harden the host / management plane:** SSH key-only (no passwords), root login
-  disabled, `fail2ban`; firewall allows only the ingress from the world, SSH only
-  from your IP / VPN / a Tailscale kept for *admin*. Patch the box.
-- **Ideal:** run the 3 public apps on a **separate VM/host** from sensitive
-  tailnet-only services, so even host compromise can't reach them.
-- **Secrets/files:** prod session pepper + `.env` + `.db` at `600`, owned by the
-  app user, kept off the image and out of git (already gitignored).
+Behind Cloudflare the app must `app.set('trust proxy', 1)` and read the client IP from
+`CF-Connecting-IP` for lockout and rate-limit keys; otherwise every visitor is the tunnel.
 
-### Phase 1 — Auth core → SQLite
+**Access moves Stage 0 off the server.** With Access in front, an unauthenticated stranger reaches
+Cloudflare's login page and nothing else; the app's `/api/auth/*` routes only ever see people on the
+allow-list. Two consequences the code must honour: the tunnel is the only path in, so the app must
+**verify the `Cf-Access-Jwt-Assertion` header** on every request (Cloudflare's public keys, the
+application's AUD tag) and refuse without it — otherwise a leaked tunnel token or a misconfigured
+route bypasses the perimeter; and when the Access cookie expires the edge answers an API call with a
+**302 to its login page instead of JSON**, which the client must treat as "log in again", not as a
+sync error. Access is a perimeter, not identity: the workspace is still decided by the app's session.
 
-- **Copy** from `Project_Planner/server/src/auth/`: `password.js` (Argon2id,
-  DB-agnostic, copies as-is), `tokens.js`, `cookies.js`, `session.js`,
-  `users.js`; plus `routes/auth.js` and `middleware/auth.js` (`requireSession`).
-- **Port the DB layer:** replace Postgres `all/one/query` with each app's SQLite
-  idiom (`dbAll/dbGet/dbRun` for template/CaTetonne/score-counter;
-  `db.prepare(...)` for budget-tracker). Rewrite migration `003_auth.sql` as a
-  SQLite `users` + `sessions` schema.
-- **Replace** the tailnet IP check in `middleware/auth.js` with `requireSession`
-  — the swap the plan always anticipated ("retrofit by replacing
-  `middleware/auth.js`").
-- **Cookie auth, not Bearer:** the client is same-origin → httpOnly + Secure +
-  SameSite cookies with CSRF double-submit (Planner already implements it). No
-  token in JS — safer than the desktop app's `localStorage` Bearer path.
-- **Invites/bootstrap:** port `create-user` CLI to SQLite as the first-admin
-  bootstrap (one-time activation code, never a password argument).
-- **Client:** add a login view to the PWA (Planner's `renderer/auth.js` is the
-  reference) and gate the app behind it.
+---
 
-### Phase 2 — Workspaces, memberships & invite links
+## 5. Phases and sessions
 
-- **Schema:** `workspaces`, `workspace_members(workspace_id, user_id, role)`, and
-  **`workspace_id` on every synced table from day one** (adding it later means a
-  backfill migration on live data).
-- **Sync scoping:** scope every `/api/sync` read and write to the caller's
-  workspace membership. Ensure the existing `budget-tracker` `/bootstrap` route
-  lands behind `requireSession` + workspace scoping.
-- **Invite links:** `POST` to mint a one-time, expiring, **hashed-at-rest**
-  invite token bound to `workspace_id` + role; a redeem endpoint that creates the
-  account and inserts the membership. Owner can revoke an unused link.
-  - **Security rules:** single-use · short expiry (24–72h) · high-entropy ·
-    hashed at rest · revocable · **consumed by POST from a landing page, never
-    GET** (a raw GET token leaks via history + `Referer`) · rate-limited.
-  - **Never add** an open "if zero users, allow signup" / setup endpoint.
-- **Backfill:** assign existing rows to your bootstrap workspace.
+One feature per session (see CLAUDE.md). The order is the dependency order.
 
-### Phase 3 — Roll out to all three
+**S1 — done 2026-09-28.** Review, harmonisation, this plan.
 
-- Apply the template diff to `CaTetonne`, `budget-tracker`, `score-counter`. They
-  differ only in domain schema, never in the auth seam. Each keeps its own
-  users/workspaces/data and its own container/volume/sidecar (already separate —
-  keep it that way so one popped app ≠ the others' data).
-- Per app: bootstrap your admin + workspace via CLI, verify login and invite
-  redemption end-to-end **locally**, then switch ingress from tailnet to public
-  and remove/repurpose the Tailscale sidecar per Phase 0.
+**S2, S3 — sync writer rewrite** (score-counter, then CaTetonne; copy to the template). Upsert on
+every table with a newer-stamp guard and a `workspace_id` equality guard, server tests for both;
+CaTetonne decides the measurements `UNIQUE(baby_id,type,date)` rule. Validators gain length and
+timestamp-format checks. Ship server before clients.
+
+**S4 — auth core, score-counter.** Port `auth/{password,tokens,cookies,session,users}.js`,
+`routes/auth.js`, `middleware/auth.js` (replacing the tailnet check), `scripts/create-user.js`;
+tables via `ADDED_TABLES`; `argon2` dependency (the Dockerfile's deps stage already has the
+compiler); JSON limit scoped (`/api/sync` 10 MB, `/api/auth` 16 KB); `trust proxy`; login page,
+CSRF header, 401 handling, logout wipe, i18n. Test locally with `COOKIE_SECURE` off. Includes the
+`Cf-Access-Jwt-Assertion` check as middleware (skipped when `CF_ACCESS_AUD` is unset, i.e. locally)
+and the client's handling of a 302/opaque redirect on `/api` as auth-required.
+
+**S5 — workspaces, score-counter.** `workspaces`, `workspace_members`, `workspace_id` columns +
+backfill, pull/push scoping, `--pair-with`, scoping tests.
+
+**S6, S7 — CaTetonne**: S4 + S5 applied (remove the dead `routes/babies.js` and `routes/data.js`).
+
+**S8, S9 — budget-tracker**: the same in better-sqlite3 idiom, plus a versioned migration runner
+(`meta.schema_version` is read at last), per-workspace default account, UUID ids, `requireAccount`
+membership check, child routes joined through the account.
+
+**S10 — Phase 0 infra.** Per repo: `docker-compose.yml` gains a `cloudflared` sidecar
+(`TUNNEL_TOKEN` as a stack variable, no `ports:`); the Tailscale sidecar is removed only at the
+end of the cutover below;
+Dockerfile `USER node` with `--chown` on `/app/db` (**one-time `chown -R 1000:1000` on the existing
+volume** in the runbook); `cap_drop`, `no-new-privileges`, read-only filesystem, memory and pids
+limits, pinned images. Runbook in each SETUP doc: domain on Cloudflare, one tunnel with three
+hostnames, **one Access application per hostname** (policy: allow-list of e-mail addresses, one-time
+PIN, session 30 days, `CF_ACCESS_AUD` and team domain into the stack variables), WAF rate-limit rule
+on `/api/auth/*`, cutover per app (backup off-box first), phones reinstall the PWA from the new host.
+Tailscale leaves the three app stacks only — SSH and Portainer stay tailnet-only and never on the
+public path.
+
+**Cutover — one server, one database, two doors until the family has moved.** Nothing is cloned,
+so nothing diverges. In order:
+
+1. Merge and redeploy the harmonisation branches (done in S1); tailnet behaviour unchanged.
+2. **Auth ships first, still private** (S4–S9 on the existing Tailscale stacks). The tailnet check
+   becomes sessions, the family logs in once at the tailnet URL over Tailscale, accounts are created
+   by CLI and the couple paired. The login gets its real-world test with nobody outside able to
+   reach it. Tables arrive through `ADDED_TABLES` at boot; the volume is untouched.
+3. **Add the tunnel beside the sidecar.** `cloudflared` joins the sidecar's namespace
+   (`network_mode: service:ts-<app>`, as the app does) and proxies to the same `127.0.0.1:3000`;
+   Access in front of the public hostname. Both `tailscale serve` and Cloudflare terminate TLS, so
+   the `Secure` cookie works on both hosts without a code change — a phone logs in on each host
+   separately, which is what is wanted. This is a short window with the app on the tailnet *and* the
+   internet; Access makes it acceptable, it must not become the permanent shape.
+4. **Friends join** on the public URL. The family stays on the tailnet install as long as needed.
+5. **The family switches, one phone at a time:** sync badge ✓ with nothing pending → **backup
+   off-box** → install the PWA from the public host → log in → let it pull the full history (a fresh
+   origin has no watermark, so it asks for everything) → compare against the old install → uninstall
+   the tailnet one. Android keys installs by host, so the two coexist during the check.
+6. **Remove the sidecar.** Delete the Tailscale service from the stack; app + `cloudflared` on their
+   own network, no tailnet interface — the isolation §4 wants. Tailscale stays on the host for SSH
+   and Portainer.
+
+**S11 — TWA ×3.** `client/public/.well-known/assetlinks.json` (budget: `client/.well-known/`) —
+**bypass Access for `/.well-known/*`** on each hostname, Google's checker fetches it anonymously;
+Bubblewrap project per app, upload key, Play internal-testing track with friends as testers (or
+sideload).
+
+**S12+ — store apps.** score-counter: Capacitor wrap of the `store` build. CaTetonne: ROADMAP Phase
+A/B (Capacitor, scheduled local notifications, Play Billing one-time unlock, Data safety, privacy
+policy). budget-tracker: **first** an in-browser data layer (the API's logic moves client-side over
+IndexedDB, the template's shape), then the wrap — several sessions, last in line.
 
 ---
 
 ## 6. Security checklist (public exposure)
 
-TLS + HSTS · httpOnly/Secure/SameSite cookies · CSRF double-submit · Argon2id ·
-server-side session expiry + rotation + revocation · brute-force lockout ·
-constant-time login (no username enumeration) · strict security headers · edge
-rate-limiting · parameterized SQL only (already true) · sync payload validation ·
-**non-root container** · cap-drop + no-new-privileges + read-only FS · **no
-tailnet interface on public app containers** (or default-deny DMZ ACLs) ·
-off-box backups · pinned base images + `npm audit` clean · SSH key-only + private
-management plane.
-
-Everything except TLS/proxy/rate-limit/isolation already exists in
-`Project_Planner`'s auth — the port carries it over.
+Cloudflare Access allow-list in front, JWT verified by the app · TLS + HSTS at the edge ·
+httpOnly/Secure/SameSite cookies · CSRF double-submit · Argon2id ·
+server-side session expiry + revocation · persisted lockout · constant-time login · strict headers
+(done) · generic error bodies (done) · edge rate-limiting · scoped body limits · bounded validators
+· parameterised SQL (true) · workspace guard in every writer · `trust proxy` · non-root container ·
+cap-drop + no-new-privileges + read-only FS + resource limits · isolated network, **no tailnet
+interface** · off-box backups, restore tested · pinned images + Dependabot on the three repos ·
+idle session 14 d for public use, "log out everywhere" in Settings · logout wipes local data ·
+management plane (SSH, Portainer) tailnet-only.
 
 ---
 
-## 7. Open decisions to make before building
+## 7. Open decisions
 
-1. **Ingress:** Cloudflare Tunnel vs Caddy vs Tailscale Funnel (recommend
-   Cloudflare Tunnel for filtering + no open port).
-2. **Same host or separate VM** for the 3 public apps (recommend separate VM if
-   feasible).
-3. **Keep a Tailscale sidecar for admin** on the public apps, or remove it
-   entirely and admin via the private host only.
-
----
-
-## 8. Effort estimate
-
-- Phase 0: ~½ day (plus VM provisioning if separating hosts).
-- Phase 1: ~1–2 sessions (mostly mechanical Postgres→SQLite port).
-- Phase 2: ~1–2 sessions (workspace scoping + invite flow is the real work).
-- Phase 3: ~½ day per app (mechanical), plus per-app verification.
-
-Order to ship: Phase 0 + 1 first (public URL + login, Tailscale off), then Phase
-2 (isolation + invites), then Phase 3 rollout. Bake `workspace_id` into the
-schema from the start even if the invite UI comes last.
+1. **Ingress:** Cloudflare Tunnel (recommended: no open port, free TLS and rate-limiting, hides the
+   home IP; needs a domain on Cloudflare DNS) vs Caddy + router port-forward + a dynamic-DNS name.
+   Access (decided) needs the Cloudflare side, so the choice is effectively made unless Access is
+   dropped. Trade-off accepted: TLS terminates at Cloudflare's edge, which sees the traffic in clear.
+2. **Host:** same box as today or a separate VM for the three public apps (recommended if easy).
+3. **Application ids** for six Android apps (store + TWA per product); permanent once on Play.
+4. **budget-tracker store version:** build the local data layer, or ship budget as friends-only
+   for now.
 
 ---
 
-## 9. Key file references
+## 8. Key file references
 
-- Current tailnet auth to replace: `pwa-sync-template/server/src/middleware/auth.js`
-- Auth to port from: `Project_Planner/server/src/auth/*`,
-  `Project_Planner/server/src/routes/auth.js`,
-  `Project_Planner/server/scripts/create-user.js`,
-  `Project_Planner/server/db/migrations/003_auth.sql`
-- Client auth reference: `Project_Planner/renderer/auth.js`,
-  `Project_Planner/renderer/sync.js`
-- Sync route to make multi-tenant: `pwa-sync-template/server/src/routes/sync.js`
-  (and each app's equivalent; `budget-tracker/server/src/routes/api.js`)
-- Deployment to isolate: each app's `docker-compose.yml` (Tailscale sidecar) and
-  `Dockerfile` (add `USER node`).
+- Tailnet auth to delete: `server/src/middleware/auth.js` in each Vite app; budget-tracker has none.
+- Auth to port: `Project_Planner/server/src/auth/*`, `routes/auth.js`, `routes/admin.js`
+  (`requireAdmin`), `middleware/auth.js`, `scripts/create-user.js`, `db/migrations/003_auth.sql`.
+- Client reference: `Project_Planner/renderer/auth.js` (bearer variant — ours is cookie),
+  `renderer/home.html` login modal markup.
+- Sync route to rewrite: `server/src/routes/sync.js` (both Vite apps);
+  `budget-tracker/server/src/routes/api.js`.
+- Migrations: `ADDED_TABLES` / `ADDED_COLUMNS` in `server/src/db.js`; budget-tracker
+  `server/src/db.js` + `schema.sql` (runner to write).
+- Build modes: `client/vite.config.js` (`VITE_APP_MODE`, `VITE_TARGET`, `storeBuildGuard`).
