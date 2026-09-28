@@ -22,6 +22,7 @@ in all three repos; edit it in one and copy it to the others.
 | Friends on Android | **TWA** (Trusted Web Activity, Bubblewrap) on the public URL — optional, the PWA install already works | Same origin as the site: cookies, service worker and IndexedDB unchanged, no CORS. |
 | Store apps | **Capacitor APK/AAB, local-only, no server** — score-counter and budget-tracker free, CaTetonne free + one-time paid unlock (`CaTetonne/docs/ROADMAP.md` Phase B) | The existing `VITE_APP_MODE=store` build for the two Vite apps. **budget-tracker has no local data layer** (client talks to the API for everything) — its store version needs an in-browser database first, and goes last. |
 | Ingress | **Cloudflare Tunnel** recommended (open decision §7) | No inbound port on the home router, TLS and edge rate-limiting for free, home IP hidden. One subdomain per app, which is also what Android's install-by-host needs. |
+| Perimeter | **Cloudflare Access in front of all three hostnames** (decided 2026-09-28) | A one-time e-mail code (or Google login) at the edge, allow-list of the friends' addresses, before the app's own login page is reachable. Bots and scanners never reach the server; an unknown Express/Node bug has nobody to exploit it. Free up to 50 users. The app keeps its own login for identity and workspaces. |
 
 Store and friends builds are **two different Android apps per product** (different application
 ids, different signing). Never upload the friends/TWA build to the public listing.
@@ -73,7 +74,9 @@ the client schema does not change:
 
 **Session presentation.** Cookie (`<app>_session`, httpOnly, Secure, SameSite=Lax) + CSRF cookie
 echoed in `X-CSRF-Token` on unsafe methods — Planner's `requireSession` verbatim. Its Bearer path
-stays in the middleware (free) but no client uses it. Sessions: idle 30 d, absolute 90 d.
+stays in the middleware (free) but no client uses it. Sessions: idle 14 d, absolute 90 d (Planner's
+30 d idle suits an internal tool; these are phones that get lost), and Settings offers "log out
+everywhere" (`destroyUserSessions`).
 
 **Client.** A login page rendered by the client (never a server redirect: the service worker
 serves cached `index.html` for every navigation), gating the app before `startSync()`; every auth
@@ -102,6 +105,15 @@ escape: `USER node`, `cap_drop: [ALL]`, `no-new-privileges`, no docker socket.
 Behind Cloudflare the app must `app.set('trust proxy', 1)` and read the client IP from
 `CF-Connecting-IP` for lockout and rate-limit keys; otherwise every visitor is the tunnel.
 
+**Access moves Stage 0 off the server.** With Access in front, an unauthenticated stranger reaches
+Cloudflare's login page and nothing else; the app's `/api/auth/*` routes only ever see people on the
+allow-list. Two consequences the code must honour: the tunnel is the only path in, so the app must
+**verify the `Cf-Access-Jwt-Assertion` header** on every request (Cloudflare's public keys, the
+application's AUD tag) and refuse without it — otherwise a leaked tunnel token or a misconfigured
+route bypasses the perimeter; and when the Access cookie expires the edge answers an API call with a
+**302 to its login page instead of JSON**, which the client must treat as "log in again", not as a
+sync error. Access is a perimeter, not identity: the workspace is still decided by the app's session.
+
 ---
 
 ## 5. Phases and sessions
@@ -119,7 +131,9 @@ timestamp-format checks. Ship server before clients.
 `routes/auth.js`, `middleware/auth.js` (replacing the tailnet check), `scripts/create-user.js`;
 tables via `ADDED_TABLES`; `argon2` dependency (the Dockerfile's deps stage already has the
 compiler); JSON limit scoped (`/api/sync` 10 MB, `/api/auth` 16 KB); `trust proxy`; login page,
-CSRF header, 401 handling, logout wipe, i18n. Test locally with `COOKIE_SECURE` off.
+CSRF header, 401 handling, logout wipe, i18n. Test locally with `COOKIE_SECURE` off. Includes the
+`Cf-Access-Jwt-Assertion` check as middleware (skipped when `CF_ACCESS_AUD` is unset, i.e. locally)
+and the client's handling of a 302/opaque redirect on `/api` as auth-required.
 
 **S5 — workspaces, score-counter.** `workspaces`, `workspace_members`, `workspace_id` columns +
 backfill, pull/push scoping, `--pair-with`, scoping tests.
@@ -133,11 +147,16 @@ membership check, child routes joined through the account.
 **S10 — Phase 0 infra.** Per repo: `docker-compose.yml` replaces the Tailscale sidecar with a
 `cloudflared` sidecar (`TUNNEL_TOKEN` as a stack variable, no `ports:`, isolated network);
 Dockerfile `USER node` with `--chown` on `/app/db` (**one-time `chown -R 1000:1000` on the existing
-volume** in the runbook); `cap_drop`, `no-new-privileges`, pinned images. Runbook in each SETUP doc:
-domain on Cloudflare, one tunnel with three hostnames, WAF rate-limit rule on `/api/auth/*`, cutover
-per app (backup off-box first), phones reinstall the PWA from the new host.
+volume** in the runbook); `cap_drop`, `no-new-privileges`, read-only filesystem, memory and pids
+limits, pinned images. Runbook in each SETUP doc: domain on Cloudflare, one tunnel with three
+hostnames, **one Access application per hostname** (policy: allow-list of e-mail addresses, one-time
+PIN, session 30 days, `CF_ACCESS_AUD` and team domain into the stack variables), WAF rate-limit rule
+on `/api/auth/*`, cutover per app (backup off-box first), phones reinstall the PWA from the new host.
+Tailscale leaves the three app stacks only — SSH and Portainer stay tailnet-only and never on the
+public path.
 
-**S11 — TWA ×3.** `client/public/.well-known/assetlinks.json` (budget: `client/.well-known/`),
+**S11 — TWA ×3.** `client/public/.well-known/assetlinks.json` (budget: `client/.well-known/`) —
+**bypass Access for `/.well-known/*`** on each hostname, Google's checker fetches it anonymously;
 Bubblewrap project per app, upload key, Play internal-testing track with friends as testers (or
 sideload).
 
@@ -150,12 +169,15 @@ IndexedDB, the template's shape), then the wrap — several sessions, last in li
 
 ## 6. Security checklist (public exposure)
 
-TLS + HSTS at the edge · httpOnly/Secure/SameSite cookies · CSRF double-submit · Argon2id ·
+Cloudflare Access allow-list in front, JWT verified by the app · TLS + HSTS at the edge ·
+httpOnly/Secure/SameSite cookies · CSRF double-submit · Argon2id ·
 server-side session expiry + revocation · persisted lockout · constant-time login · strict headers
 (done) · generic error bodies (done) · edge rate-limiting · scoped body limits · bounded validators
 · parameterised SQL (true) · workspace guard in every writer · `trust proxy` · non-root container ·
-cap-drop + no-new-privileges · isolated network, **no tailnet interface** · off-box backups ·
-pinned images + `npm audit` clean · logout wipes local data.
+cap-drop + no-new-privileges + read-only FS + resource limits · isolated network, **no tailnet
+interface** · off-box backups, restore tested · pinned images + Dependabot on the three repos ·
+idle session 14 d for public use, "log out everywhere" in Settings · logout wipes local data ·
+management plane (SSH, Portainer) tailnet-only.
 
 ---
 
@@ -163,6 +185,8 @@ pinned images + `npm audit` clean · logout wipes local data.
 
 1. **Ingress:** Cloudflare Tunnel (recommended: no open port, free TLS and rate-limiting, hides the
    home IP; needs a domain on Cloudflare DNS) vs Caddy + router port-forward + a dynamic-DNS name.
+   Access (decided) needs the Cloudflare side, so the choice is effectively made unless Access is
+   dropped. Trade-off accepted: TLS terminates at Cloudflare's edge, which sees the traffic in clear.
 2. **Host:** same box as today or a separate VM for the three public apps (recommended if easy).
 3. **Application ids** for six Android apps (store + TWA per product); permanent once on Play.
 4. **budget-tracker store version:** build the local data layer, or ship budget as friends-only
