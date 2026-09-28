@@ -144,8 +144,9 @@ backfill, pull/push scoping, `--pair-with`, scoping tests.
 (`meta.schema_version` is read at last), per-workspace default account, UUID ids, `requireAccount`
 membership check, child routes joined through the account.
 
-**S10 — Phase 0 infra.** Per repo: `docker-compose.yml` replaces the Tailscale sidecar with a
-`cloudflared` sidecar (`TUNNEL_TOKEN` as a stack variable, no `ports:`, isolated network);
+**S10 — Phase 0 infra.** Per repo: `docker-compose.yml` gains a `cloudflared` sidecar
+(`TUNNEL_TOKEN` as a stack variable, no `ports:`); the Tailscale sidecar is removed only at the
+end of the cutover below;
 Dockerfile `USER node` with `--chown` on `/app/db` (**one-time `chown -R 1000:1000` on the existing
 volume** in the runbook); `cap_drop`, `no-new-privileges`, read-only filesystem, memory and pids
 limits, pinned images. Runbook in each SETUP doc: domain on Cloudflare, one tunnel with three
@@ -154,6 +155,29 @@ PIN, session 30 days, `CF_ACCESS_AUD` and team domain into the stack variables),
 on `/api/auth/*`, cutover per app (backup off-box first), phones reinstall the PWA from the new host.
 Tailscale leaves the three app stacks only — SSH and Portainer stay tailnet-only and never on the
 public path.
+
+**Cutover — one server, one database, two doors until the family has moved.** Nothing is cloned,
+so nothing diverges. In order:
+
+1. Merge and redeploy the harmonisation branches (done in S1); tailnet behaviour unchanged.
+2. **Auth ships first, still private** (S4–S9 on the existing Tailscale stacks). The tailnet check
+   becomes sessions, the family logs in once at the tailnet URL over Tailscale, accounts are created
+   by CLI and the couple paired. The login gets its real-world test with nobody outside able to
+   reach it. Tables arrive through `ADDED_TABLES` at boot; the volume is untouched.
+3. **Add the tunnel beside the sidecar.** `cloudflared` joins the sidecar's namespace
+   (`network_mode: service:ts-<app>`, as the app does) and proxies to the same `127.0.0.1:3000`;
+   Access in front of the public hostname. Both `tailscale serve` and Cloudflare terminate TLS, so
+   the `Secure` cookie works on both hosts without a code change — a phone logs in on each host
+   separately, which is what is wanted. This is a short window with the app on the tailnet *and* the
+   internet; Access makes it acceptable, it must not become the permanent shape.
+4. **Friends join** on the public URL. The family stays on the tailnet install as long as needed.
+5. **The family switches, one phone at a time:** sync badge ✓ with nothing pending → **backup
+   off-box** → install the PWA from the public host → log in → let it pull the full history (a fresh
+   origin has no watermark, so it asks for everything) → compare against the old install → uninstall
+   the tailnet one. Android keys installs by host, so the two coexist during the check.
+6. **Remove the sidecar.** Delete the Tailscale service from the stack; app + `cloudflared` on their
+   own network, no tailnet interface — the isolation §4 wants. Tailscale stays on the host for SSH
+   and Portainer.
 
 **S11 — TWA ×3.** `client/public/.well-known/assetlinks.json` (budget: `client/.well-known/`) —
 **bypass Access for `/.well-known/*`** on each hostname, Google's checker fetches it anonymously;
