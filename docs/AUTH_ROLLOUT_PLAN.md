@@ -1,6 +1,6 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
-**Status:** in progress — S2 (score-counter) and S3 (CaTetonne) done 2026-09-28 · **Written:**
+**Status:** in progress — S2, S4 (score-counter) and S3 (CaTetonne) done 2026-09-28 · **Written:**
 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
 
 Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
@@ -31,8 +31,9 @@ ids, different signing). Never upload the friends/TWA build to the public listin
 
 ## 2. Current state (2026-09-28)
 
-- Tailscale *is* the auth: `middleware/auth.js` admits any request carrying a tailnet address in
-  `X-Forwarded-For`; `GET /api/sync` returns the whole database. Sync tables have no owner column.
+- Tailscale *is* the auth in CaTetonne and budget-tracker: `middleware/auth.js` admits any request
+  carrying a tailnet address in `X-Forwarded-For`. **score-counter has sessions since S4** (below).
+  On every app `GET /api/sync` still returns the whole database: sync tables have no owner column.
 - Deployment: each app container shares a Tailscale sidecar's network namespace
   (`network_mode: service:ts-*`), `tailscale serve` proxies to `127.0.0.1:3000`.
 - Review findings that gate public exposure are filed in each repo's `docs/BUGS.md` (budget:
@@ -137,13 +138,23 @@ by stamp rather than push order), an older incoming row is stale, and a tombston
 No client change; `saveMeasurement`'s fold and `mergePulled`'s rival check are what make the losing
 device agree. Ship server before clients.
 
-**S4 — auth core, score-counter.** Port `auth/{password,tokens,cookies,session,users}.js`,
-`routes/auth.js`, `middleware/auth.js` (replacing the tailnet check), `scripts/create-user.js`;
-tables via `ADDED_TABLES`; `argon2` dependency (the Dockerfile's deps stage already has the
-compiler); JSON limit scoped (`/api/sync` 10 MB, `/api/auth` 16 KB); `trust proxy`; login page,
-CSRF header, 401 handling, logout wipe, i18n. Test locally with `COOKIE_SECURE` off. Includes the
-`Cf-Access-Jwt-Assertion` check as middleware (skipped when `CF_ACCESS_AUD` is unset, i.e. locally)
-and the client's handling of a 302/opaque redirect on `/api` as auth-required.
+**S4 — done 2026-09-28** (score-counter, `feature/auth-core`). Ported as planned:
+`auth/{password,tokens,cookies,session,users}.js`, `routes/auth.js`, `middleware/auth.js`
+(sessions replace the tailnet check), `middleware/cfAccess.js`, `scripts/create-user.js`, tables
+via `ADDED_TABLES`, `argon2`, JSON limits scoped (`/api/auth` 16 KB, `/api/sync` 10 MB),
+`trust proxy` = 1, login page, CSRF header, 401 handling, logout wipe, EN/FR. Choices to carry
+into S6 and S8: no `email`/`external_id` columns (the plan has no e-mail); `username` collates
+`NOCASE` (phones capitalise); idle 14 d / absolute 90 d, `last_seen` slid at most every 5 min,
+`pruneSessions()` at boot; error bodies are codes (`unauthenticated`, `csrf`, `bad_credentials`,
+`bad_code`, `weak_password`) and the client translates them; the session token never appears in a
+body; `POST /api/auth/logout-all` backs *Log out everywhere*; a login as a different user wipes
+and reloads, a logout wipes regardless. The perimeter: the client fetches `/api` with
+`redirect: 'manual'` and treats an `opaqueredirect` as Access having lapsed; since the worker
+answers every navigation from cache, the way back is a navigation to `GET /api/auth/return`
+(the worker lets `/api` through), which the server bounces to `/`. `cfAccess` exempts `/health`
+(Docker's check) and `/.well-known` (S11). Tests: `routes/auth.test.mjs` (the app.js mounting
+order, cookies, CSRF, lockout, logout) and `middleware/cfAccess.test.mjs` (a generated key served
+as a JWKS). `COOKIE_SECURE=false` is in `.env.example`; production leaves it unset.
 
 **S5 — workspaces, score-counter.** `workspaces`, `workspace_members`, `workspace_id` columns +
 backfill, pull/push scoping, `--pair-with`, scoping tests.
