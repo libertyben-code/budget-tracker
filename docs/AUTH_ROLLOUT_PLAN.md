@@ -1,7 +1,7 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
-**Status:** decided, not started · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review
-session, decisions below) · **Owner:** ben
+**Status:** in progress — S2 (score-counter) and S3 (CaTetonne) done 2026-09-28 · **Written:**
+2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
 
 Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
 public internet, **Tailscale removed**, with per-user data isolation and owner-paired sharing —
@@ -36,8 +36,10 @@ ids, different signing). Never upload the friends/TWA build to the public listin
 - Deployment: each app container shares a Tailscale sidecar's network namespace
   (`network_mode: service:ts-*`), `tailscale serve` proxies to `127.0.0.1:3000`.
 - Review findings that gate public exposure are filed in each repo's `docs/BUGS.md` (budget:
-  `docs/Bugs.md`). The two that block a second user: **the server merge is last-push-wins**
-  (writers never compare `edited_at`) and **sync validators bound nothing**.
+  `docs/Bugs.md`). The two that blocked a second user — **the server merge was
+  last-push-wins** (writers never compared `edited_at`) and **sync validators bounded
+  nothing** — are fixed in score-counter (S2) and CaTetonne (S3), both 2026-09-28, and still open
+  in budget-tracker.
 - Harmonised on 2026-09-28 (branch `feature/public-prep-harmonize`, awaiting test): CaTetonne lost
   its wildcard CORS and gained the security headers and the modal title/double-tap fixes
   score-counter already had; score-counter binds `HOST` and pins the Tailscale image; the error
@@ -122,10 +124,18 @@ One feature per session (see CLAUDE.md). The order is the dependency order.
 
 **S1 — done 2026-09-28.** Review, harmonisation, this plan.
 
-**S2, S3 — sync writer rewrite** (score-counter, then CaTetonne; copy to the template). Upsert on
-every table with a newer-stamp guard and a `workspace_id` equality guard, server tests for both;
-CaTetonne decides the measurements `UNIQUE(baby_id,type,date)` rule. Validators gain length and
-timestamp-format checks. Ship server before clients.
+**S2 — done 2026-09-28** (score-counter, `feature/sync-writer-lww`). Writers generated from one
+column list per table, upsert with a newer-stamp `WHERE`, `stale` counted apart from `failed`;
+validators bound lengths, timestamp formats, flags and a far-future merge stamp; nine route tests
+over an in-memory SQLite. The `workspace_id` equality guard is one line in the same generated
+`WHERE`, added in S5 when the column exists.
+
+**S3 — done 2026-09-28** (CaTetonne, `feature/sync-writer-lww`; engine copied to the template).
+The same rewrite, plus the measurements rule: `UNIQUE(baby_id,type,date)` is kept and the day is
+merged like the id — the newer stamp takes it, the older rival is deleted (what `REPLACE` did, now
+by stamp rather than push order), an older incoming row is stale, and a tombstone claims no day.
+No client change; `saveMeasurement`'s fold and `mergePulled`'s rival check are what make the losing
+device agree. Ship server before clients.
 
 **S4 — auth core, score-counter.** Port `auth/{password,tokens,cookies,session,users}.js`,
 `routes/auth.js`, `middleware/auth.js` (replacing the tailnet check), `scripts/create-user.js`;
