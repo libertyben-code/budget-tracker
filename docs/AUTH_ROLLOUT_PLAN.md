@@ -1,7 +1,7 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
-**Status:** in progress — S2, S4 (2026-09-28) and S5 (2026-09-29) done in score-counter, S3 in
-CaTetonne (2026-09-28) · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
+**Status:** in progress — S2, S4 (2026-09-28) and S5 (2026-09-29) done in score-counter, S3
+(2026-09-28) and S6 (2026-09-29) in CaTetonne · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
 
 Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
 public internet, **Tailscale removed**, with per-user data isolation and owner-paired sharing —
@@ -31,10 +31,10 @@ ids, different signing). Never upload the friends/TWA build to the public listin
 
 ## 2. Current state (2026-09-29)
 
-- Tailscale *is* the auth in CaTetonne and budget-tracker: `middleware/auth.js` admits any request
-  carrying a tailnet address in `X-Forwarded-For`. **score-counter has sessions since S4 and
-  workspaces since S5** (below). On the other two `GET /api/sync` still returns the whole database:
-  sync tables have no owner column.
+- Tailscale *is* the auth in budget-tracker only. **score-counter has sessions since S4 and
+  workspaces since S5; CaTetonne has sessions since S6** and no workspaces yet (below). On
+  CaTetonne and budget-tracker `GET /api/sync` still returns the whole database — in CaTetonne to
+  any account: sync tables have no owner column.
 - Deployment: each app container shares a Tailscale sidecar's network namespace
   (`network_mode: service:ts-*`), `tailscale serve` proxies to `127.0.0.1:3000`.
 - Review findings that gate public exposure are filed in each repo's `docs/BUGS.md` (budget:
@@ -179,7 +179,21 @@ stored in the writer's own workspace and read by nobody else. Tests: `routes/syn
 (scoping at the router), `routes/auth.test.mjs` (login to scoped pull, paired and unpaired),
 `auth/workspaces.test.mjs` (adoption, pairing, the boot of a database from S4).
 
-**S6, S7 — CaTetonne**: S4 + S5 applied (remove the dead `routes/babies.js` and `routes/data.js`).
+**S6 — done 2026-09-29** (CaTetonne, `feature/auth-core`). S4 ported file for file from
+score-counter's commit — not from its head, which carries S5 — with `catetonne_session` and
+`catetonne_csrf` as the cookie names; the dead `routes/babies.js` and `routes/data.js` are removed.
+What the port added, to carry into S8 and back into score-counter: **a login must draw the page
+once.** The login waits for its first sync and then renders; that sync's pull raises `data-pulled`,
+whose handler renders too, and a page that fills its container across awaits is then drawn twice,
+one copy under the other. It shows only on a login that pulls something — after a logout, never on
+a phone that already holds its data — so it passes a first test. CaTetonne skips the pull's render
+while the login's sync runs (`entering` in `main.js`); **score-counter has the same two handlers
+and is not fixed yet.** Also: whatever the header shows of the data (here the baby picker) and the
+FAB are hidden under the login page, and an event that redraws the page on a timer (here the feed
+reminder) must not redraw the login page under somebody typing. Deploying it logs every phone out
+until its account exists; a first login keeps what the phone holds.
+
+**S7 — CaTetonne**: S5 applied.
 
 **S8, S9 — budget-tracker**: the same in better-sqlite3 idiom, plus a versioned migration runner
 (`meta.schema_version` is read at last), per-workspace default account, UUID ids, `requireAccount`
@@ -261,7 +275,8 @@ management plane (SSH, Portainer) tailnet-only.
 
 ## 8. Key file references
 
-- Tailnet auth to delete: `server/src/middleware/auth.js` in each Vite app; budget-tracker has none.
+- Tailnet auth, deleted in S4 and S6: `server/src/middleware/auth.js` in each Vite app;
+  budget-tracker has none.
 - Auth to port: `Project_Planner/server/src/auth/*`, `routes/auth.js`, `routes/admin.js`
   (`requireAdmin`), `middleware/auth.js`, `scripts/create-user.js`, `db/migrations/003_auth.sql`.
 - Client reference: `Project_Planner/renderer/auth.js` (bearer variant — ours is cookie),
