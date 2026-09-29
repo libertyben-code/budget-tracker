@@ -1,7 +1,7 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
-**Status:** in progress — S2, S4 (score-counter) and S3 (CaTetonne) done 2026-09-28 · **Written:**
-2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
+**Status:** in progress — S2, S4 (2026-09-28) and S5 (2026-09-29) done in score-counter, S3 in
+CaTetonne (2026-09-28) · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
 
 Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
 public internet, **Tailscale removed**, with per-user data isolation and owner-paired sharing —
@@ -29,11 +29,12 @@ ids, different signing). Never upload the friends/TWA build to the public listin
 
 ---
 
-## 2. Current state (2026-09-28)
+## 2. Current state (2026-09-29)
 
 - Tailscale *is* the auth in CaTetonne and budget-tracker: `middleware/auth.js` admits any request
-  carrying a tailnet address in `X-Forwarded-For`. **score-counter has sessions since S4** (below).
-  On every app `GET /api/sync` still returns the whole database: sync tables have no owner column.
+  carrying a tailnet address in `X-Forwarded-For`. **score-counter has sessions since S4 and
+  workspaces since S5** (below). On the other two `GET /api/sync` still returns the whole database:
+  sync tables have no owner column.
 - Deployment: each app container shares a Tailscale sidecar's network namespace
   (`network_mode: service:ts-*`), `tailscale serve` proxies to `127.0.0.1:3000`.
 - Review findings that gate public exposure are filed in each repo's `docs/BUGS.md` (budget:
@@ -156,8 +157,27 @@ answers every navigation from cache, the way back is a navigation to `GET /api/a
 order, cookies, CSRF, lockout, logout) and `middleware/cfAccess.test.mjs` (a generated key served
 as a JWKS). `COOKIE_SECURE=false` is in `.env.example`; production leaves it unset.
 
-**S5 — workspaces, score-counter.** `workspaces`, `workspace_members`, `workspace_id` columns +
-backfill, pull/push scoping, `--pair-with`, scoping tests.
+**S5 — done 2026-09-29** (score-counter, `feature/workspaces`). `workspaces` and
+`workspace_members` through `ADDED_TABLES`, `workspace_id` on the five synced tables through
+`ADDED_COLUMNS` (plain `TEXT`, a soft reference, no index). `lookupSession` reads the membership in
+the query that reads the user, so `req.user.workspaceId` is what every sync statement is scoped by;
+a session without one gets a 403 `no_workspace`. The pull filters on it and selects the writer's
+own columns, so `workspace_id` never reaches a client; the writer stamps it from the session, leaves
+it out of the `SET`, and adds the equality to the generated `WHERE` — a row held by another
+workspace is counted `stale`, not `failed`, so the answer does not say which ids exist elsewhere.
+No client change. Choices to carry into S7 and S9: **one workspace per account**, enforced by a
+unique index on `workspace_members(user_id)` (the client has nowhere to choose between two, and an
+index can be dropped without a rebuild); member roles are `owner` and `member`, read by nothing
+yet; **the backfill is adoption** — an admin's new workspace takes every row whose `workspace_id`
+is NULL, when the account is created or, for accounts born under S4, at boot (`ensureWorkspaces`,
+oldest account first) — and until then an unowned row is reachable by nobody; `synced_at` is not
+touched by it. `--pair-with` works **at creation only**. Pairing an account that already exists is
+left to the admin page and is more than a membership row: its devices hold a watermark, so the
+shared rows have to be offered again (`synced_at` bumped) or they never arrive. Not checked: that
+an entry's parent game is in the writer's workspace — a seat written under somebody else's game is
+stored in the writer's own workspace and read by nobody else. Tests: `routes/sync.test.mjs`
+(scoping at the router), `routes/auth.test.mjs` (login to scoped pull, paired and unpaired),
+`auth/workspaces.test.mjs` (adoption, pairing, the boot of a database from S4).
 
 **S6, S7 — CaTetonne**: S4 + S5 applied (remove the dead `routes/babies.js` and `routes/data.js`).
 
