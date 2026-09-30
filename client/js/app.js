@@ -11,6 +11,7 @@ import * as categoryManager from './views/category-manager.js';
 import * as dashboard from './views/dashboard.js';
 import * as jointSplit from './views/joint-split.js';
 import * as savings from './views/savings.js';
+import * as bankSync from './views/bank-sync.js';
 
 const views = { dashboard, transactions, joint: jointSplit, savings };
 const actions = {
@@ -23,6 +24,7 @@ const actions = {
   ...dashboard.actions,
   ...jointSplit.actions,
   ...savings.actions,
+  ...bankSync.actions,
 };
 
 const appEl = document.getElementById('app');
@@ -43,7 +45,7 @@ function render() {
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t);
+  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t);
 
   dashboard.afterRender(state, t);
   savings.afterRender(state);
@@ -132,6 +134,24 @@ export async function loadAccount(accountId) {
   await refreshBootstrap();
 }
 
+// The bank's redirect lands on `/?bank=linked|error&...` (see server routes/bank.js): turn
+// it into a toast, open the panel, and scrub the query so a reload does not repeat it.
+function handleBankReturn() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('bank')) return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  const t = translator();
+  if (params.get('bank') === 'linked') {
+    let message = t('bank.linkedToast', { imported: params.get('imported') || 0, skipped: params.get('skipped') || 0 });
+    if (Number(params.get('errors')) > 0) message += ` ${t('bank.linkedWithErrors')}`;
+    toast(message);
+  } else {
+    toast(t('bank.linkError', { reason: params.get('reason') || '' }));
+  }
+  setUi({ panel: 'bank' });
+  bankSync.loadStatus();
+}
+
 function setOffline(offline) {
   if (get().offline !== offline) set({ offline });
 }
@@ -164,6 +184,7 @@ async function boot() {
   }
 
   syncTabFromHash();
+  if (!get().offline) handleBankReturn();
 
   if ('serviceWorker' in navigator) {
     const registration = await navigator.serviceWorker.register('/sw.js').catch(() => null);

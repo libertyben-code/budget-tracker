@@ -76,6 +76,7 @@ export function render(state, t) {
           </label>
           <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
           <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
+          <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
           <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>

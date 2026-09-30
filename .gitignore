@@ -9,6 +9,9 @@
 # v2 database
 /data/
 
+# bank sync private keys (Enable Banking downloads one per application)
+*.pem
+
 # testing
 /coverage
 

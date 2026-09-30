@@ -3,7 +3,7 @@ import { autoCategorize, guessCategory, dedupKey } from '../../../shared/categor
 import { parseImportCsv, toExportCsv } from '../../../shared/csv.js';
 import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 
-const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state';
+const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state, source';
 
 function accountRow(db, id) {
   const row = db.prepare(`
@@ -29,17 +29,23 @@ function allRules(db) {
   return db.prepare('SELECT pattern, category FROM category_rules ORDER BY id').all();
 }
 
-export function importTransactions(db, accountId, rows) {
+// rows: { date, description, amount, type, state, externalId? }.
+// Duplicate detection has two layers. Rows with an externalId (bank sync) are duplicates only
+// when that id is already stored — two identical card payments on one day are two rows to
+// the bank and stay two rows here. Every row is also checked against the legacy
+// date|description|amount|type key, but a bank row only against rows that have NO external
+// id: that catches the overlap with the CSV era without collapsing distinct bank rows.
+export function importTransactions(db, accountId, rows, { source = 'csv' } = {}) {
   const rules = allRules(db);
   const categories = accountCategories(db, accountId);
-  const existingKeys = new Set(
-    db.prepare('SELECT date, description, amount, type FROM transactions WHERE account_id = ?')
-      .all(accountId).map(dedupKey)
-  );
-  const batchKeys = new Set();
+  const existing = db.prepare('SELECT date, description, amount, type, external_id AS externalId FROM transactions WHERE account_id = ?')
+    .all(accountId);
+  const legacyKeys = new Set(existing.filter(t => !t.externalId).map(dedupKey));
+  const allKeys = new Set(existing.map(dedupKey));
+  const externalIds = new Set(existing.filter(t => t.externalId).map(t => t.externalId));
   const insert = db.prepare(`
-    INSERT INTO transactions (account_id, date, description, category, amount, type, state)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO transactions (account_id, date, description, category, amount, type, state, external_id, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let imported = 0;
@@ -47,16 +53,22 @@ export function importTransactions(db, accountId, rows) {
   db.transaction(() => {
     for (const row of rows) {
       const key = dedupKey(row);
-      if (existingKeys.has(key) || batchKeys.has(key)) {
+      const externalId = row.externalId || null;
+      const duplicate = externalId
+        ? externalIds.has(externalId) || legacyKeys.has(key)
+        : allKeys.has(key);
+      if (duplicate) {
         skippedDuplicates++;
         continue;
       }
-      batchKeys.add(key);
+      allKeys.add(key);
+      if (externalId) externalIds.add(externalId);
+      else legacyKeys.add(key);
       const ruleCategory = autoCategorize(row.description, rules);
       const category = ruleCategory !== 'Uncategorized'
         ? ruleCategory
         : guessCategory(row.description, categories);
-      insert.run(accountId, row.date, row.description, category, row.amount, row.type, row.state);
+      insert.run(accountId, row.date, row.description, category, row.amount, row.type, row.state, externalId, source);
       imported++;
     }
   })();
@@ -179,8 +191,8 @@ export function createApiRouter(db) {
     const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
     const amountNum = Number(amount);
     const info = db.prepare(`
-      INSERT INTO transactions (account_id, date, description, category, amount, type, state)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO transactions (account_id, date, description, category, amount, type, state, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')
     `).run(
       req.params.id,
       String(date || todayIso()),

@@ -289,3 +289,23 @@ main {
 ul.history-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
 
 section.view { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* ---- Bank sync panel ---- */
+.bank-conn { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.bank-acct {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+.bank-acct.off > .grow { opacity: 0.55; }
+.bank-acct .controls { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.bank-acct .controls select, .bank-acct .controls input[type="date"] { min-width: 0; }
+.bank-acct .small, .bank-link .small, .modal .small { font-size: 0.8rem; }
+.bank-link .field { margin-bottom: var(--space-2); }
+.danger-text { color: var(--danger); }
+.chip.ok { color: var(--muted); }
+.chip.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+.chip.danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }

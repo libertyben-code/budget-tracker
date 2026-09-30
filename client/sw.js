@@ -20,6 +20,7 @@ const SHELL = [
   '/js/views/batch-edit-modal.js',
   '/js/views/rules-panel.js',
   '/js/views/category-manager.js',
+  '/js/views/bank-sync.js',
   '/js/views/dashboard.js',
   '/js/views/joint-split.js',
   '/js/views/savings.js',

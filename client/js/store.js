@@ -49,6 +49,16 @@ const state = {
     addingSavings: false,
     openHistoryIds: new Set(),
     openRecurringIds: new Set(),
+    bankStatus: null,
+    bankCountry: 'FR',
+    bankAspsps: null,
+    bankAspspsCountry: '',
+    bankLinkOpen: false,
+    bankLinkAspsp: '',
+    bankLinkPsuType: 'personal',
+    bankLinkAccountId: '',
+    bankLinkSyncFrom: '',
+    bankBusy: false,
   },
 };
 

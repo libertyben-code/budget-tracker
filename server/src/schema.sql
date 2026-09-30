@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount      REAL NOT NULL DEFAULT 0,
   type        TEXT NOT NULL DEFAULT '',
   state       TEXT NOT NULL DEFAULT 'COMPLETED',
+  -- provider-scoped id for rows that arrived through bank sync; NULL for CSV/manual rows
+  external_id TEXT,
+  source      TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -70,5 +73,37 @@ CREATE TABLE IF NOT EXISTS savings_recurring (
 );
 CREATE INDEX IF NOT EXISTS idx_sr_account ON savings_recurring(savings_account_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
+-- One row per consent granted at a bank through the sync provider. Deleted when the
+-- consent is revoked in-app, or automatically once a renewal has moved every account off it.
+CREATE TABLE IF NOT EXISTS bank_connections (
+  id            TEXT PRIMARY KEY,
+  provider      TEXT NOT NULL DEFAULT 'enablebanking',
+  session_id    TEXT NOT NULL,
+  aspsp_name    TEXT NOT NULL,
+  aspsp_country TEXT NOT NULL,
+  psu_type      TEXT NOT NULL DEFAULT 'personal',
+  valid_until   TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Keyed by the provider's stable per-account hash, not the session-scoped uid, so renewing
+-- a consent keeps the budget-account mapping and the sync cursor. account_id is the budget
+-- account transactions land in; NULL means linked but not synced anywhere.
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id               TEXT PRIMARY KEY,
+  connection_id    TEXT NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
+  account_id       TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  uid              TEXT NOT NULL,
+  iban             TEXT NOT NULL DEFAULT '',
+  name             TEXT NOT NULL DEFAULT '',
+  currency         TEXT NOT NULL DEFAULT '',
+  enabled          INTEGER NOT NULL DEFAULT 1,
+  sync_from        TEXT,
+  synced_to        TEXT,
+  last_sync_at     TEXT,
+  last_sync_status TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
+
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '2');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');
