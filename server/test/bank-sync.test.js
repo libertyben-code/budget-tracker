@@ -8,7 +8,7 @@ import express from 'express';
 import { openDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
 import { EnableBankingClient } from '../src/enablebanking.js';
-import { mapTransaction, buildDescription, syncWindow, shiftDays, isBooked } from '../src/bank-sync.js';
+import { mapTransaction, buildDescription, syncWindow, shiftDays, isBooked, pickBalance } from '../src/bank-sync.js';
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
@@ -67,6 +67,16 @@ test('isBooked keeps booked and status-less rows, drops pending', () => {
   assert.ok(!isBooked({ status: 'PENDING' }));
 });
 
+test('pickBalance prefers closing booked, then available, then whatever is numeric', () => {
+  const amt = (a) => ({ amount: a, currency: 'EUR' });
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLBD', balance_amount: amt('2') }]), 2);
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLAV', balance_amount: amt('3') }]), 3);
+  assert.equal(pickBalance([{ balance_type: 'OTHR', balance_amount: amt('7.5') }]), 7.5);
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt('abc') }]), null);
+  assert.equal(pickBalance([]), null);
+  assert.equal(pickBalance(undefined), null);
+});
+
 test('syncWindow: overlap behind the cursor, floored by sync_from, wide default on first sync', () => {
   const today = '2026-09-30';
   assert.deepEqual(syncWindow({ synced_to: '2026-09-20' }, today), { from: '2026-09-13', to: today });
@@ -119,7 +129,7 @@ function startMockProvider() {
       session_id: `sess-${n}`,
       accounts: [
         { uid: `uid-A-${n}`, account_id: { iban: 'FR7600000000000000000000A' }, currency: 'EUR', name: 'Main', identification_hash: 'hashA' },
-        { uid: `uid-B-${n}`, account_id: { iban: 'FR7600000000000000000000B' }, currency: 'EUR', name: 'Joint', identification_hash: 'hashB' },
+        { uid: `uid-B-${n}`, account_id: { iban: 'FR7600000000000000000000B' }, currency: 'EUR', name: 'Joint', identification_hash: 'hashB', cash_account_type: 'SVGS' },
       ],
       aspsp: { name: 'Revolut', country: 'FR' },
       psu_type: 'personal',
@@ -144,6 +154,12 @@ function startMockProvider() {
       ],
       continuation_key: 'p2',
     });
+  });
+  app.get('/accounts/:uid/balances', (req, res) => {
+    res.json({ balances: [
+      { balance_type: 'ITAV', balance_amount: { amount: '999.99', currency: 'EUR' } },
+      { balance_type: 'CLBD', balance_amount: { amount: '1234.56', currency: 'EUR' }, reference_date: '2026-09-30' },
+    ] });
   });
   app.delete('/sessions/:id', (req, res) => {
     state.deleted.push(req.params.id);
@@ -177,7 +193,7 @@ test('unconfigured server: status says so and every other bank route is 503', as
   const app = await startApp({ config: { configured: false }, client: null });
   t.after(app.close);
   const status = await json(await fetch(`${app.base}/api/bank/status`));
-  assert.deepEqual(status.body, { configured: false, redirectUrl: '', connections: [] });
+  assert.deepEqual(status.body, { configured: false, redirectUrl: '', connections: [], savingsAccounts: [] });
   const sync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST' }));
   assert.equal(sync.status, 503);
 });
@@ -222,7 +238,7 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
 
   const cb = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
   assert.equal(cb.status, 302);
-  assert.equal(cb.headers.get('location'), '/?bank=linked&imported=3&skipped=1&errors=0');
+  assert.equal(cb.headers.get('location'), '/?bank=linked&imported=3&skipped=0&errors=0', 'the savings-type account is not synced into the budget');
   assert.equal(mock.state.txCalls[0].query.date_from, '2026-09-01', 'first sync starts at the chosen cutover');
   assert.equal(mock.state.txCalls[0].psu, '127.0.0.1', 'user-present headers are forwarded');
 
@@ -239,15 +255,16 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   const conn = status.body.connections[0];
   assert.equal(conn.aspspName, 'Revolut');
   assert.equal(conn.validUntil, '2027-01-01T00:00:00Z');
-  assert.deepEqual(conn.accounts.map(a => [a.id, a.uid, a.accountId, a.enabled, a.syncFrom, a.lastSyncStatus]), [
-    ['hashA', 'uid-A-1', 'default', true, '2026-09-01', 'ok'],
-    ['hashB', 'uid-B-1', 'default', true, '2026-09-01', 'ok'],
+  assert.deepEqual(conn.accounts.map(a => [a.id, a.uid, a.accountId, a.enabled, a.syncFrom, a.lastSyncStatus, a.kind]), [
+    ['hashA', 'uid-A-1', 'default', true, '2026-09-01', 'ok', ''],
+    ['hashB', 'uid-B-1', null, true, '2026-09-01', null, 'SVGS'],
   ]);
-  assert.ok(conn.accounts.every(a => a.syncedTo && a.lastSyncAt));
+  assert.ok(conn.accounts[0].syncedTo && conn.accounts[0].lastSyncAt);
+  assert.equal(conn.accounts[1].syncedTo, null, 'an unmapped account has no cursor yet');
 
   // resync: everything already stored, nothing added
   const resync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
-  assert.deepEqual(resync.body.results.map(r => [r.bankAccountId, r.imported, r.skippedDuplicates, r.error]), [['hashA', 0, 3, undefined], ['hashB', 0, 1, undefined]]);
+  assert.deepEqual(resync.body.results.map(r => [r.bankAccountId, r.imported, r.skippedDuplicates, r.error]), [['hashA', 0, 3, undefined]]);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4);
 
   // renewal: same bank again, accounts matched by hash, one connection survives, mapping kept
@@ -256,13 +273,13 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   }));
   const state2 = new URL(relink.body.url).searchParams.get('state');
   const cb2 = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state2}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
-  assert.equal(cb2.headers.get('location'), '/?bank=linked&imported=0&skipped=4&errors=0');
+  assert.equal(cb2.headers.get('location'), '/?bank=linked&imported=0&skipped=3&errors=0');
   status = await json(await fetch(`${app.base}/api/bank/status`));
   assert.equal(status.body.connections.length, 1);
   assert.notEqual(status.body.connections[0].id, conn.id);
   assert.deepEqual(status.body.connections[0].accounts.map(a => [a.id, a.uid, a.accountId, a.syncFrom]), [
     ['hashA', 'uid-A-2', 'default', '2026-09-01'],
-    ['hashB', 'uid-B-2', 'default', '2026-09-01'],
+    ['hashB', 'uid-B-2', null, '2026-09-01'],
   ]);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM bank_connections').get().n, 1);
   await new Promise(r => setTimeout(r, 50));
@@ -280,6 +297,30 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   );
   const again = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
   assert.equal(again.body.moved, 0, 'same target moves nothing');
+
+  // a bank account can feed a savings account instead: balance from the bank, movements as history
+  assert.equal(status.body.connections[0].accounts[1].kind, 'SVGS');
+  const livret = await json(await fetch(`${app.base}/api/accounts/default/savings`, { method: 'POST', headers, body: JSON.stringify({ name: 'Livret', balance: 10 }) }));
+  const toSavings = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: livret.body.id }) }));
+  assert.equal(toSavings.status, 200);
+  assert.deepEqual(toSavings.body.savingsAccounts.map(s => [s.name, s.accountName]), [['Livret', 'Main Account']]);
+  const mappedB = toSavings.body.connections[0].accounts[1];
+  assert.equal(mappedB.savingsAccountId, livret.body.id);
+  assert.equal(mappedB.accountId, null, 'a savings target clears the budget-account target');
+  assert.equal(mappedB.syncedTo, null, 'a new savings target restarts from the cutover');
+  const savingsSync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  const savingsResult = savingsSync.body.results.find(r => r.bankAccountId === 'hashB');
+  assert.deepEqual([savingsResult.mode, savingsResult.balance, savingsResult.historyAdded, savingsResult.error], ['savings', 1234.56, 1, undefined]);
+  assert.equal(app.db.prepare('SELECT balance FROM savings_accounts WHERE id = ?').get(livret.body.id).balance, 1234.56, 'closing booked balance wins over interim available');
+  assert.deepEqual(app.db.prepare('SELECT id, date, type, amount FROM savings_history WHERE savings_account_id = ?').all(livret.body.id),
+    [{ id: 'bank_hashB:t9', date: '2026-09-10', type: 'withdrawal', amount: 40 }]);
+  const savingsAgain = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  assert.equal(savingsAgain.body.results.find(r => r.bankAccountId === 'hashB').historyAdded, 0, 'history ids are deterministic');
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4, 'a savings target adds no transactions');
+  const badSavings = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: 'ghost' }) }));
+  assert.equal(badSavings.status, 400);
+  const backToAccount = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
+  assert.equal(backToAccount.body.connections[0].accounts[1].savingsAccountId, null, 'a budget-account target clears the savings target');
 
   // remap one account away, disable the other: sync has nothing left to do
   const patched = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: '' }) }));
@@ -321,7 +362,7 @@ test('a provider error during sync is reported per account, not thrown', async (
   mock.close();
   const sync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.equal(sync.status, 200);
-  assert.equal(sync.body.results.length, 2);
+  assert.equal(sync.body.results.length, 1, 'only the mapped current account is synced');
   assert.ok(sync.body.results.every(r => r.error && r.imported === 0));
   assert.match(sync.body.status.connections[0].accounts[0].lastSyncStatus, /^error: /);
 

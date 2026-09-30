@@ -95,6 +95,7 @@ mock.post('/sessions', (req, res) => {
     accounts: [
       { uid: `uid-A-${n}`, account_id: { iban: 'FR7612345678901234567890123' }, currency: 'EUR', name: 'Revolut EUR', identification_hash: 'hash-eur' },
       { uid: `uid-B-${n}`, account_id: { iban: 'GB29REVO00997012345678' }, currency: 'GBP', name: 'Revolut GBP', identification_hash: 'hash-gbp' },
+      { uid: `uid-C-${n}`, account_id: { iban: 'FR7612345678901234567890999' }, currency: 'EUR', name: 'Pocket Vacances', cash_account_type: 'SVGS', identification_hash: 'hash-pocket' },
     ],
     aspsp: { name: 'Revolut', country: 'FR' },
     psu_type: 'personal',
@@ -106,6 +107,13 @@ mock.get('/accounts/:uid/transactions', (req, res) => {
   const all = transactionsFor(req.params.uid).filter(t => t.booking_date >= from);
   const page = req.query.continuation_key ? all.slice(10) : all.slice(0, 10);
   res.json({ transactions: page, continuation_key: !req.query.continuation_key && all.length > 10 ? 'p2' : undefined });
+});
+mock.get('/accounts/:uid/balances', (req, res) => {
+  const amount = req.params.uid.startsWith('uid-C') ? '1850.00' : req.params.uid.startsWith('uid-A') ? '2310.45' : '412.10';
+  res.json({ balances: [
+    { balance_type: 'ITAV', balance_amount: { amount: String(Number(amount) - 20), currency: 'EUR' } },
+    { balance_type: 'CLBD', balance_amount: { amount, currency: 'EUR' }, reference_date: isoDaysAgo(0) },
+  ] });
 });
 mock.delete('/sessions/:id', (req, res) => res.json({ message: 'OK' }));
 mock.listen(MOCK_PORT, '127.0.0.1', () => console.log(`[mock] Enable Banking stand-in on http://127.0.0.1:${MOCK_PORT}`));

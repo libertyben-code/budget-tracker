@@ -60,6 +60,7 @@ const state = {
     bankLinkSyncFrom: '',
     bankBusy: false,
     bankNewAccountFor: null,
+    bankNewSavingsFor: null,
   },
 };
 

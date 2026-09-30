@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   id               TEXT PRIMARY KEY,
   connection_id    TEXT NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
   account_id       TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  -- alternative target: a savings account gets the bank balance and a deposit/withdrawal history
+  savings_account_id TEXT REFERENCES savings_accounts(id) ON DELETE SET NULL,
+  kind             TEXT NOT NULL DEFAULT '',
   uid              TEXT NOT NULL,
   iban             TEXT NOT NULL DEFAULT '',
   name             TEXT NOT NULL DEFAULT '',

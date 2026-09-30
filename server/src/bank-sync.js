@@ -82,38 +82,89 @@ function retryable(err, from, fallback) {
   return Boolean(err?.status) && err.status < 500 && err.code !== 'ASPSP_RATE_LIMIT_EXCEEDED' && from < fallback;
 }
 
+// Balance types in order of authority: closing booked, closing available, expected, interim
+// booked/available, opening booked/available. Whatever the bank sends first otherwise.
+const BALANCE_PREFERENCE = ['CLBD', 'CLAV', 'XPCD', 'ITBD', 'ITAV', 'OPBD', 'OPAV'];
+
+export function pickBalance(balances) {
+  const list = (balances || []).filter(b => Number.isFinite(Number(b?.balance_amount?.amount)));
+  if (!list.length) return null;
+  for (const type of BALANCE_PREFERENCE) {
+    const hit = list.find(b => b.balance_type === type);
+    if (hit) return Number(hit.balance_amount.amount);
+  }
+  return Number(list[0].balance_amount.amount);
+}
+
+async function fetchWindow(client, bankAccount, from, to, today, psu) {
+  try {
+    return await client.fetchTransactions(bankAccount.uid, { dateFrom: from, dateTo: to, psu });
+  } catch (err) {
+    const fallback = shiftDays(today, -FALLBACK_HISTORY_DAYS);
+    if (!retryable(err, from, fallback)) throw err;
+    return client.fetchTransactions(bankAccount.uid, { dateFrom: fallback, dateTo: to, psu });
+  }
+}
+
+// Savings target: the balance comes straight from the bank and overrides whatever manual
+// deposits left, and booked movements become deposit/withdrawal history rows with
+// deterministic ids so a re-fetch never duplicates them.
+function applySavings(db, bankAccount, raw, balance) {
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  let historyAdded = 0;
+  db.transaction(() => {
+    for (const tx of raw.filter(isBooked)) {
+      const row = mapTransaction(tx, bankAccount.id);
+      if (!row || !row.externalId || row.amount === 0) continue;
+      historyAdded += insert.run(
+        `bank_${row.externalId}`, bankAccount.savings_account_id, row.date,
+        row.amount > 0 ? 'deposit' : 'withdrawal', Math.abs(row.amount), Date.parse(`${row.date}T12:00:00Z`)
+      ).changes;
+    }
+    if (balance !== null) {
+      db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?')
+        .run(Math.round(balance * 100) / 100, bankAccount.savings_account_id);
+    }
+  })();
+  return historyAdded;
+}
+
 export async function syncBankAccount(db, client, bankAccount, { psu, today = todayIso() } = {}) {
   const { from, to } = syncWindow(bankAccount, today);
+  const mode = bankAccount.savings_account_id ? 'savings' : 'transactions';
   const setStatus = db.prepare('UPDATE bank_accounts SET last_sync_at = ?, last_sync_status = ? WHERE id = ?');
   try {
-    let raw;
-    try {
-      raw = await client.fetchTransactions(bankAccount.uid, { dateFrom: from, dateTo: to, psu });
-    } catch (err) {
-      const fallback = shiftDays(today, -FALLBACK_HISTORY_DAYS);
-      if (!retryable(err, from, fallback)) throw err;
-      raw = await client.fetchTransactions(bankAccount.uid, { dateFrom: fallback, dateTo: to, psu });
+    const raw = await fetchWindow(client, bankAccount, from, to, today, psu);
+    let result;
+    if (mode === 'savings') {
+      // a bank that cannot serve balances still gets its history recorded
+      const balance = pickBalance((await client.fetchBalances(bankAccount.uid, psu).catch(() => null))?.balances);
+      result = { balance, historyAdded: applySavings(db, bankAccount, raw, balance), imported: 0, skippedDuplicates: 0 };
+    } else {
+      const rows = raw.filter(isBooked).map(tx => mapTransaction(tx, bankAccount.id)).filter(Boolean);
+      result = importTransactions(db, bankAccount.account_id, rows, { source: 'bank' });
     }
-    const rows = raw.filter(isBooked).map(tx => mapTransaction(tx, bankAccount.id)).filter(Boolean);
-    const result = importTransactions(db, bankAccount.account_id, rows, { source: 'bank' });
     db.prepare('UPDATE bank_accounts SET synced_to = ?, last_sync_at = ?, last_sync_status = ? WHERE id = ?')
       .run(to, new Date().toISOString(), 'ok', bankAccount.id);
-    return { bankAccountId: bankAccount.id, fetched: raw.length, ...result };
+    return { bankAccountId: bankAccount.id, mode, fetched: raw.length, ...result };
   } catch (err) {
     const message = err.code === 'ASPSP_RATE_LIMIT_EXCEEDED'
       ? 'Bank rate limit reached, try again in a few hours'
       : String(err.message || err).slice(0, 200);
     setStatus.run(new Date().toISOString(), `error: ${message}`, bankAccount.id);
-    return { bankAccountId: bankAccount.id, fetched: 0, imported: 0, skippedDuplicates: 0, error: message };
+    return { bankAccountId: bankAccount.id, mode, fetched: 0, imported: 0, skippedDuplicates: 0, error: message };
   }
 }
 
-// Every enabled, mapped account (optionally one connection's). One failing account is
+// Every enabled account with a target (optionally one connection's). One failing account is
 // reported in its result rather than aborting the rest.
 export async function syncAll(db, client, { connectionId, psu, today } = {}) {
   const rows = db.prepare(`
-    SELECT id, uid, account_id, sync_from, synced_to FROM bank_accounts
-    WHERE enabled = 1 AND account_id IS NOT NULL ${connectionId ? 'AND connection_id = ?' : ''}
+    SELECT id, uid, account_id, savings_account_id, sync_from, synced_to FROM bank_accounts
+    WHERE enabled = 1 AND (account_id IS NOT NULL OR savings_account_id IS NOT NULL)
+      ${connectionId ? 'AND connection_id = ?' : ''}
     ORDER BY rowid
   `).all(...(connectionId ? [connectionId] : []));
   const results = [];

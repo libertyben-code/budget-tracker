@@ -46,15 +46,43 @@ function consentChip(conn, t) {
   return `<span class="chip ${cls}" title="${esc(t('bank.consentUntil', { date: isoToDisplay(conn.validUntil.slice(0, 10)) }))}">${esc(t('bank.consentDays', { days }))}</span>`;
 }
 
+function targetSelect(acc, state, t) {
+  const savings = state.ui.bankStatus?.savingsAccounts || [];
+  const target = acc.savingsAccountId ? `savings:${acc.savingsAccountId}` : acc.accountId ? `account:${acc.accountId}` : '';
+  const opt = (value, label) => `<option value="${esc(value)}" ${value === target ? 'selected' : ''}>${esc(label)}</option>`;
+  return `
+      <select data-action-change="bank-map-target" data-id="${esc(acc.id)}">
+        ${opt('', t('bank.notSynced'))}
+        <optgroup label="${esc(t('bank.accountsGroup'))}">
+          ${state.accounts.map(a => opt(`account:${a.id}`, a.name)).join('')}
+          <option value="__new__">${esc(t('bank.newAccount'))}</option>
+        </optgroup>
+        <optgroup label="${esc(t('bank.savingsGroup'))}">
+          ${savings.map(s => opt(`savings:${s.id}`, `${s.accountName} / ${s.name}`)).join('')}
+          <option value="__newsavings__">${esc(t('bank.newSavings'))}</option>
+        </optgroup>
+      </select>`;
+}
+
+function inlineCreate(acc, t, { inputId, placeholder, action }) {
+  return `
+    <div class="controls">
+      <input id="${inputId}" class="grow" placeholder="${esc(placeholder)}" data-action-key="${action}" data-id="${esc(acc.id)}">
+      <button class="btn small primary" data-action="${action}" data-id="${esc(acc.id)}">${esc(t('common.save'))}</button>
+      <button class="btn small" data-action="bank-cancel-new-account">${esc(t('common.cancel'))}</button>
+    </div>`;
+}
+
 function accountRow(acc, state, t) {
   const last = acc.lastSyncAt
     ? t('bank.lastSync', { date: new Date(acc.lastSyncAt).toLocaleString(state.ui.lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) })
     : t('bank.never');
   const failed = acc.lastSyncStatus && acc.lastSyncStatus !== 'ok';
+  const kind = acc.kind === 'SVGS' ? ` <span class="chip">${esc(t('bank.kindSavings'))}</span>` : '';
   return `
   <div class="bank-acct ${acc.enabled ? '' : 'off'}">
     <div class="grow">
-      <div><strong>${esc(acc.name || acc.iban || acc.id)}</strong> <span class="muted">${esc(acc.currency)}</span></div>
+      <div><strong>${esc(acc.name || acc.iban || acc.id)}</strong> <span class="muted">${esc(acc.currency)}</span>${kind}</div>
       ${acc.iban && acc.name ? `<div class="muted small">${esc(acc.iban)}</div>` : ''}
       <div class="muted small">${esc(last)}${failed ? ` · <span class="danger-text">${esc(acc.lastSyncStatus)}</span>` : ''}</div>
     </div>
@@ -62,19 +90,14 @@ function accountRow(acc, state, t) {
             role="checkbox" aria-checked="${acc.enabled}" title="${esc(t('bank.enabled'))}" aria-label="${esc(t('bank.enabled'))}">
       <span class="check-box">${icons.check}</span>
     </button>
-    ${state.ui.bankNewAccountFor === acc.id ? `
+    ${state.ui.bankNewAccountFor === acc.id
+      ? inlineCreate(acc, t, { inputId: 'bank-new-account-name', placeholder: t('header.accountName'), action: 'bank-create-account' })
+      : state.ui.bankNewSavingsFor === acc.id
+        ? inlineCreate(acc, t, { inputId: 'bank-new-savings-name', placeholder: t('bank.savingsName'), action: 'bank-create-savings' })
+        : `
     <div class="controls">
-      <input id="bank-new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="bank-create-account" data-id="${esc(acc.id)}">
-      <button class="btn small primary" data-action="bank-create-account" data-id="${esc(acc.id)}">${esc(t('common.save'))}</button>
-      <button class="btn small" data-action="bank-cancel-new-account">${esc(t('common.cancel'))}</button>
-    </div>` : `
-    <div class="controls">
-      <label class="muted small">${esc(t('bank.budgetAccount'))}</label>
-      <select data-action-change="bank-map-account" data-id="${esc(acc.id)}">
-        <option value="" ${acc.accountId ? '' : 'selected'}>${esc(t('bank.notSynced'))}</option>
-        ${state.accounts.map(a => `<option value="${esc(a.id)}" ${a.id === acc.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
-        <option value="__new__">${esc(t('bank.newAccount'))}</option>
-      </select>
+      <label class="muted small">${esc(t('bank.target'))}</label>
+      ${targetSelect(acc, state, t)}
       <label class="muted small">${esc(t('bank.syncFrom'))}</label>
       <input type="date" value="${esc(acc.syncFrom || '')}" data-action-change="bank-sync-from" data-id="${esc(acc.id)}">
     </div>`}
@@ -180,19 +203,24 @@ export function render(state, t) {
 function summarize(results, t) {
   const imported = results.reduce((n, r) => n + (r.imported || 0), 0);
   const skipped = results.reduce((n, r) => n + (r.skippedDuplicates || 0), 0);
+  const savings = results.filter(r => r.mode === 'savings' && !r.error).length;
   const failed = results.filter(r => r.error);
   let message = t('bank.syncResult', { imported, skipped });
+  if (savings) message += `, ${t('bank.savingsSynced', { count: savings })}`;
   if (failed.length) message += ` — ${t('bank.syncFailed', { count: failed.length, message: failed[0].error })}`;
   return message;
 }
 
-async function remap(bankAccountId, accountId, t) {
-  const status = await api.bankPatchAccount(bankAccountId, { accountId });
-  setUi({ bankStatus: status });
-  if (status.moved) {
-    toast(t('bank.moved', { count: status.moved }));
-    await loadAccount(get().activeAccountId);
-  }
+// patch: { accountId } or { savingsAccountId } (either may be null to unmap)
+async function remap(bankAccountId, patch, t) {
+  const status = await api.bankPatchAccount(bankAccountId, patch);
+  setUi({ bankStatus: status, bankNewAccountFor: null, bankNewSavingsFor: null });
+  if (status.moved) toast(t('bank.moved', { count: status.moved }));
+  await loadAccount(get().activeAccountId);
+}
+
+function bankAccount(id) {
+  return get().ui.bankStatus?.connections.flatMap(c => c.accounts).find(a => a.id === id);
 }
 
 async function startLink(payload) {
@@ -266,7 +294,7 @@ export const actions = {
       const { results, status } = await api.bankSync(el.dataset.id || undefined);
       setUi({ bankStatus: status });
       toast(summarize(results, t));
-      if (results.some(r => r.imported > 0)) await loadAccount(get().activeAccountId);
+      if (results.some(r => r.imported > 0 || r.mode === 'savings')) await loadAccount(get().activeAccountId);
     } finally {
       setUi({ bankBusy: false });
     }
@@ -279,26 +307,36 @@ export const actions = {
     await api.bankUnlink(el.dataset.id);
     await loadStatus();
   },
-  'bank-map-account': async (el, ev, t) => {
-    if (el.value === '__new__') {
-      setUi({ bankNewAccountFor: el.dataset.id });
-      return;
-    }
-    await remap(el.dataset.id, el.value || null, t);
+  'bank-map-target': async (el, ev, t) => {
+    const value = el.value;
+    if (value === '__new__') return setUi({ bankNewAccountFor: el.dataset.id, bankNewSavingsFor: null });
+    if (value === '__newsavings__') return setUi({ bankNewSavingsFor: el.dataset.id, bankNewAccountFor: null });
+    if (value.startsWith('account:')) return remap(el.dataset.id, { accountId: value.slice(8) }, t);
+    if (value.startsWith('savings:')) return remap(el.dataset.id, { savingsAccountId: value.slice(8) }, t);
+    return remap(el.dataset.id, { accountId: null, savingsAccountId: null }, t);
   },
-  // Creating the budget account here rather than via the header switcher keeps the user in
-  // the panel; the new account is mapped straight away and the rows already imported follow.
+  // Creating the target here rather than via the header switcher or the Savings tab keeps
+  // the user in the panel; the new account is mapped straight away and, for a budget
+  // account, the rows already imported follow.
   'bank-create-account': async (el, ev, t) => {
     const name = document.getElementById('bank-new-account-name')?.value.trim();
     if (!name) return;
     const account = await api.createAccount(name);
     set({ accounts: [...get().accounts, account] });
-    setUi({ bankNewAccountFor: null });
-    await remap(el.dataset.id, account.id, t);
+    await remap(el.dataset.id, { accountId: account.id }, t);
   },
-  'bank-cancel-new-account': () => setUi({ bankNewAccountFor: null }),
+  'bank-create-savings': async (el, ev, t) => {
+    const name = document.getElementById('bank-new-savings-name')?.value.trim();
+    if (!name) return;
+    // the savings account has to belong to a budget account: the one this bank account
+    // feeds today, else the active one
+    const owner = bankAccount(el.dataset.id)?.accountId || get().activeAccountId;
+    const created = await api.createSavings(owner, name, 0);
+    await remap(el.dataset.id, { savingsAccountId: created.id }, t);
+  },
+  'bank-cancel-new-account': () => setUi({ bankNewAccountFor: null, bankNewSavingsFor: null }),
   'bank-toggle-enabled': async (el) => {
-    const acc = get().ui.bankStatus?.connections.flatMap(c => c.accounts).find(a => a.id === el.dataset.id);
+    const acc = bankAccount(el.dataset.id);
     if (!acc) return;
     setUi({ bankStatus: await api.bankPatchAccount(acc.id, { enabled: !acc.enabled }) });
   },

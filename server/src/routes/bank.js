@@ -41,8 +41,9 @@ function rfc3339(msFromNow) {
 
 function bankAccountRows(db, connectionId) {
   return db.prepare(`
-    SELECT id, uid, iban, name, currency, account_id AS accountId, enabled, sync_from AS syncFrom,
-           synced_to AS syncedTo, last_sync_at AS lastSyncAt, last_sync_status AS lastSyncStatus
+    SELECT id, uid, iban, name, currency, kind, account_id AS accountId, savings_account_id AS savingsAccountId,
+           enabled, sync_from AS syncFrom, synced_to AS syncedTo, last_sync_at AS lastSyncAt,
+           last_sync_status AS lastSyncStatus
     FROM bank_accounts WHERE connection_id = ? ORDER BY rowid
   `).all(connectionId).map(r => ({ ...r, enabled: Boolean(r.enabled) }));
 }
@@ -53,10 +54,17 @@ function statusPayload(db, config, req) {
            valid_until AS validUntil, created_at AS createdAt
     FROM bank_connections ORDER BY created_at
   `).all().map(c => ({ ...c, accounts: bankAccountRows(db, c.id) }));
+  // every savings account across budget accounts, so the panel can offer them as targets
+  const savingsAccounts = db.prepare(`
+    SELECT s.id, s.name, s.balance, s.account_id AS accountId, a.name AS accountName
+    FROM savings_accounts s JOIN accounts a ON a.id = s.account_id
+    ORDER BY a.created_at, s.name
+  `).all();
   return {
     configured: config.configured,
     redirectUrl: config.configured ? redirectUrlFor(req, config) : '',
     connections,
+    savingsAccounts,
   };
 }
 
@@ -79,19 +87,24 @@ function storeSession(db, session, link) {
       session.access?.valid_until || ''
     );
     const update = db.prepare(
-      'UPDATE bank_accounts SET connection_id = ?, uid = ?, iban = ?, name = ?, currency = ? WHERE id = ?'
+      'UPDATE bank_accounts SET connection_id = ?, uid = ?, iban = ?, name = ?, currency = ?, kind = ? WHERE id = ?'
     );
     const insert = db.prepare(`
-      INSERT INTO bank_accounts (id, connection_id, account_id, uid, iban, name, currency, enabled, sync_from)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      INSERT INTO bank_accounts (id, connection_id, account_id, uid, iban, name, currency, kind, enabled, sync_from)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `);
     for (const acc of session.accounts || []) {
       const id = acc.identification_hash || acc.account_id?.iban || acc.uid;
       const iban = acc.account_id?.iban || '';
       const name = acc.name || acc.product || '';
       const currency = acc.currency || '';
-      if (update.run(connectionId, acc.uid, iban, name, currency, id).changes === 0) {
-        insert.run(id, connectionId, link.accountId, acc.uid, iban, name, currency, link.syncFrom || null);
+      const kind = acc.cash_account_type || '';
+      if (update.run(connectionId, acc.uid, iban, name, currency, kind, id).changes === 0) {
+        // A savings-type account (a livret, a pocket) starts unmapped: its movements do not
+        // belong in the budget's transactions, and the savings account it should feed is the
+        // user's call from the panel.
+        const target = kind === 'SVGS' ? null : link.accountId;
+        insert.run(id, connectionId, target, acc.uid, iban, name, currency, kind, link.syncFrom || null);
       }
     }
     const stale = 'SELECT id FROM bank_connections WHERE id NOT IN (SELECT DISTINCT connection_id FROM bank_accounts)';
@@ -202,15 +215,26 @@ export function createBankRouter(db, { config, client }) {
   });
 
   router.patch('/accounts/:id', (req, res) => {
-    const current = db.prepare('SELECT id, account_id, enabled, sync_from FROM bank_accounts WHERE id = ?').get(req.params.id);
+    const current = db.prepare('SELECT id, account_id, savings_account_id, enabled, sync_from FROM bank_accounts WHERE id = ?').get(req.params.id);
     if (!current) return res.status(404).json({ error: 'Bank account not found' });
-    const { accountId, enabled, syncFrom } = req.body;
+    const { accountId, savingsAccountId, enabled, syncFrom } = req.body;
+    // A bank account feeds either a budget account (transactions) or a savings account
+    // (balance + history), never both; setting one clears the other.
     let nextAccount = current.account_id;
+    let nextSavings = current.savings_account_id;
     if (accountId !== undefined) {
       if (accountId && !db.prepare('SELECT id FROM accounts WHERE id = ?').get(accountId)) {
         return res.status(400).json({ error: 'Unknown budget account' });
       }
       nextAccount = accountId || null;
+      if (nextAccount) nextSavings = null;
+    }
+    if (savingsAccountId !== undefined) {
+      if (savingsAccountId && !db.prepare('SELECT id FROM savings_accounts WHERE id = ?').get(savingsAccountId)) {
+        return res.status(400).json({ error: 'Unknown savings account' });
+      }
+      nextSavings = savingsAccountId || null;
+      if (nextSavings) nextAccount = null;
     }
     let nextFrom = current.sync_from;
     if (syncFrom !== undefined) {
@@ -220,8 +244,12 @@ export function createBankRouter(db, { config, client }) {
     }
     let moved = 0;
     db.transaction(() => {
-      db.prepare('UPDATE bank_accounts SET account_id = ?, enabled = ?, sync_from = ? WHERE id = ?')
-        .run(nextAccount, enabled === undefined ? current.enabled : (enabled ? 1 : 0), nextFrom, current.id);
+      db.prepare('UPDATE bank_accounts SET account_id = ?, savings_account_id = ?, enabled = ?, sync_from = ? WHERE id = ?')
+        .run(nextAccount, nextSavings, enabled === undefined ? current.enabled : (enabled ? 1 : 0), nextFrom, current.id);
+      // a new savings target wants the history from the cutover, not just the last week
+      if (nextSavings && nextSavings !== current.savings_account_id) {
+        db.prepare('UPDATE bank_accounts SET synced_to = NULL WHERE id = ?').run(current.id);
+      }
       // A bank account's rows are recognisable by their external_id prefix, so re-mapping it
       // carries what was already imported along rather than stranding it in the old account.
       if (nextAccount && nextAccount !== current.account_id) {

@@ -107,6 +107,7 @@ export class EnableBankingClient {
   startAuth(payload) { return this.request('POST', '/auth', { body: payload }); }
   createSession(code) { return this.request('POST', '/sessions', { body: { code } }); }
   getSession(id) { return this.request('GET', `/sessions/${encodeURIComponent(id)}`); }
+  fetchBalances(uid, psu) { return this.request('GET', `/accounts/${encodeURIComponent(uid)}/balances`, { psu }); }
   deleteSession(id, psu) { return this.request('DELETE', `/sessions/${encodeURIComponent(id)}`, { psu }); }
 
   async fetchTransactions(uid, { dateFrom, dateTo, psu, maxPages = 100 } = {}) {
