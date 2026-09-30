@@ -41,3 +41,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Adding a transaction then pressing Cancel no longer leaves an empty transaction — ＋ now opens a draft that only saves to the server on Save — OK
 - [x] `update.sh` backups were silently worthless — a `cp` of a WAL-mode `budget.db` captures a stale (possibly table-less) database; `backup.sh` now uses `sqlite3 .backup` — OK
+
+## Bank sync
+
+- [x] Connect Revolut and Crédit Agricole through a free third-party API — Enable Banking restricted production, Settings ▸ Bank sync, first sync in the callback, per-account mapping and cutover — OK

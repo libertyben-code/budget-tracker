@@ -207,6 +207,14 @@ Portainer clones a git stack into its **own** volume and runs compose from there
 
 **Rule:** snapshot with `sqlite3 "$DB" ".backup '$DEST'"` (what `backup.sh` does) — consistent, WAL-aware, safe while the container runs. If you ever restore by hand, delete the stale `-wal`/`-shm` next to the restored file.
 
+### 2026-09-30 — Banks hand out history on their own terms
+
+Revolut returns the full transaction history only in the first minutes after a consent is granted; afterwards every request is clipped to a rolling 90 days. Most other banks follow a similar pattern (roughly an hour, then 90 days), and PSD2 lets a bank refuse more than **four unattended fetches per account per day**. **Rules:** the first sync runs inside the OAuth callback (`routes/bank.js`), never on a later button press; syncs a user triggers forward `Psu-Ip-Address`/`Psu-User-Agent` so the bank counts them as user-present and exempt from the cap; any future scheduler stays under four runs a day and treats `ASPSP_RATE_LIMIT_EXCEEDED` as "come back in six hours", not as a retry.
+
+### 2026-09-30 — `schema.sql` cannot change a table that already exists
+
+Everything in `schema.sql` is `CREATE … IF NOT EXISTS`, so a column added to an existing table there only reaches fresh databases — the live one keeps the old shape and inserts naming the new column fail. **Rule:** new columns on existing tables go in `db.js` `migrate()` via `ensureColumn()` (guarded by `PRAGMA table_info`), and any index that needs the new column is created there too, after it. Keep the column in `schema.sql` as well so a fresh DB does not depend on the migration.
+
 ---
 
 ## Dated development log
@@ -214,6 +222,16 @@ Portainer clones a git stack into its **own** volume and runs compose from there
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-09-30 — Bank sync through Enable Banking (branch: feature/bank-sync)
+
+- **Research first, then code.** The ask was "connect Revolut and Crédit Agricole through a free third party". Individuals cannot call either bank's PSD2 API directly (that needs a licensed provider with an eIDAS certificate), so it had to be an aggregator. GoCardless Bank Account Data — the old free Nordigen API — has been closed to new sign-ups since July 2025; Powens, Bridge and Salt Edge only give sandboxes away and price production through sales; Plaid, Tink and TrueLayer are enterprise. **Enable Banking** is the one left standing: a Production application activated by "linking accounts" in its Control Panel runs in a free restricted mode that reads exactly those accounts, and its docs name individual non-commercial use as an intended case. Actual Budget, Firefly III and a Home Assistant integration all use the same mode. Both banks are on its list; Revolut appears under FR for a French customer.
+- **Design decisions.** No new dependencies: Node's `crypto.sign` produces the RS256 JWT, global `fetch` does the HTTP. The provider sits behind one module so a replacement only has to match a handful of methods; the CSV import stays as the fallback if the free tier ever goes the way of GoCardless. Bank accounts are keyed by the provider's stable `identification_hash`, so renewing a consent keeps the budget-account mapping and cursor instead of creating a second copy of everything. The first fetch runs inside the callback because of Revolut's history window (see the constraint above). Secrets go in Portainer stack variables, not in the data folder, so backups never contain the key.
+- **Dedup got a second layer.** Bank rows carry a provider `external_id`; they dedupe on it, and only fall back to the legacy date|description|amount|type key against rows that have *no* external id. That keeps the CSV overlap out without collapsing two genuine identical card payments on one day — the CSV importer always collapsed those, and there was no reason to inherit the loss. A per-account **Sync from** cutover (defaults to the active account's latest transaction) is the user-facing guard for the same overlap, because API descriptions never match CSV ones exactly.
+- **Testing without a bank.** Ten `node:test` cases: JWT verified with the public key, key decoding (base64, literal `\n`, file), paging and the PSU-header retry against a fake `fetch`, and an end-to-end run of the real app against an in-process mock provider covering link, callback, initial sync, idempotent resync, renewal, remap, unlink and a provider outage. `server/tools/dev-harness.mjs` serves a fake bank page so the whole flow can be clicked through in a browser; it lives outside `test/` because `node --test` picks up *every* file under a `test/` directory. On the real server: Revolut linked and synced on the first try; Crédit Agricole answered 503 at the Control Panel link step and is to be retried.
+- **Deploy consequence.** Three optional stack variables (`EB_APP_ID`, `EB_PRIVATE_KEY` as one-line base64, `EB_REDIRECT_URL`); unset means the feature is hidden. The migration adds two tables and two columns to the live DB, additively — master still runs on the migrated file. The stack Reference was pointed at the feature branch for the test and goes back to `refs/heads/master` after the merge.
+- **Open question.** Enable Banking's docs do not say whether the Control Panel account link must also be renewed when a consent expires; the panel's expiry badge covers it either way.
+- **Tooling note for future sessions.** The Claude Code Bash tool collapses `\\` inside heredocs, which silently turned a `/\\n/` regex into `/\n/`; long files are safer written with the Write tool or from a script file.
 
 ### 2026-08-16 — Backup snapshots are single self-contained files (branch: feature/backup-sidecar-prune)
 

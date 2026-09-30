@@ -6,6 +6,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 
 ### Transactions
 
+- **Bank sync** — link Revolut, Crédit Agricole or any bank Enable Banking covers from Settings ▸ *Bank sync*; the first sync runs the moment the bank approves, and *Sync now* pulls new transactions through the same dedupe and category rules as a CSV import. Each linked bank account maps to a budget account of your choice. Consents expire after 90–180 days and are renewed from the same panel. Needs two server variables — see [docs/V2-SETUP.md](docs/V2-SETUP.md#bank-sync-enable-banking).
 - CSV import from bank statements (skip pending/reverted, dedupe, auto-categorize).
 - CSV export.
 - Manual add, edit, and delete.

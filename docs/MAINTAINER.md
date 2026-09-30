@@ -3,7 +3,7 @@
 ## Stack
 
 - **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
-- **Backend**: Express 5 + better-sqlite3. All routes in one file.
+- **Backend**: Express 5 + better-sqlite3. App routes in `routes/api.js`, bank sync in `routes/bank.js`. No other runtime dependencies — the Enable Banking JWT is signed with Node's `crypto`.
 - **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from the absolute host path in `DATA_DIR` (a required stack variable — the compose file has no default, so a missing value fails the deploy rather than mounting the wrong folder).
 - **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
 
@@ -26,13 +26,21 @@ budget-tracker/
 │       ├── i18n.js                       — EN/FR strings
 │       └── views/                        — one module per screen (dashboard, transactions,
 │                                            savings, joint-split, filters, category-manager,
-│                                            rules-panel, batch-edit-modal, header)
+│                                            rules-panel, batch-edit-modal, header,
+│                                            bank-sync)
 ├── server/
 │   ├── src/
-│   │   ├── index.js                      — Express app, security headers
-│   │   ├── db.js                         — SQLite connection/init
+│   │   ├── index.js                      — process entry: env, DB, listen
+│   │   ├── app.js                        — Express app factory (security headers, routers, static)
+│   │   ├── db.js                         — SQLite connection/init + idempotent migrations
 │   │   ├── schema.sql
-│   │   └── routes/api.js                 — ~25 REST endpoints
+│   │   ├── enablebanking.js              — Enable Banking client (RS256 JWT, AIS endpoints)
+│   │   ├── bank-sync.js                  — bank row mapping + per-account sync
+│   │   └── routes/
+│   │       ├── api.js                    — ~25 REST endpoints
+│   │       └── bank.js                   — /api/bank/* (link, callback, sync, mapping, unlink)
+│   ├── test/                             — node:test suites (`npm test`), mock provider inline
+│   ├── tools/dev-harness.mjs             — fake provider + the app, for clicking through bank sync
 │   └── package.json
 ├── shared/                               — pure ESM, imported by both Node and the browser
 │   ├── categorize.js                     — rule-based categorization engine
@@ -119,9 +127,17 @@ Consequence for handlers: these are `data-action` (click), not `data-action-chan
 
 Recurring savings deposits live in `savings_recurring` (amount + day 1–28); due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up, using deterministic history ids (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
 
+**Bank sync** (`routes/bank.js`, `bank-sync.js`, `enablebanking.js`) pulls transactions from banks through Enable Banking's account-information API, using its free restricted-production mode (only accounts linked in their Control Panel are readable). The feature is off unless `EB_APP_ID` and `EB_PRIVATE_KEY` are set; `GET /api/bank/status` reports `configured: false` and every other bank route answers 503. The flow: `POST /link` asks the provider for an authorisation URL (consent length capped at the bank's `maximum_consent_validity`, itself capped at 180 days) and remembers the user's choices under a random `state`; the bank sends the browser to `GET /callback`, which exchanges the code for a session, stores it, **runs the first sync right there** (Revolut only hands out full history in the first minutes after consent), and redirects to `/?bank=linked&…` which the client turns into a toast. `bank_connections` is one row per consent; `bank_accounts` is keyed by the provider's stable `identification_hash`, not the session-scoped `uid`, so renewing a consent re-points the existing rows and keeps their budget-account mapping and `synced_to` cursor — connections left with no accounts are deleted and their session revoked. Each sync fetches from `synced_to` minus seven days (late bookings), floored by the per-account `sync_from` cutover, keeps `BOOK` rows only, and hands the mapped rows to `importTransactions()`. **Dedup rule:** a bank row carries `external_id` (`<bank account id>:<entry_reference or transaction_id>`) and is a duplicate only if that id is already stored *or* its date|description|amount|type key matches a row with **no** external id (the CSV/manual era); two identical bank rows on one day therefore stay two rows. User-triggered syncs forward `Psu-Ip-Address`/`Psu-User-Agent` so the bank counts them as user-present, outside the PSD2 four-unattended-fetches-a-day cap. Provider failures surface as 502 with the provider's message; a failing account records `last_sync_status` and does not abort the others.
+
+Schema changes that touch an existing table cannot live in `schema.sql` (it is `CREATE … IF NOT EXISTS` only): `db.js` `migrate()` adds missing columns via `PRAGMA table_info` and creates the partial unique index on `(account_id, external_id)`; every step is idempotent and `meta.schema_version` is informational.
+
 ### Shared
 
 `shared/categorize.js`, `shared/csv.js`, `shared/dates.js` are pure ESM modules imported by both the server (Node) and the client (browser) — one categorization/CSV/date implementation, no drift between import-time and display-time behavior.
+
+### Tests
+
+`cd server && npm test` runs the `node:test` suites in `server/test/` — no test dependencies. `enablebanking.test.js` checks the JWT (signature verified with the public key), key decoding and the HTTP client against a fake `fetch`; `bank-sync.test.js` checks the row mapping and then drives the real Express app on an ephemeral port against an in-process mock provider: link → callback → initial sync → idempotent resync → renewal → remap → unlink, plus provider outages. `node server/tools/dev-harness.mjs` starts the same kind of mock plus the app on :3055 with a throwaway DB and key, for clicking through the UI without a bank.
 
 ### PWA
 
@@ -139,7 +155,7 @@ The SVG is also the browser-tab favicon (declared before the PNG, so browsers th
 
 ## Known gotchas
 
-See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups).
+See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups; bank history windows and unattended-fetch caps; column migrations living outside `schema.sql`).
 
 ## Smoke test checklist
 
