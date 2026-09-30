@@ -218,9 +218,22 @@ export function createBankRouter(db, { config, client }) {
       if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return res.status(400).json({ error: 'syncFrom must be YYYY-MM-DD' });
       nextFrom = value || null;
     }
-    db.prepare('UPDATE bank_accounts SET account_id = ?, enabled = ?, sync_from = ? WHERE id = ?')
-      .run(nextAccount, enabled === undefined ? current.enabled : (enabled ? 1 : 0), nextFrom, current.id);
-    res.json(statusPayload(db, config, req));
+    let moved = 0;
+    db.transaction(() => {
+      db.prepare('UPDATE bank_accounts SET account_id = ?, enabled = ?, sync_from = ? WHERE id = ?')
+        .run(nextAccount, enabled === undefined ? current.enabled : (enabled ? 1 : 0), nextFrom, current.id);
+      // A bank account's rows are recognisable by their external_id prefix, so re-mapping it
+      // carries what was already imported along rather than stranding it in the old account.
+      if (nextAccount && nextAccount !== current.account_id) {
+        const prefix = `${current.id}:`;
+        moved = db.prepare(`
+          UPDATE transactions SET account_id = ?, updated_at = datetime('now')
+          WHERE external_id IS NOT NULL AND substr(external_id, 1, ?) = ? AND account_id != ?
+            AND NOT EXISTS (SELECT 1 FROM transactions t2 WHERE t2.account_id = ? AND t2.external_id = transactions.external_id)
+        `).run(nextAccount, prefix.length, prefix, nextAccount, nextAccount).changes;
+      }
+    })();
+    res.json({ ...statusPayload(db, config, req), moved });
   });
 
   router.delete('/connections/:id', async (req, res) => {

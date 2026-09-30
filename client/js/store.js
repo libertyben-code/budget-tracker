@@ -59,6 +59,7 @@ const state = {
     bankLinkAccountId: '',
     bankLinkSyncFrom: '',
     bankBusy: false,
+    bankNewAccountFor: null,
   },
 };
 

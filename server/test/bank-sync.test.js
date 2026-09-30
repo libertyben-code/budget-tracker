@@ -268,9 +268,23 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   await new Promise(r => setTimeout(r, 50));
   assert.deepEqual(mock.state.deleted, ['sess-1'], 'the superseded session is revoked at the provider');
 
+  // re-mapping a bank account to another budget account carries its imported rows along
+  const joint = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Joint' }) }));
+  const moved = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
+  assert.equal(moved.body.moved, 3);
+  assert.equal(moved.body.connections[0].accounts[0].accountId, joint.body.id);
+  assert.deepEqual(
+    app.db.prepare('SELECT account_id AS a, COUNT(*) AS n FROM transactions GROUP BY account_id ORDER BY a').all(),
+    [{ a: joint.body.id, n: 3 }, { a: 'default', n: 1 }],
+    'bank rows moved, the CSV row stayed'
+  );
+  const again = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
+  assert.equal(again.body.moved, 0, 'same target moves nothing');
+
   // remap one account away, disable the other: sync has nothing left to do
   const patched = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: '' }) }));
   assert.equal(patched.body.connections[0].accounts[0].accountId, null);
+  assert.equal(patched.body.moved, 0);
   await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ enabled: false, syncFrom: '' }) });
   const idle = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.deepEqual(idle.body.results, []);

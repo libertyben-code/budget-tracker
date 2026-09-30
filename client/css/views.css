@@ -303,6 +303,7 @@ section.view { display: flex; flex-direction: column; gap: var(--space-4); }
 .bank-acct.off > .grow { opacity: 0.55; }
 .bank-acct .controls { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .bank-acct .controls select, .bank-acct .controls input[type="date"] { min-width: 0; }
+.bank-acct .controls input:not([type="date"]) { flex: 1 1 160px; min-width: 0; }
 .bank-acct .small, .bank-link .small, .modal .small { font-size: 0.8rem; }
 .bank-link .field { margin-bottom: var(--space-2); }
 .danger-text { color: var(--danger); }

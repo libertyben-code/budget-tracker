@@ -1,5 +1,5 @@
 import { esc, icons, toast, confirmDialog } from '../dom.js';
-import { get, setUi } from '../store.js';
+import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { loadAccount } from '../app.js';
 import { isoToDisplay } from '/shared/dates.js';
@@ -62,15 +62,22 @@ function accountRow(acc, state, t) {
             role="checkbox" aria-checked="${acc.enabled}" title="${esc(t('bank.enabled'))}" aria-label="${esc(t('bank.enabled'))}">
       <span class="check-box">${icons.check}</span>
     </button>
+    ${state.ui.bankNewAccountFor === acc.id ? `
+    <div class="controls">
+      <input id="bank-new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="bank-create-account" data-id="${esc(acc.id)}">
+      <button class="btn small primary" data-action="bank-create-account" data-id="${esc(acc.id)}">${esc(t('common.save'))}</button>
+      <button class="btn small" data-action="bank-cancel-new-account">${esc(t('common.cancel'))}</button>
+    </div>` : `
     <div class="controls">
       <label class="muted small">${esc(t('bank.budgetAccount'))}</label>
       <select data-action-change="bank-map-account" data-id="${esc(acc.id)}">
         <option value="" ${acc.accountId ? '' : 'selected'}>${esc(t('bank.notSynced'))}</option>
         ${state.accounts.map(a => `<option value="${esc(a.id)}" ${a.id === acc.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        <option value="__new__">${esc(t('bank.newAccount'))}</option>
       </select>
       <label class="muted small">${esc(t('bank.syncFrom'))}</label>
       <input type="date" value="${esc(acc.syncFrom || '')}" data-action-change="bank-sync-from" data-id="${esc(acc.id)}">
-    </div>
+    </div>`}
   </div>`;
 }
 
@@ -179,6 +186,15 @@ function summarize(results, t) {
   return message;
 }
 
+async function remap(bankAccountId, accountId, t) {
+  const status = await api.bankPatchAccount(bankAccountId, { accountId });
+  setUi({ bankStatus: status });
+  if (status.moved) {
+    toast(t('bank.moved', { count: status.moved }));
+    await loadAccount(get().activeAccountId);
+  }
+}
+
 async function startLink(payload) {
   setUi({ bankBusy: true });
   try {
@@ -263,9 +279,24 @@ export const actions = {
     await api.bankUnlink(el.dataset.id);
     await loadStatus();
   },
-  'bank-map-account': async (el) => {
-    setUi({ bankStatus: await api.bankPatchAccount(el.dataset.id, { accountId: el.value || null }) });
+  'bank-map-account': async (el, ev, t) => {
+    if (el.value === '__new__') {
+      setUi({ bankNewAccountFor: el.dataset.id });
+      return;
+    }
+    await remap(el.dataset.id, el.value || null, t);
   },
+  // Creating the budget account here rather than via the header switcher keeps the user in
+  // the panel; the new account is mapped straight away and the rows already imported follow.
+  'bank-create-account': async (el, ev, t) => {
+    const name = document.getElementById('bank-new-account-name')?.value.trim();
+    if (!name) return;
+    const account = await api.createAccount(name);
+    set({ accounts: [...get().accounts, account] });
+    setUi({ bankNewAccountFor: null });
+    await remap(el.dataset.id, account.id, t);
+  },
+  'bank-cancel-new-account': () => setUi({ bankNewAccountFor: null }),
   'bank-toggle-enabled': async (el) => {
     const acc = get().ui.bankStatus?.connections.flatMap(c => c.accounts).find(a => a.id === el.dataset.id);
     if (!acc) return;

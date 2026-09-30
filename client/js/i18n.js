@@ -221,6 +221,8 @@ const translations = {
       linkedWithErrors: 'The first sync reported errors, see Bank sync.',
       linkError: 'Bank link failed: {reason}',
       redirectHint: 'Redirect URL registered with Enable Banking: {url}',
+      newAccount: '＋ New budget account…',
+      moved: '{count} transaction(s) moved to the selected account',
     },
   },
   fr: {
@@ -445,6 +447,8 @@ const translations = {
       linkedWithErrors: 'La première synchro a signalé des erreurs, voir Synchronisation bancaire.',
       linkError: 'Échec de la connexion bancaire : {reason}',
       redirectHint: 'URL de redirection enregistrée chez Enable Banking : {url}',
+      newAccount: '＋ Nouveau compte budget…',
+      moved: '{count} transaction(s) déplacée(s) vers le compte choisi',
     },
   },
 };
