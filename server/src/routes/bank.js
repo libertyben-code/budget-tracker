@@ -93,17 +93,24 @@ function storeSession(db, session, link) {
       INSERT INTO bank_accounts (id, connection_id, account_id, uid, iban, name, currency, kind, enabled, sync_from)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `);
-    for (const acc of session.accounts || []) {
-      const id = acc.identification_hash || acc.account_id?.iban || acc.uid;
+    const accounts = (session.accounts || []).map(acc => ({
+      acc,
+      id: acc.identification_hash || acc.account_id?.iban || acc.uid,
+    }));
+    const known = db.prepare('SELECT id FROM bank_accounts WHERE id = ?');
+    const renewal = accounts.some(a => known.get(a.id));
+    for (const { acc, id } of accounts) {
       const iban = acc.account_id?.iban || '';
       const name = acc.name || acc.product || '';
       const currency = acc.currency || '';
       const kind = acc.cash_account_type || '';
       if (update.run(connectionId, acc.uid, iban, name, currency, kind, id).changes === 0) {
-        // A savings-type account (a livret, a pocket) starts unmapped: its movements do not
-        // belong in the budget's transactions, and the savings account it should feed is the
-        // user's call from the panel.
-        const target = kind === 'SVGS' ? null : link.accountId;
+        // Starts unmapped when it is a savings-type account (a livret, a pocket: its movements
+        // do not belong in the budget's transactions) or when it is new on a renewed consent
+        // (the user ticked more accounts at the bank; where they go is their call, and a
+        // pocket's internal transfers imported as spending would double-count). Only a first
+        // link maps current accounts to the chosen budget account.
+        const target = kind === 'SVGS' || renewal ? null : link.accountId;
         insert.run(id, connectionId, target, acc.uid, iban, name, currency, kind, link.syncFrom || null);
       }
     }

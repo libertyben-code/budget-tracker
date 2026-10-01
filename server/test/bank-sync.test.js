@@ -130,6 +130,8 @@ function startMockProvider() {
       accounts: [
         { uid: `uid-A-${n}`, account_id: { iban: 'FR7600000000000000000000A' }, currency: 'EUR', name: 'Main', identification_hash: 'hashA' },
         { uid: `uid-B-${n}`, account_id: { iban: 'FR7600000000000000000000B' }, currency: 'EUR', name: 'Joint', identification_hash: 'hashB', cash_account_type: 'SVGS' },
+        // a pocket the user only ticked at the second consent: a current-type account, new on renewal
+        ...(n >= 2 ? [{ uid: `uid-C-${n}`, account_id: {}, currency: 'EUR', name: 'Pocket', identification_hash: 'hashC', cash_account_type: 'CACC' }] : []),
       ],
       aspsp: { name: 'Revolut', country: 'FR' },
       psu_type: 'personal',
@@ -280,7 +282,8 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   assert.deepEqual(status.body.connections[0].accounts.map(a => [a.id, a.uid, a.accountId, a.syncFrom]), [
     ['hashA', 'uid-A-2', 'default', '2026-09-01'],
     ['hashB', 'uid-B-2', null, '2026-09-01'],
-  ]);
+    ['hashC', 'uid-C-2', null, null],
+  ], 'an account new on a renewal starts unmapped even though it is a current account');
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM bank_connections').get().n, 1);
   await new Promise(r => setTimeout(r, 50));
   assert.deepEqual(mock.state.deleted, ['sess-1'], 'the superseded session is revoked at the provider');
