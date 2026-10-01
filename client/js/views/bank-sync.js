@@ -82,7 +82,7 @@ function accountRow(acc, state, t) {
   return `
   <div class="bank-acct ${acc.enabled ? '' : 'off'}">
     <div class="grow">
-      <div><strong>${esc(acc.name || acc.iban || acc.id)}</strong> <span class="muted">${esc(acc.currency)}</span>${kind}</div>
+      <div><strong>${esc(acc.name || acc.iban || acc.id)}</strong> <span class="muted">${esc(acc.currency === 'XXX' ? '' : acc.currency)}</span>${kind}</div>
       ${acc.iban && acc.name ? `<div class="muted small">${esc(acc.iban)}</div>` : ''}
       <div class="muted small">${esc(last)}${failed ? ` · <span class="danger-text">${esc(acc.lastSyncStatus)}</span>` : ''}</div>
     </div>

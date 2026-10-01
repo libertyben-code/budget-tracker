@@ -148,6 +148,11 @@ function handleBankReturn() {
   } else {
     toast(t('bank.linkError', { reason: params.get('reason') || '' }));
   }
+  // On a phone the bank's redirect usually lands in a browser tab, not in the installed app;
+  // say so, or the browser's "open in app" bar reads as a broken layout.
+  if ('ontouchstart' in window && !window.matchMedia('(display-mode: standalone)').matches) {
+    setTimeout(() => toast(t('bank.openInApp')), 3600);
+  }
   setUi({ panel: 'bank' });
   bankSync.loadStatus();
 }
