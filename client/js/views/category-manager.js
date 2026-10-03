@@ -2,7 +2,7 @@ import { esc, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
-import { loadAccount } from '../app.js';
+import { loadAccount, refreshSavings } from '../app.js';
 
 export function render(state, t) {
   if (state.ui.panel !== 'categories') return '';
@@ -90,6 +90,8 @@ export const actions = {
       rules: state.rules.map(r => r.category === from ? { ...r, category: to } : r),
       customCategories: [...new Set(state.customCategories.map(c => c === from ? to : c))],
     });
+    // a savings link follows the rename, and its balance with it
+    await refreshSavings();
   },
   'start-delete-category': (el) => setUi({ deletingCategory: el.dataset.cat, editingCategory: null }),
   'cancel-delete-category': () => setUi({ deletingCategory: null }),

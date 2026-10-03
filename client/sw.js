@@ -47,7 +47,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-const CACHEABLE_API = [/^\/api\/bootstrap$/, /^\/api\/accounts\/[^/]+\/data$/];
+const CACHEABLE_API = [/^\/api\/bootstrap$/, /^\/api\/accounts\/[^/]+\/data$/, /^\/api\/savings$/];
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);

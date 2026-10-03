@@ -54,12 +54,8 @@ function statusPayload(db, config, req) {
            valid_until AS validUntil, created_at AS createdAt
     FROM bank_connections ORDER BY created_at
   `).all().map(c => ({ ...c, accounts: bankAccountRows(db, c.id) }));
-  // every savings account across budget accounts, so the panel can offer them as targets
-  const savingsAccounts = db.prepare(`
-    SELECT s.id, s.name, s.balance, s.account_id AS accountId, a.name AS accountName
-    FROM savings_accounts s JOIN accounts a ON a.id = s.account_id
-    ORDER BY a.created_at, s.name
-  `).all();
+  // every savings account, so the panel can offer them as targets
+  const savingsAccounts = db.prepare('SELECT id, name, balance FROM savings_accounts ORDER BY name').all();
   return {
     configured: config.configured,
     redirectUrl: config.configured ? redirectUrlFor(req, config) : '',

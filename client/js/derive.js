@@ -56,24 +56,6 @@ export function categories(state) {
   ])].sort();
 }
 
-// A savings account fed by a category: the budget's debits in it are deposits, its credits
-// withdrawals, on top of the stored opening balance.
-export function savingsMovements(savings, state) {
-  if (!savings.category) return [];
-  return state.transactions
-    .filter(t => t.category === savings.category && t.amount !== 0)
-    .map(t => ({ id: `cat_${t.id}`, date: t.date, type: t.amount < 0 ? 'deposit' : 'withdrawal', amount: Math.abs(t.amount) }))
-    .sort((a, b) => b.date.localeCompare(a.date));
-}
-
-export function savingsNet(savings, state) {
-  return savingsMovements(savings, state).reduce((sum, m) => sum + (m.type === 'deposit' ? m.amount : -m.amount), 0);
-}
-
-export function savingsBalance(savings, state) {
-  return Math.round((savings.balance + savingsNet(savings, state)) * 100) / 100;
-}
-
 export function months(state) {
   return [...new Set(state.transactions.map(t => monthKey(t.date)))].filter(Boolean).sort().reverse();
 }

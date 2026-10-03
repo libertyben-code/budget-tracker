@@ -111,11 +111,28 @@ function syncTabFromHash() {
   const tab = location.hash.replace('#/', '') || 'dashboard';
   setUi({ tab: views[tab] ? tab : 'dashboard' });
 }
-window.addEventListener('hashchange', syncTabFromHash);
+window.addEventListener('hashchange', () => {
+  syncTabFromHash();
+  // fed balances are derived server-side from every budget account, so re-read them on entry
+  if (get().ui.tab === 'savings' && get().loaded && !get().offline) refreshSavings().catch(() => {});
+});
 
 export async function refreshBootstrap() {
   const boot = await api.bootstrap();
   set({ accounts: boot.accounts, rules: boot.rules });
+}
+
+function savingsState(data) {
+  return {
+    savingsAccounts: data.savingsAccounts,
+    savingsHistory: data.savingsHistory,
+    savingsRecurring: data.savingsRecurring,
+    savingsCategories: data.savingsCategories || [],
+  };
+}
+
+export async function refreshSavings() {
+  set(savingsState(await api.savings()));
 }
 
 export async function loadAccount(accountId) {
@@ -124,9 +141,7 @@ export async function loadAccount(accountId) {
     activeAccountId: accountId,
     transactions: data.transactions,
     customCategories: data.customCategories || [],
-    savingsAccounts: data.savingsAccounts,
-    savingsHistory: data.savingsHistory,
-    savingsRecurring: data.savingsRecurring,
+    ...savingsState(data),
     selection: new Set(),
     editingId: null,
     visibleCount: 100,
@@ -180,9 +195,7 @@ async function boot() {
       activeAccountId: accountId,
       transactions: data.transactions,
       customCategories: data.customCategories || [],
-      savingsAccounts: data.savingsAccounts,
-      savingsHistory: data.savingsHistory,
-      savingsRecurring: data.savingsRecurring,
+      ...savingsState(data),
     });
   } catch {
     set({ loaded: true, offline: true });

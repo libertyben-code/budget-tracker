@@ -1,13 +1,13 @@
 import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { categories, savingsBalance, savingsMovements, savingsNet } from '../derive.js';
+import { refreshSavings } from '../app.js';
 import { isoToDisplay } from '/shared/dates.js';
 
 let chart = null;
 
 export function render(state, t) {
-  const accounts = state.savingsAccounts.map(a => ({ ...a, balance: savingsBalance(a, state) }));
+  const accounts = state.savingsAccounts;
   const total = accounts.reduce((sum, a) => sum + a.balance, 0);
   const withBalance = accounts.filter(a => a.balance > 0);
 
@@ -48,13 +48,13 @@ function categorySelect(id, selected, state, t) {
         <label class="row grow" style="gap:6px"><span class="muted" style="font-size:0.8rem;white-space:nowrap">${esc(t('savings.fedBy'))}</span>
           <select id="${id}" class="grow">
             <option value="">${esc(t('savings.manual'))}</option>
-            ${categories(state).map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+            ${state.savingsCategories.map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
           </select>
         </label>`;
 }
 
 function renderAccount(a, state, t, total) {
-  const history = a.category ? savingsMovements(a, state) : (state.savingsHistory[a.id] || []);
+  const history = state.savingsHistory[a.id] || [];
   const recurring = state.savingsRecurring[a.id] || [];
   const historyOpen = state.ui.openHistoryIds.has(a.id);
   const recurringOpen = state.ui.openRecurringIds.has(a.id);
@@ -140,7 +140,7 @@ export function afterRender(state) {
   // slot by stable account order so filters/deletions elsewhere never repaint survivors
   const slotByName = new Map(state.savingsAccounts.map((a, i) => [a.name, i]));
   const data = state.savingsAccounts
-    .map(a => ({ name: a.name, value: savingsBalance(a, state) }))
+    .map(a => ({ name: a.name, value: a.balance }))
     .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);
   const total = data.reduce((sum, d) => sum + d.value, 0);
@@ -200,12 +200,10 @@ export const actions = {
     const balance = parseFloat(document.getElementById('new-savings-balance')?.value) || 0;
     const category = document.getElementById('new-savings-category')?.value || null;
     if (!name || balance < 0) return;
-    const state = get();
-    // the balance typed is what the account should show; a fed account stores the rest as its opening
-    const opening = balance - savingsNet({ category }, state);
-    const account = await api.createSavings(state.activeAccountId, name, opening, category);
-    state.ui.addingSavings = false;
-    set({ savingsAccounts: [...state.savingsAccounts, account] });
+    // a fed account's history comes from the server, so reload rather than append
+    await api.createSavings(name, balance, category);
+    get().ui.addingSavings = false;
+    await refreshSavings();
   },
   'edit-savings': (el) => setUi({ editingSavingsId: el.dataset.id }),
   'cancel-edit-savings': () => setUi({ editingSavingsId: null }),
@@ -214,11 +212,9 @@ export const actions = {
     const balance = parseFloat(document.getElementById('edit-savings-balance')?.value);
     const category = document.getElementById('edit-savings-category')?.value || null;
     if (!name || Number.isNaN(balance) || balance < 0) return;
-    const opening = balance - savingsNet({ category }, get());
-    const updated = await api.patchSavings(el.dataset.id, { name, balance: opening, category });
-    const state = get();
-    state.ui.editingSavingsId = null;
-    set({ savingsAccounts: state.savingsAccounts.map(a => a.id === updated.id ? updated : a) });
+    await api.patchSavings(el.dataset.id, { name, balance, category });
+    get().ui.editingSavingsId = null;
+    await refreshSavings();
   },
   'delete-savings': async (el, ev, t) => {
     if (!(await confirmDialog(t('savings.confirmDelete'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;

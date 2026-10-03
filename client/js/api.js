@@ -39,7 +39,8 @@ export const api = {
   deleteCategory: (accountId, category, replacement) =>
     request('POST', `/accounts/${accountId}/categories/delete`, { category, replacement }),
 
-  createSavings: (accountId, name, balance, category) => request('POST', `/accounts/${accountId}/savings`, { name, balance, category }),
+  savings: () => request('GET', '/savings'),
+  createSavings: (name, balance, category) => request('POST', '/savings', { name, balance, category }),
   patchSavings: (id, patch) => request('PATCH', `/savings/${id}`, patch),
   deleteSavings: (id) => request('DELETE', `/savings/${id}`),
   savingsTransaction: (id, type, amount) => request('POST', `/savings/${id}/transactions`, { type, amount }),

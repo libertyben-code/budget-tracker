@@ -215,6 +215,10 @@ Revolut returns the full transaction history only in the first minutes after a c
 
 Everything in `schema.sql` is `CREATE … IF NOT EXISTS`, so a column added to an existing table there only reaches fresh databases — the live one keeps the old shape and inserts naming the new column fail. **Rule:** new columns on existing tables go in `db.js` `migrate()` via `ensureColumn()` (guarded by `PRAGMA table_info`), and any index that needs the new column is created there too, after it. Keep the column in `schema.sql` as well so a fresh DB does not depend on the migration.
 
+### 2026-10-03 — Dropping a foreign-key column cascades unless foreign keys are off
+
+SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table has to be rebuilt — and `DROP TABLE` on the old copy performs an implicit `DELETE`, which fires `ON DELETE CASCADE` / `SET NULL` in every child table. **Rule:** rebuild with `PRAGMA foreign_keys = OFF` set before the transaction (the pragma is ignored inside one), run `PRAGMA foreign_key_check` before commit, and turn it back on in a `finally`. Create the new table, copy, drop the old, rename the new — never rename the old one away first, since a rename rewrites the children's references to follow it. `db.js` `dropSavingsOwner()` is the worked example.
+
 ---
 
 ## Dated development log
@@ -222,6 +226,15 @@ Everything in `schema.sql` is `CREATE … IF NOT EXISTS`, so a column added to a
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-10-03 — Global savings (branch: feature/global-savings, from feature/bank-sync)
+
+- **Ask.** One Savings tab whatever budget account is active, and a category-fed savings account summing that category across every budget account, so a Pocket fed from both the personal and the joint Revolut accounts shows one balance.
+- **Schema v3.** `savings_accounts.account_id` (`NOT NULL … ON DELETE CASCADE`) is gone, so deleting a budget account no longer deletes its savings. It carried a foreign key, so it took a table rebuild with foreign keys off (see the constraint above); a migration test builds a v2 database and checks history, recurring rules and bank links survive and the rebuilt table still cascades.
+- **Derivation moved server-side.** The client only holds the active account's transactions, so it could not sum across accounts. The server now returns the balance the user sees and the fed history; the client sends the figure typed and the server stores the opening. `GET /savings` is new; `POST /accounts/:id/savings` became `POST /savings`. The Savings tab re-reads on entry, since a transaction edited in any account can move a fed balance. Recurring deposits apply across all savings accounts.
+- **Rename/delete decisions.** The user chose that a rename in one account carries the link to the new name. For delete, the link holds while any account still has the category, and when it goes the account turns manual at the balance it showed — before, an unlink fell back to the stored opening, which could be negative.
+- **Deploy consequence.** Unlike v2, this migration is not additive: master's code cannot start on a migrated database. Back up before redeploying the stack on this branch; rolling back means restoring that backup.
+- **Tests.** 15 `node:test` cases pass (four savings cases rewritten or new). Checked in the dev harness: same savings from both accounts, rename followed after a tab switch, the picker lists categories from every account, editing a fed balance stores the opening.
 
 ### 2026-09-30 — Bank sync through Enable Banking (branch: feature/bank-sync)
 

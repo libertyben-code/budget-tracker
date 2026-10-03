@@ -45,16 +45,15 @@ CREATE TABLE IF NOT EXISTS custom_categories (
   PRIMARY KEY (account_id, name)
 );
 
+-- global: not owned by a budget account, so deleting one never deletes savings
 CREATE TABLE IF NOT EXISTS savings_accounts (
   id         TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
   balance    REAL NOT NULL DEFAULT 0,
-  -- set when the budget account's transactions in this category feed the account: a debit is a
-  -- deposit, a credit a withdrawal, and `balance` is the opening balance they add to (client-derived)
+  -- set when every budget account's transactions in this category feed the account: a debit is
+  -- a deposit, a credit a withdrawal, and `balance` is the opening balance they add to
   category   TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_sav_account ON savings_accounts(account_id);
 
 CREATE TABLE IF NOT EXISTS savings_history (
   id                 TEXT PRIMARY KEY,
@@ -111,5 +110,5 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 );
 CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '2');
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '3');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

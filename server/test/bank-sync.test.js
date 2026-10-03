@@ -303,10 +303,10 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
 
   // a bank account can feed a savings account instead: balance from the bank, movements as history
   assert.equal(status.body.connections[0].accounts[1].kind, 'SVGS');
-  const livret = await json(await fetch(`${app.base}/api/accounts/default/savings`, { method: 'POST', headers, body: JSON.stringify({ name: 'Livret', balance: 10 }) }));
+  const livret = await json(await fetch(`${app.base}/api/savings`, { method: 'POST', headers, body: JSON.stringify({ name: 'Livret', balance: 10 }) }));
   const toSavings = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: livret.body.id }) }));
   assert.equal(toSavings.status, 200);
-  assert.deepEqual(toSavings.body.savingsAccounts.map(s => [s.name, s.accountName]), [['Livret', 'Main Account']]);
+  assert.deepEqual(toSavings.body.savingsAccounts.map(s => s.name), ['Livret']);
   const mappedB = toSavings.body.connections[0].accounts[1];
   assert.equal(mappedB.savingsAccountId, livret.body.id);
   assert.equal(mappedB.accountId, null, 'a savings target clears the budget-account target');
