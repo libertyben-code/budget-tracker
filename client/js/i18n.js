@@ -133,6 +133,9 @@ const translations = {
       nextOn: 'next: {date}',
       day: 'Day',
       confirmDeleteRecurring: 'Delete this recurring deposit?',
+      fedBy: 'Fed by',
+      manual: 'Manual deposits and withdrawals',
+      fedByCategory: 'fed by {category}',
     },
     categoryRules: {
       title: 'Category Auto-Assignment Rules',
@@ -367,6 +370,9 @@ const translations = {
       nextOn: 'prochain : {date}',
       day: 'Jour',
       confirmDeleteRecurring: 'Supprimer ce dépôt récurrent ?',
+      fedBy: 'Alimenté par',
+      manual: 'Dépôts et retraits manuels',
+      fedByCategory: 'alimenté par {category}',
     },
     categoryRules: {
       title: "Règles d'attribution automatique des catégories",

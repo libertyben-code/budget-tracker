@@ -35,6 +35,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 - Per-account savings tracking with deposit/withdrawal history.
 - Recurring monthly deposits, applied automatically with catch-up.
 - Split-by-account chart.
+- A savings account can be fed by a category: tag the transfers (by rule or by hand) and its balance and history follow — the way to track a Revolut Pocket, which open banking does not expose.
 
 ### Navigation & appearance
 

@@ -30,5 +30,7 @@ function migrate(db) {
   // v2b: a bank account may feed a savings account instead of a budget account
   ensureColumn(db, 'bank_accounts', 'savings_account_id', 'TEXT REFERENCES savings_accounts(id) ON DELETE SET NULL');
   ensureColumn(db, 'bank_accounts', 'kind', "TEXT NOT NULL DEFAULT ''");
+  // v2c: a savings account may be fed by one category of the budget account's transactions
+  ensureColumn(db, 'savings_accounts', 'category', 'TEXT');
   db.prepare("UPDATE meta SET value = '2' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 2").run();
 }
