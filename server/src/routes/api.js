@@ -85,12 +85,12 @@ function nextMonthDate(iso, day) {
   return m === 12 ? monthDate(y + 1, 1, day) : monthDate(y, m + 1, day);
 }
 
-function applyDueRecurring(db, accountId) {
+function applyDueRecurring(db) {
   const rules = db.prepare(`
     SELECT r.id, r.savings_account_id AS sid, r.amount, r.day, r.next_date AS nextDate
     FROM savings_recurring r JOIN savings_accounts s ON s.id = r.savings_account_id
-    WHERE s.account_id = ? AND s.category IS NULL
-  `).all(accountId);
+    WHERE s.category IS NULL
+  `).all();
   const today = todayIso();
   db.transaction(() => {
     for (const rule of rules) {
@@ -111,6 +111,49 @@ function applyDueRecurring(db, accountId) {
       }
     }
   })();
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// A category-fed savings account: every budget account's transactions in that category are its
+// movements — a debit is a deposit, a credit a withdrawal — on top of the stored opening balance.
+function fedMovements(db, category) {
+  return db.prepare('SELECT id, date, amount FROM transactions WHERE category = ? AND amount != 0 ORDER BY date DESC, id DESC')
+    .all(category)
+    .map(t => ({ id: `cat_${t.id}`, date: t.date, type: t.amount < 0 ? 'deposit' : 'withdrawal', amount: Math.abs(t.amount) }));
+}
+
+function fedNet(db, category) {
+  if (!category) return 0;
+  return -db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE category = ?').get(category).total;
+}
+
+// The API speaks in the balance the user sees: stored as-is for a manual account, opening plus
+// movements for a fed one. Writes convert back (shown − net), so a fed account may store a
+// negative opening.
+function savingsRow(db, id) {
+  const row = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(id);
+  return row && { ...row, balance: round2(row.balance + fedNet(db, row.category)) };
+}
+
+function savingsPayload(db) {
+  applyDueRecurring(db);
+  const savingsAccounts = db.prepare('SELECT id FROM savings_accounts ORDER BY rowid').all()
+    .map(s => savingsRow(db, s.id));
+  const savingsHistory = {};
+  const savingsRecurring = {};
+  for (const s of savingsAccounts) {
+    savingsHistory[s.id] = s.category ? fedMovements(db, s.category) : db.prepare(
+      'SELECT id, date, type, amount, timestamp FROM savings_history WHERE savings_account_id = ? ORDER BY timestamp DESC'
+    ).all(s.id);
+    savingsRecurring[s.id] = db.prepare(
+      'SELECT id, amount, day, next_date AS nextDate FROM savings_recurring WHERE savings_account_id = ? ORDER BY day'
+    ).all(s.id);
+  }
+  // what a savings account can be fed by: any category of any budget account
+  const savingsCategories = db.prepare('SELECT category FROM transactions UNION SELECT name FROM custom_categories ORDER BY 1')
+    .all().map(r => r.category);
+  return { savingsAccounts, savingsHistory, savingsRecurring, savingsCategories };
 }
 
 export function createApiRouter(db) {
@@ -134,23 +177,11 @@ export function createApiRouter(db) {
 
   // --- Accounts ---
 
+  // savings ride along although they are global, so one request loads the app
   router.get('/accounts/:id/data', requireAccount, (req, res) => {
-    applyDueRecurring(db, req.params.id);
     const transactions = db.prepare(`SELECT ${txColumns} FROM transactions WHERE account_id = ? ORDER BY date DESC, id DESC`)
       .all(req.params.id);
-    const savingsAccounts = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE account_id = ?')
-      .all(req.params.id);
-    const savingsHistory = {};
-    const savingsRecurring = {};
-    for (const s of savingsAccounts) {
-      savingsHistory[s.id] = db.prepare(
-        'SELECT id, date, type, amount, timestamp FROM savings_history WHERE savings_account_id = ? ORDER BY timestamp DESC'
-      ).all(s.id);
-      savingsRecurring[s.id] = db.prepare(
-        'SELECT id, amount, day, next_date AS nextDate FROM savings_recurring WHERE savings_account_id = ? ORDER BY day'
-      ).all(s.id);
-    }
-    res.json({ transactions, savingsAccounts, savingsHistory, savingsRecurring, customCategories: customCategories(db, req.params.id) });
+    res.json({ transactions, ...savingsPayload(db), customCategories: customCategories(db, req.params.id) });
   });
 
   router.post('/accounts', (req, res) => {
@@ -367,7 +398,8 @@ export function createApiRouter(db) {
         "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
       ).run(target, req.params.id, from).changes;
       rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ?').run(target, from).changes;
-      db.prepare('UPDATE savings_accounts SET category = ? WHERE account_id = ? AND category = ?').run(target, req.params.id, from);
+      // a savings link follows the rename, even though other budget accounts keep `from`
+      db.prepare('UPDATE savings_accounts SET category = ? WHERE category = ?').run(target, from);
       // delete-then-rename so a pre-existing custom entry for `target` doesn't collide on the PK
       db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, target);
       db.prepare('UPDATE custom_categories SET name = ? WHERE account_id = ? AND name = ?').run(target, req.params.id, from);
@@ -383,44 +415,55 @@ export function createApiRouter(db) {
     let transactions = 0;
     let rules = 0;
     db.transaction(() => {
+      const net = fedNet(db, category);
       transactions = db.prepare(
         "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
       ).run(replacement.trim(), req.params.id, category).changes;
       rules = db.prepare('DELETE FROM category_rules WHERE category = ?').run(category).changes;
       db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, category);
-      db.prepare('UPDATE savings_accounts SET category = NULL WHERE account_id = ? AND category = ?').run(req.params.id, category);
+      // A savings link holds while another budget account still has the category. Once it is
+      // gone everywhere the account turns manual, keeping the balance it showed.
+      const stillUsed = db.prepare('SELECT 1 FROM transactions WHERE category = ? UNION ALL SELECT 1 FROM custom_categories WHERE name = ? LIMIT 1')
+        .get(category, category);
+      if (!stillUsed) {
+        db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2), category = NULL WHERE category = ?').run(net, category);
+      }
     })();
     res.json({ transactions, rules });
   });
 
   // --- Savings ---
 
-  router.post('/accounts/:id/savings', requireAccount, (req, res) => {
+  router.get('/savings', (req, res) => {
+    res.json(savingsPayload(db));
+  });
+
+  router.post('/savings', (req, res) => {
     const name = (req.body.name || '').trim();
     const balance = Number(req.body.balance);
     const category = String(req.body.category || '').trim() || null;
-    // a category-fed account stores its opening balance, which the tagged movements may exceed
-    if (!name || Number.isNaN(balance) || (balance < 0 && !category)) {
+    if (!name || Number.isNaN(balance) || balance < 0) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     const id = `savings_${Date.now()}`;
-    db.prepare('INSERT INTO savings_accounts (id, account_id, name, balance, category) VALUES (?, ?, ?, ?, ?)')
-      .run(id, req.params.id, name, Number(balance.toFixed(2)), category);
-    res.status(201).json({ id, name, balance: Number(balance.toFixed(2)), category });
+    db.prepare('INSERT INTO savings_accounts (id, name, balance, category) VALUES (?, ?, ?, ?)')
+      .run(id, name, round2(balance - fedNet(db, category)), category);
+    res.status(201).json(savingsRow(db, id));
   });
 
+  // an omitted balance keeps the one shown, so relinking re-derives the opening rather than the total
   router.patch('/savings/:sid', (req, res) => {
-    const current = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    const current = savingsRow(db, req.params.sid);
     if (!current) return res.status(404).json({ error: 'Savings account not found' });
     const name = req.body.name !== undefined ? String(req.body.name).trim() : current.name;
     const balance = req.body.balance !== undefined ? Number(req.body.balance) : current.balance;
     const category = req.body.category !== undefined ? (String(req.body.category || '').trim() || null) : current.category;
-    if (!name || Number.isNaN(balance) || (balance < 0 && !category)) {
+    if (!name || Number.isNaN(balance) || (req.body.balance !== undefined && balance < 0)) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     db.prepare('UPDATE savings_accounts SET name = ?, balance = ?, category = ? WHERE id = ?')
-      .run(name, Number(balance.toFixed(2)), category, req.params.sid);
-    res.json({ id: current.id, name, balance: Number(balance.toFixed(2)), category });
+      .run(name, round2(balance - fedNet(db, category)), category, req.params.sid);
+    res.json(savingsRow(db, req.params.sid));
   });
 
   router.delete('/savings/:sid', (req, res) => {

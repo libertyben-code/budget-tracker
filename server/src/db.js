@@ -32,5 +32,34 @@ function migrate(db) {
   ensureColumn(db, 'bank_accounts', 'kind', "TEXT NOT NULL DEFAULT ''");
   // v2c: a savings account may be fed by one category of the budget account's transactions
   ensureColumn(db, 'savings_accounts', 'category', 'TEXT');
-  db.prepare("UPDATE meta SET value = '2' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 2").run();
+  // v3: savings are global, so savings_accounts loses account_id
+  if (db.pragma('table_info(savings_accounts)').some(c => c.name === 'account_id')) dropSavingsOwner(db);
+  db.prepare("UPDATE meta SET value = '3' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 3").run();
+}
+
+// SQLite cannot drop a column that carries a foreign key, so the table is rebuilt (create, copy,
+// drop, rename). Foreign keys are off for the swap: with them on, the DROP would cascade into
+// savings_history and savings_recurring and null the bank_accounts links. The pragma is a no-op
+// inside a transaction, hence outside it.
+function dropSavingsOwner(db) {
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE savings_accounts_v3 (
+          id       TEXT PRIMARY KEY,
+          name     TEXT NOT NULL,
+          balance  REAL NOT NULL DEFAULT 0,
+          category TEXT
+        );
+        INSERT INTO savings_accounts_v3 (id, name, balance, category)
+          SELECT id, name, balance, category FROM savings_accounts ORDER BY rowid;
+        DROP TABLE savings_accounts;
+        ALTER TABLE savings_accounts_v3 RENAME TO savings_accounts;
+      `);
+      if (db.pragma('foreign_key_check').length) throw new Error('savings_accounts rebuild left a dangling reference');
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }

@@ -9,6 +9,7 @@ const state = {
   savingsAccounts: [],
   savingsHistory: {},
   savingsRecurring: {},
+  savingsCategories: [],
   filter: {
     categories: [],
     description: '',

@@ -58,7 +58,7 @@ function targetSelect(acc, state, t) {
           <option value="__new__">${esc(t('bank.newAccount'))}</option>
         </optgroup>
         <optgroup label="${esc(t('bank.savingsGroup'))}">
-          ${savings.map(s => opt(`savings:${s.id}`, `${s.accountName} / ${s.name}`)).join('')}
+          ${savings.map(s => opt(`savings:${s.id}`, s.name)).join('')}
           <option value="__newsavings__">${esc(t('bank.newSavings'))}</option>
         </optgroup>
       </select>`;
@@ -328,10 +328,7 @@ export const actions = {
   'bank-create-savings': async (el, ev, t) => {
     const name = document.getElementById('bank-new-savings-name')?.value.trim();
     if (!name) return;
-    // the savings account has to belong to a budget account: the one this bank account
-    // feeds today, else the active one
-    const owner = bankAccount(el.dataset.id)?.accountId || get().activeAccountId;
-    const created = await api.createSavings(owner, name, 0);
+    const created = await api.createSavings(name, 0);
     await remap(el.dataset.id, { savingsAccountId: created.id }, t);
   },
   'bank-cancel-new-account': () => setUi({ bankNewAccountFor: null, bankNewSavingsFor: null }),

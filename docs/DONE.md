@@ -49,3 +49,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Savings accounts fed from the bank — balance from the balances endpoint, movements as history, savings-type accounts unmapped by default — OK
 - [x] Savings fed from transactions — a savings account linked to a category derives its balance and history from the tagged transfers, for pockets the bank does not expose — OK
 - [x] Sync all accounts from the Settings menu — one entry, shown once a bank is linked, syncs every connection — OK
+
+## Savings
+
+- [x] Savings global instead of per budget account — one Savings tab whatever account is active, savings outlive a deleted budget account, a category-fed account sums the category across every budget account; a rename carries the link, a delete drops it only once no account has the category — OK
