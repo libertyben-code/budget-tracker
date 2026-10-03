@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS savings_accounts (
   id         TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
-  balance    REAL NOT NULL DEFAULT 0
+  balance    REAL NOT NULL DEFAULT 0,
+  -- set when the budget account's transactions in this category feed the account: a debit is a
+  -- deposit, a credit a withdrawal, and `balance` is the opening balance they add to (client-derived)
+  category   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sav_account ON savings_accounts(account_id);
 

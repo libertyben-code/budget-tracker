@@ -47,3 +47,5 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Connect Revolut and Crédit Agricole through a free third-party API — Enable Banking restricted production, Settings ▸ Bank sync, first sync in the callback, per-account mapping and cutover — OK
 - [x] Keep the personal and joint bank accounts as separate budget accounts — re-mapping moves the imported rows, inline account creation from the panel — OK
 - [x] Savings accounts fed from the bank — balance from the balances endpoint, movements as history, savings-type accounts unmapped by default — OK
+- [x] Savings fed from transactions — a savings account linked to a category derives its balance and history from the tagged transfers, for pockets the bank does not expose — OK
+- [x] Sync all accounts from the Settings menu — one entry, shown once a bank is linked, syncs every connection — OK

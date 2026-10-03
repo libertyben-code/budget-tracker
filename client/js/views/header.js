@@ -3,6 +3,7 @@ import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap } from '../app.js';
+import { loadStatus as loadBankStatus } from './bank-sync.js';
 
 const VERSION = 'v2.0.3';
 
@@ -77,6 +78,8 @@ export function render(state, t) {
           <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
           <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
           <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
+          ${state.ui.bankStatus?.configured && state.ui.bankStatus.connections.length ? `
+          <button class="menu-item" data-action="bank-sync" ${state.ui.bankBusy ? 'disabled' : ''}>${icons.repeat} ${esc(t(state.ui.bankBusy ? 'bank.syncing' : 'header.syncAllAccounts'))}</button>` : ''}
           <div class="menu-sep"></div>
           <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
           <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
@@ -138,7 +141,11 @@ export const actions = {
     localStorage.setItem('language', lang);
     setUi({ lang });
   },
-  'toggle-settings': () => setUi({ settingsOpen: !get().ui.settingsOpen, accountMenuOpen: false }),
+  'toggle-settings': () => {
+    const { settingsOpen, bankStatus } = get().ui;
+    setUi({ settingsOpen: !settingsOpen, accountMenuOpen: false });
+    if (!settingsOpen && !bankStatus) loadBankStatus();
+  },
   'toggle-account-menu': () => {
     const open = get().ui.accountMenuOpen;
     if (open) set({ addingAccount: false });
