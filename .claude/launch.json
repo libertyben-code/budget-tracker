@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/tools/dev-harness.mjs"],
+      "port": 3055
+    }
+  ]
+}
