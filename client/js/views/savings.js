@@ -2,6 +2,7 @@ import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog } from '.
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { refreshSavings } from '../app.js';
+import { categories } from '../derive.js';
 import { isoToDisplay } from '/shared/dates.js';
 
 let chart = null;
@@ -48,7 +49,7 @@ function categorySelect(id, selected, state, t) {
         <label class="row grow" style="gap:6px"><span class="muted" style="font-size:0.8rem;white-space:nowrap">${esc(t('savings.fedBy'))}</span>
           <select id="${id}" class="grow">
             <option value="">${esc(t('savings.manual'))}</option>
-            ${state.savingsCategories.map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+            ${categories(state).map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
           </select>
         </label>`;
 }

@@ -15,7 +15,8 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 ### Categorization
 
 - Rule-based automatic categorization, learned from your own categorization history.
-- Create categories (they persist and appear in every picker even before any transaction uses them), rename, and delete — all propagated across transactions.
+- One category list shared by every budget account: a category used or created in one account is available in all of them.
+- Create categories (they persist and appear in every picker even before any transaction uses them), rename, and delete — all propagated across the transactions of every account.
 - Change a single transaction's category without touching others; **Apply Rules to All** (settings menu) then re-applies your rules across every transaction at once.
 - Manual rule creation and deletion.
 

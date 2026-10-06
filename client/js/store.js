@@ -5,11 +5,10 @@ const state = {
   activeAccountId: localStorage.getItem('activeAccountId') || 'default',
   rules: [],
   transactions: [],
-  customCategories: [],
+  categories: [],
   savingsAccounts: [],
   savingsHistory: {},
   savingsRecurring: {},
-  savingsCategories: [],
   filter: {
     categories: [],
     description: '',

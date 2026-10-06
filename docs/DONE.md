@@ -16,6 +16,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Add new categories from Manage Categories (settings menu) — persisted via `custom_categories`, selectable everywhere before any transaction uses them; empty categories delete directly — OK
 - [x] "Do one, then apply the rest": single category change stays one-only, settings "Apply Rules to All" re-applies rules across every transaction (overwriting matches) — OK
+- [x] Categories global instead of per budget account — one list in every picker whichever account is active, rename/delete reach every account's transactions, custom categories outlive a deleted account, counts in the manager span all accounts — OK
 
 ## Dashboard
 

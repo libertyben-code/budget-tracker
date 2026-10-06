@@ -52,7 +52,7 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
 export function categories(state) {
   return [...new Set([
     ...state.transactions.map(t => t.category),
-    ...(state.customCategories || []),
+    ...state.categories.map(c => c.name),
   ])].sort();
 }
 

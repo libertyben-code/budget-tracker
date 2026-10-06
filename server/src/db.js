@@ -34,7 +34,9 @@ function migrate(db) {
   ensureColumn(db, 'savings_accounts', 'category', 'TEXT');
   // v3: savings are global, so savings_accounts loses account_id
   if (db.pragma('table_info(savings_accounts)').some(c => c.name === 'account_id')) dropSavingsOwner(db);
-  db.prepare("UPDATE meta SET value = '3' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 3").run();
+  // v4: categories are global, so custom_categories loses account_id
+  if (db.pragma('table_info(custom_categories)').some(c => c.name === 'account_id')) dropCategoryOwner(db);
+  db.prepare("UPDATE meta SET value = '4' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 4").run();
 }
 
 // SQLite cannot drop a column that carries a foreign key, so the table is rebuilt (create, copy,
@@ -62,4 +64,21 @@ function dropSavingsOwner(db) {
   } finally {
     db.pragma('foreign_keys = ON');
   }
+}
+
+// No table references custom_categories, so this rebuild can run with foreign keys on. A name
+// several budget accounts had collapses to one row.
+function dropCategoryOwner(db) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE custom_categories_v4 (
+        name       TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO custom_categories_v4 (name, created_at)
+        SELECT name, MIN(created_at) FROM custom_categories GROUP BY name;
+      DROP TABLE custom_categories;
+      ALTER TABLE custom_categories_v4 RENAME TO custom_categories;
+    `);
+  })();
 }
