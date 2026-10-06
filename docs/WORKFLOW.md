@@ -227,6 +227,15 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-10-06 — Global categories (branch: feature/global-categories, from feature/bank-sync)
+
+- **Ask.** A category should be usable in every budget account, not only the one it was created or used in.
+- **Schema v4.** `custom_categories` loses `account_id`; names kept by several accounts merge into one row. Nothing references the table, so the rebuild runs with foreign keys on. Custom categories now outlive a deleted budget account.
+- **Routes.** `/accounts/:id/categories*` became `GET/POST /categories`, `POST /categories/rename` and `/categories/delete`, all acting on every account's transactions. `savingsCategories` is gone from the savings payload: the global list (with counts across accounts) rides along on `GET /accounts/:id/data` as `categories` and is re-read when the category manager opens. Imports guess against the global list.
+- **Decisions.** Rename and delete apply to every account, since a shared category split by a per-account rename would no longer be shared. Savings simplify with it: a rename carries the link and all its movements, a delete turns the account manual at the balance it showed. Renaming onto an existing custom name merges (`UPDATE OR REPLACE`), which also fixes renaming a custom-only category onto itself silently deleting it; delete refuses a replacement equal to the category.
+- **Deploy consequence.** Like v3, not additive: back up before redeploying the stack on this branch; rolling back means restoring that backup.
+- **Tests.** 18 `node:test` cases pass (three new in `categories.test.js`, the savings rename/delete case rewritten). Checked in the dev harness: the main account lists a Joint-only category in the manager, filter and savings picker; renaming and deleting it from the main account rewrote the Joint transaction.
+
 ### 2026-10-03 — Global savings (branch: feature/global-savings, from feature/bank-sync)
 
 - **Ask.** One Savings tab whatever budget account is active, and a category-fed savings account summing that category across every budget account, so a Pocket fed from both the personal and the joint Revolut accounts shows one balance.

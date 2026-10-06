@@ -34,10 +34,10 @@ export const api = {
   batchRules: (patterns, category) => request('POST', '/rules/batch', { patterns, category }),
   deleteRules: (patterns) => request('POST', '/rules/delete', { patterns }),
 
-  addCategory: (accountId, name) => request('POST', `/accounts/${accountId}/categories`, { name }),
-  renameCategory: (accountId, from, to) => request('POST', `/accounts/${accountId}/categories/rename`, { from, to }),
-  deleteCategory: (accountId, category, replacement) =>
-    request('POST', `/accounts/${accountId}/categories/delete`, { category, replacement }),
+  categories: () => request('GET', '/categories'),
+  addCategory: (name) => request('POST', '/categories', { name }),
+  renameCategory: (from, to) => request('POST', '/categories/rename', { from, to }),
+  deleteCategory: (category, replacement) => request('POST', '/categories/delete', { category, replacement }),
 
   savings: () => request('GET', '/savings'),
   createSavings: (name, balance, category) => request('POST', '/savings', { name, balance, category }),

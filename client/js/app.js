@@ -127,8 +127,11 @@ function savingsState(data) {
     savingsAccounts: data.savingsAccounts,
     savingsHistory: data.savingsHistory,
     savingsRecurring: data.savingsRecurring,
-    savingsCategories: data.savingsCategories || [],
   };
+}
+
+export async function refreshCategories() {
+  set({ categories: await api.categories() });
 }
 
 export async function refreshSavings() {
@@ -140,7 +143,7 @@ export async function loadAccount(accountId) {
   set({
     activeAccountId: accountId,
     transactions: data.transactions,
-    customCategories: data.customCategories || [],
+    categories: data.categories,
     ...savingsState(data),
     selection: new Set(),
     editingId: null,
@@ -194,7 +197,7 @@ async function boot() {
       rules: bootData.rules,
       activeAccountId: accountId,
       transactions: data.transactions,
-      customCategories: data.customCategories || [],
+      categories: data.categories,
       ...savingsState(data),
     });
   } catch {

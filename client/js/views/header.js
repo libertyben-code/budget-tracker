@@ -2,7 +2,7 @@ import { esc, icons, navIcons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
-import { loadAccount, refreshBootstrap } from '../app.js';
+import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
 import { loadStatus as loadBankStatus } from './bank-sync.js';
 
 const VERSION = 'v2.0.3';
@@ -213,7 +213,11 @@ export const actions = {
     toast(t('header.applyRulesResult', { count: updated }));
   },
   'open-rules': () => setUi({ settingsOpen: false, panel: 'rules', ruleSelection: new Set(), rulesFilter: '' }),
-  'open-category-manager': () => setUi({ settingsOpen: false, panel: 'categories', editingCategory: null, deletingCategory: null }),
+  // counts span every account, so they are re-read rather than derived from this one's transactions
+  'open-category-manager': async () => {
+    setUi({ settingsOpen: false, panel: 'categories', editingCategory: null, deletingCategory: null });
+    await refreshCategories();
+  },
   'dismiss-import-errors': () => setUi({ importErrors: null }),
 };
 

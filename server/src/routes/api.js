@@ -15,14 +15,15 @@ function accountRow(db, id) {
   return row;
 }
 
-function accountCategories(db, accountId) {
-  return db.prepare('SELECT DISTINCT category FROM transactions WHERE account_id = ?')
-    .all(accountId).map(r => r.category);
-}
-
-function customCategories(db, accountId) {
-  return db.prepare('SELECT name FROM custom_categories WHERE account_id = ? ORDER BY name')
-    .all(accountId).map(r => r.name);
+// one list for every budget account: what their transactions use plus the custom ones,
+// each with its transaction count across all accounts
+function categoryList(db) {
+  return db.prepare(`
+    SELECT name, SUM(n) AS count FROM (
+      SELECT category AS name, COUNT(*) AS n FROM transactions GROUP BY category
+      UNION ALL SELECT name, 0 FROM custom_categories
+    ) GROUP BY name ORDER BY name
+  `).all();
 }
 
 function allRules(db) {
@@ -37,7 +38,7 @@ function allRules(db) {
 // id: that catches the overlap with the CSV era without collapsing distinct bank rows.
 export function importTransactions(db, accountId, rows, { source = 'csv' } = {}) {
   const rules = allRules(db);
-  const categories = accountCategories(db, accountId);
+  const categories = categoryList(db).map(c => c.name);
   const existing = db.prepare('SELECT date, description, amount, type, external_id AS externalId FROM transactions WHERE account_id = ?')
     .all(accountId);
   const legacyKeys = new Set(existing.filter(t => !t.externalId).map(dedupKey));
@@ -150,10 +151,7 @@ function savingsPayload(db) {
       'SELECT id, amount, day, next_date AS nextDate FROM savings_recurring WHERE savings_account_id = ? ORDER BY day'
     ).all(s.id);
   }
-  // what a savings account can be fed by: any category of any budget account
-  const savingsCategories = db.prepare('SELECT category FROM transactions UNION SELECT name FROM custom_categories ORDER BY 1')
-    .all().map(r => r.category);
-  return { savingsAccounts, savingsHistory, savingsRecurring, savingsCategories };
+  return { savingsAccounts, savingsHistory, savingsRecurring };
 }
 
 export function createApiRouter(db) {
@@ -177,11 +175,11 @@ export function createApiRouter(db) {
 
   // --- Accounts ---
 
-  // savings ride along although they are global, so one request loads the app
+  // savings and categories ride along although they are global, so one request loads the app
   router.get('/accounts/:id/data', requireAccount, (req, res) => {
     const transactions = db.prepare(`SELECT ${txColumns} FROM transactions WHERE account_id = ? ORDER BY date DESC, id DESC`)
       .all(req.params.id);
-    res.json({ transactions, ...savingsPayload(db), customCategories: customCategories(db, req.params.id) });
+    res.json({ transactions, ...savingsPayload(db), categories: categoryList(db) });
   });
 
   router.post('/accounts', (req, res) => {
@@ -377,17 +375,20 @@ export function createApiRouter(db) {
     res.json({ deleted });
   });
 
-  // --- Categories (atomic propagation) ---
+  // --- Categories: global, so a rename or delete reaches every budget account (atomic propagation) ---
 
-  router.post('/accounts/:id/categories', requireAccount, (req, res) => {
+  router.get('/categories', (req, res) => {
+    res.json(categoryList(db));
+  });
+
+  router.post('/categories', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name required' });
-    db.prepare('INSERT OR IGNORE INTO custom_categories (account_id, name) VALUES (?, ?)')
-      .run(req.params.id, name);
+    db.prepare('INSERT OR IGNORE INTO custom_categories (name) VALUES (?)').run(name);
     res.status(201).json({ name });
   });
 
-  router.post('/accounts/:id/categories/rename', requireAccount, (req, res) => {
+  router.post('/categories/rename', (req, res) => {
     const { from, to } = req.body;
     if (!from || !to || !to.trim()) return res.status(400).json({ error: 'from and to required' });
     const target = to.trim();
@@ -395,39 +396,34 @@ export function createApiRouter(db) {
     let rules = 0;
     db.transaction(() => {
       transactions = db.prepare(
-        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
-      ).run(target, req.params.id, from).changes;
+        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ?"
+      ).run(target, from).changes;
       rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ?').run(target, from).changes;
-      // a savings link follows the rename, even though other budget accounts keep `from`
       db.prepare('UPDATE savings_accounts SET category = ? WHERE category = ?').run(target, from);
-      // delete-then-rename so a pre-existing custom entry for `target` doesn't collide on the PK
-      db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, target);
-      db.prepare('UPDATE custom_categories SET name = ? WHERE account_id = ? AND name = ?').run(target, req.params.id, from);
+      // OR REPLACE: renaming onto an existing custom entry merges into it instead of hitting the PK
+      db.prepare('UPDATE OR REPLACE custom_categories SET name = ? WHERE name = ?').run(target, from);
     })();
     res.json({ transactions, rules });
   });
 
-  router.post('/accounts/:id/categories/delete', requireAccount, (req, res) => {
+  router.post('/categories/delete', (req, res) => {
     const { category, replacement } = req.body;
     if (!category || !replacement || !replacement.trim()) {
       return res.status(400).json({ error: 'category and replacement required' });
     }
+    const target = replacement.trim();
+    if (target === category) return res.status(400).json({ error: 'replacement must differ from category' });
     let transactions = 0;
     let rules = 0;
     db.transaction(() => {
       const net = fedNet(db, category);
       transactions = db.prepare(
-        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE account_id = ? AND category = ?"
-      ).run(replacement.trim(), req.params.id, category).changes;
+        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ?"
+      ).run(target, category).changes;
       rules = db.prepare('DELETE FROM category_rules WHERE category = ?').run(category).changes;
-      db.prepare('DELETE FROM custom_categories WHERE account_id = ? AND name = ?').run(req.params.id, category);
-      // A savings link holds while another budget account still has the category. Once it is
-      // gone everywhere the account turns manual, keeping the balance it showed.
-      const stillUsed = db.prepare('SELECT 1 FROM transactions WHERE category = ? UNION ALL SELECT 1 FROM custom_categories WHERE name = ? LIMIT 1')
-        .get(category, category);
-      if (!stillUsed) {
-        db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2), category = NULL WHERE category = ?').run(net, category);
-      }
+      db.prepare('DELETE FROM custom_categories WHERE name = ?').run(category);
+      // the category is gone everywhere, so a savings account it fed turns manual at the balance it showed
+      db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2), category = NULL WHERE category = ?').run(net, category);
     })();
     res.json({ transactions, rules });
   });

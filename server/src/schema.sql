@@ -37,12 +37,10 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- user-defined categories that may have no transactions yet
+-- user-defined categories that may have no transactions yet; global, like every category
 CREATE TABLE IF NOT EXISTS custom_categories (
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  name       TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (account_id, name)
+  name       TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- global: not owned by a budget account, so deleting one never deletes savings
@@ -110,5 +108,5 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 );
 CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '3');
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '4');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

@@ -66,7 +66,6 @@ test('a category-fed account sums the category across every budget account', asy
     ['2026-09-05', 'deposit', 100],
     ['2026-09-01', 'deposit', 200],
   ]);
-  assert.ok(global.body.savingsCategories.includes('Savings: Vacation'));
 
   assert.equal((await post(app.base, `/api/savings/${sid}/transactions`, { type: 'deposit', amount: 10 })).status, 400);
   assert.equal((await post(app.base, `/api/savings/${sid}/recurring`, { amount: 10, day: 1 })).status, 400);
@@ -74,7 +73,7 @@ test('a category-fed account sums the category across every budget account', asy
   assert.equal((await patch(app.base, `/api/savings/${sid}`, { balance: -1 })).status, 400);
 });
 
-test('a rename follows the link; a delete drops it once the category is gone everywhere', async (t) => {
+test('a rename carries the link; a delete turns it manual at the balance it showed', async (t) => {
   const app = await startApp();
   t.after(app.close);
   const joint = await addJoint(app);
@@ -83,20 +82,17 @@ test('a rename follows the link; a delete drops it once the category is gone eve
   const sid = (await json(await post(app.base, '/api/savings', { name: 'Pocket', balance: 270, category: 'Pocket' }))).body.id;
   const account = async () => (await get(app.base, '/api/savings')).body.savingsAccounts[0];
 
-  // the joint account's rows stay on the old name, so they stop feeding
-  await post(app.base, '/api/accounts/default/categories/rename', { from: 'Pocket', to: 'Pocket Vacation' });
-  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 200, category: 'Pocket Vacation' });
+  // both accounts' rows move to the new name, so the balance holds
+  await post(app.base, '/api/categories/rename', { from: 'Pocket', to: 'Pocket Vacation' });
+  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 270, category: 'Pocket Vacation' });
 
   // relinking without a balance keeps the one shown
   await patch(app.base, `/api/savings/${sid}`, { category: 'Pocket' });
-  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 200, category: 'Pocket' });
+  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 270, category: 'Pocket' });
 
-  addTx(app.db, 'default', '2026-09-03', 'Pocket', -50);
-  await post(app.base, `/api/accounts/${joint}/categories/delete`, { category: 'Pocket', replacement: 'Savings' });
-  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 180, category: 'Pocket' }, 'default still feeds it');
-
-  await post(app.base, '/api/accounts/default/categories/delete', { category: 'Pocket', replacement: 'Savings' });
-  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 180, category: null }, 'turned manual at the balance it showed');
+  addTx(app.db, joint, '2026-09-03', 'Pocket', -50);
+  await post(app.base, '/api/categories/delete', { category: 'Pocket', replacement: 'Savings' });
+  assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 320, category: null });
 });
 
 test('savings outlive a budget account; due recurring deposits apply globally, skipping fed accounts', async (t) => {
@@ -152,7 +148,7 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_recurring').get().n, 1);
   assert.equal(db.prepare("SELECT savings_account_id AS sid FROM bank_accounts WHERE id = 'b1'").get().sid, 'sav1');
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '3');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '4');
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
 
   // the rebuilt table is still the parent: deleting it cascades and unlinks as before
