@@ -4,6 +4,22 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.1.0 — 2026-10-07
+
+### What's new
+
+- **Action required before your next redeploy: back up the database.** Run `./backup.sh` first. This release reshapes two tables so savings and custom categories no longer belong to one budget account, and earlier versions cannot start on the upgraded file — going back to 2.0.5 means restoring that backup. The upgrade itself keeps everything: savings history, recurring deposits and bank links survive, and custom categories several accounts had merge into one.
+- **Bank sync.** Link Revolut, Crédit Agricole or any bank Enable Banking covers from Settings ▸ *Bank sync*, and new transactions arrive through the same dedupe and category rules as a CSV import. The first sync runs the moment the bank approves, which is when banks hand over the full history; *Sync now* and *Sync all accounts* pull what is new. Each bank account maps to a budget account — or to a savings account whose balance comes from the bank — and re-mapping moves what was already imported. It is free for personal use and hidden until you set three stack variables; see `docs/V2-SETUP.md`. CSV import stays as the fallback.
+- **Savings fed from transactions.** A savings account can follow a category: tag the transfers to it, by rule or by hand, and its balance and history fill themselves. This is how to track a Revolut Pocket, which open banking does not expose.
+- **Savings are shared by every account.** The Savings tab is the same whichever budget account is active, a category-fed account adds up that category across all of them, and deleting a budget account no longer deletes its savings.
+- **Categories are shared by every account.** One list in every picker, filter and rule, whichever account is active. Renaming or deleting a category updates its transactions in all accounts, the category manager counts across all of them, and a category you created survives deleting the account you made it in.
+
+### Fixes & improvements
+
+- **Unknown API addresses answer with a clear error.** A request to an address the server does not know now gets a JSON 404 instead of the app's page, and a server error no longer sends back a stack trace.
+
+---
+
 ## 2.0.5 — 2026-09-06
 
 ### Fixes & improvements
