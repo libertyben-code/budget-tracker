@@ -33,13 +33,15 @@ Note the casing: `Bugs.md` here, not `BUGS.md`.
 - `client/js/` — `app.js` (shell/router), `api.js` (server calls), `store.js` (client state),
   `derive.js` (computed figures), `dom.js`, `i18n.js`, and `views/` (`dashboard`, `transactions`,
   `savings`, `filters`, `header`, `joint-split`, `category-manager`, `rules-panel`,
-  `batch-edit-modal`).
+  `batch-edit-modal`, `bank-sync`).
 - `client/` also holds `sw.js` and `manifest.webmanifest` directly — no bundler, so **what ships is
   what is on disk**.
 - `shared/` — `categorize.js`, `csv.js`, `dates.js`: used by both sides. A change here lands on the
   client and the server at once.
-- `server/src/` — `index.js` (entry), `db.js`, `routes/api.js`, `schema.sql`. `npm start` in
-  `server/`.
+- `server/src/` — `index.js` (entry), `app.js` (Express app, what tests mount), `db.js`,
+  `routes/api.js`, `schema.sql`; bank sync in `routes/bank.js`, `bank-sync.js`, `enablebanking.js`.
+  `npm start` / `npm test` in `server/`; `server/tools/dev-harness.mjs` (launch config
+  `dev-harness`) runs the app with a fake bank.
 - `backup.sh`, `Dockerfile`, `docker-compose.yml` at the root; the SQLite file lives in `data/`.
 
 ## Constraints index — a bug already paid for each of these
@@ -56,6 +58,11 @@ dated section.
   order, not by intent.
 - **An installed Android PWA caches its launcher icon**, and **cannot colour its own status bar**
   (two attempts, the second superseded — read both before trying a third).
+- **Banks hand out history on their own terms** — full history only just after consent, then 90
+  days and a daily fetch cap.
+- **`schema.sql` cannot change a table that already exists** — new columns go in `db.js` `migrate()`.
+- **Dropping a foreign-key column cascades unless foreign keys are off** — table rebuilds follow
+  `dropSavingsOwner()`.
 
 ## Rules that apply to every task (inline so they're always loaded)
 
