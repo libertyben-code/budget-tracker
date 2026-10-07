@@ -6,6 +6,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 
 ### Transactions
 
+- **Bank sync** — link Revolut, Crédit Agricole or any bank Enable Banking covers from Settings ▸ *Bank sync*; the first sync runs the moment the bank approves, and *Sync now* (or *Sync all accounts* in the Settings menu) pulls new transactions through the same dedupe and category rules as a CSV import. Each linked bank account maps to a budget account of your choice, or to a savings account whose balance and history then come from the bank; re-mapping carries what was already imported along. Consents expire after 90–180 days and are renewed from the same panel. Needs two server variables — see [docs/V2-SETUP.md](docs/V2-SETUP.md#bank-sync-enable-banking).
 - CSV import from bank statements (skip pending/reverted, dedupe, auto-categorize).
 - CSV export.
 - Manual add, edit, and delete.
@@ -14,7 +15,8 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 ### Categorization
 
 - Rule-based automatic categorization, learned from your own categorization history.
-- Create categories (they persist and appear in every picker even before any transaction uses them), rename, and delete — all propagated across transactions.
+- One category list shared by every budget account: a category used or created in one account is available in all of them.
+- Create categories (they persist and appear in every picker even before any transaction uses them), rename, and delete — all propagated across the transactions of every account.
 - Change a single transaction's category without touching others; **Apply Rules to All** (settings menu) then re-applies your rules across every transaction at once.
 - Manual rule creation and deletion.
 
@@ -31,9 +33,10 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 
 ### Savings
 
-- Per-account savings tracking with deposit/withdrawal history.
+- Savings tracking with deposit/withdrawal history, shared by every budget account: the Savings tab is the same whichever account is active.
 - Recurring monthly deposits, applied automatically with catch-up.
 - Split-by-account chart.
+- A savings account can be fed by a category: tag the transfers (by rule or by hand), in any budget account, and its balance and history follow — the way to track a Revolut Pocket, which open banking does not expose.
 
 ### Navigation & appearance
 

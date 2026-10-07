@@ -1,4 +1,4 @@
-const CACHE = 'bt-static-v5';
+const CACHE = 'bt-static-v6';
 
 const SHELL = [
   '/',
@@ -20,6 +20,7 @@ const SHELL = [
   '/js/views/batch-edit-modal.js',
   '/js/views/rules-panel.js',
   '/js/views/category-manager.js',
+  '/js/views/bank-sync.js',
   '/js/views/dashboard.js',
   '/js/views/joint-split.js',
   '/js/views/savings.js',
@@ -46,7 +47,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-const CACHEABLE_API = [/^\/api\/bootstrap$/, /^\/api\/accounts\/[^/]+\/data$/];
+const CACHEABLE_API = [/^\/api\/bootstrap$/, /^\/api\/accounts\/[^/]+\/data$/, /^\/api\/savings$/];
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);

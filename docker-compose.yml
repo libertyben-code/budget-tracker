@@ -58,6 +58,12 @@ services:
       # tailnet IP, publishing the API to every device on the tailnet over plain HTTP and
       # bypassing the TLS proxy entirely. The proxy reaches it on 127.0.0.1 regardless.
       HOST: 127.0.0.1
+      # Bank sync via Enable Banking. All optional: unset means the feature is hidden in the
+      # app. EB_PRIVATE_KEY is the downloaded .pem, base64-encoded onto one line — a stack
+      # variable cannot carry newlines. See docs/V2-SETUP.md, "Bank sync".
+      EB_APP_ID: "${EB_APP_ID:-}"
+      EB_PRIVATE_KEY: "${EB_PRIVATE_KEY:-}"
+      EB_REDIRECT_URL: "${EB_REDIRECT_URL:-}"
     volumes:
       # Set DATA_DIR as a Portainer stack variable, to an absolute host path. Deliberately has
       # no default: a relative path resolves inside Portainer's own volume (/data/compose/<stack-id>)

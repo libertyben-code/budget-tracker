@@ -34,15 +34,23 @@ export const api = {
   batchRules: (patterns, category) => request('POST', '/rules/batch', { patterns, category }),
   deleteRules: (patterns) => request('POST', '/rules/delete', { patterns }),
 
-  addCategory: (accountId, name) => request('POST', `/accounts/${accountId}/categories`, { name }),
-  renameCategory: (accountId, from, to) => request('POST', `/accounts/${accountId}/categories/rename`, { from, to }),
-  deleteCategory: (accountId, category, replacement) =>
-    request('POST', `/accounts/${accountId}/categories/delete`, { category, replacement }),
+  categories: () => request('GET', '/categories'),
+  addCategory: (name) => request('POST', '/categories', { name }),
+  renameCategory: (from, to) => request('POST', '/categories/rename', { from, to }),
+  deleteCategory: (category, replacement) => request('POST', '/categories/delete', { category, replacement }),
 
-  createSavings: (accountId, name, balance) => request('POST', `/accounts/${accountId}/savings`, { name, balance }),
+  savings: () => request('GET', '/savings'),
+  createSavings: (name, balance, category) => request('POST', '/savings', { name, balance, category }),
   patchSavings: (id, patch) => request('PATCH', `/savings/${id}`, patch),
   deleteSavings: (id) => request('DELETE', `/savings/${id}`),
   savingsTransaction: (id, type, amount) => request('POST', `/savings/${id}/transactions`, { type, amount }),
   createSavingsRecurring: (id, amount, day) => request('POST', `/savings/${id}/recurring`, { amount, day }),
   deleteSavingsRecurring: (rid) => request('DELETE', `/savings/recurring/${rid}`),
+
+  bankStatus: () => request('GET', '/bank/status'),
+  bankAspsps: (country) => request('GET', `/bank/aspsps?country=${encodeURIComponent(country)}`),
+  bankLink: (payload) => request('POST', '/bank/link', payload),
+  bankSync: (connectionId) => request('POST', '/bank/sync', connectionId ? { connectionId } : {}),
+  bankPatchAccount: (id, patch) => request('PATCH', `/bank/accounts/${encodeURIComponent(id)}`, patch),
+  bankUnlink: (id) => request('DELETE', `/bank/connections/${encodeURIComponent(id)}`),
 };

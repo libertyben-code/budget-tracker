@@ -16,6 +16,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Add new categories from Manage Categories (settings menu) — persisted via `custom_categories`, selectable everywhere before any transaction uses them; empty categories delete directly — OK
 - [x] "Do one, then apply the rest": single category change stays one-only, settings "Apply Rules to All" re-applies rules across every transaction (overwriting matches) — OK
+- [x] Categories global instead of per budget account — one list in every picker whichever account is active, rename/delete reach every account's transactions, custom categories outlive a deleted account, counts in the manager span all accounts — OK
 
 ## Dashboard
 
@@ -41,3 +42,15 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Adding a transaction then pressing Cancel no longer leaves an empty transaction — ＋ now opens a draft that only saves to the server on Save — OK
 - [x] `update.sh` backups were silently worthless — a `cp` of a WAL-mode `budget.db` captures a stale (possibly table-less) database; `backup.sh` now uses `sqlite3 .backup` — OK
+
+## Bank sync
+
+- [x] Connect Revolut and Crédit Agricole through a free third-party API — Enable Banking restricted production, Settings ▸ Bank sync, first sync in the callback, per-account mapping and cutover — OK
+- [x] Keep the personal and joint bank accounts as separate budget accounts — re-mapping moves the imported rows, inline account creation from the panel — OK
+- [x] Savings accounts fed from the bank — balance from the balances endpoint, movements as history, savings-type accounts unmapped by default — OK
+- [x] Savings fed from transactions — a savings account linked to a category derives its balance and history from the tagged transfers, for pockets the bank does not expose — OK
+- [x] Sync all accounts from the Settings menu — one entry, shown once a bank is linked, syncs every connection — OK
+
+## Savings
+
+- [x] Savings global instead of per budget account — one Savings tab whatever account is active, savings outlive a deleted budget account, a category-fed account sums the category across every budget account; a rename carries the link, a delete drops it only once no account has the category — OK

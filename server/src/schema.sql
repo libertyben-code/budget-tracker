@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount      REAL NOT NULL DEFAULT 0,
   type        TEXT NOT NULL DEFAULT '',
   state       TEXT NOT NULL DEFAULT 'COMPLETED',
+  -- provider-scoped id for rows that arrived through bank sync; NULL for CSV/manual rows
+  external_id TEXT,
+  source      TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -34,21 +37,21 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- user-defined categories that may have no transactions yet
+-- user-defined categories that may have no transactions yet; global, like every category
 CREATE TABLE IF NOT EXISTS custom_categories (
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  name       TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (account_id, name)
+  name       TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- global: not owned by a budget account, so deleting one never deletes savings
 CREATE TABLE IF NOT EXISTS savings_accounts (
   id         TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
-  balance    REAL NOT NULL DEFAULT 0
+  balance    REAL NOT NULL DEFAULT 0,
+  -- set when every budget account's transactions in this category feed the account: a debit is
+  -- a deposit, a credit a withdrawal, and `balance` is the opening balance they add to
+  category   TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_sav_account ON savings_accounts(account_id);
 
 CREATE TABLE IF NOT EXISTS savings_history (
   id                 TEXT PRIMARY KEY,
@@ -70,5 +73,40 @@ CREATE TABLE IF NOT EXISTS savings_recurring (
 );
 CREATE INDEX IF NOT EXISTS idx_sr_account ON savings_recurring(savings_account_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
+-- One row per consent granted at a bank through the sync provider. Deleted when the
+-- consent is revoked in-app, or automatically once a renewal has moved every account off it.
+CREATE TABLE IF NOT EXISTS bank_connections (
+  id            TEXT PRIMARY KEY,
+  provider      TEXT NOT NULL DEFAULT 'enablebanking',
+  session_id    TEXT NOT NULL,
+  aspsp_name    TEXT NOT NULL,
+  aspsp_country TEXT NOT NULL,
+  psu_type      TEXT NOT NULL DEFAULT 'personal',
+  valid_until   TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Keyed by the provider's stable per-account hash, not the session-scoped uid, so renewing
+-- a consent keeps the budget-account mapping and the sync cursor. account_id is the budget
+-- account transactions land in; NULL means linked but not synced anywhere.
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id               TEXT PRIMARY KEY,
+  connection_id    TEXT NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
+  account_id       TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  -- alternative target: a savings account gets the bank balance and a deposit/withdrawal history
+  savings_account_id TEXT REFERENCES savings_accounts(id) ON DELETE SET NULL,
+  kind             TEXT NOT NULL DEFAULT '',
+  uid              TEXT NOT NULL,
+  iban             TEXT NOT NULL DEFAULT '',
+  name             TEXT NOT NULL DEFAULT '',
+  currency         TEXT NOT NULL DEFAULT '',
+  enabled          INTEGER NOT NULL DEFAULT 1,
+  sync_from        TEXT,
+  synced_to        TEXT,
+  last_sync_at     TEXT,
+  last_sync_status TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
+
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '4');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

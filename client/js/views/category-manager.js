@@ -6,10 +6,7 @@ import { loadAccount } from '../app.js';
 
 export function render(state, t) {
   if (state.ui.panel !== 'categories') return '';
-  const counts = {};
-  for (const tx of state.transactions) {
-    counts[tx.category] = (counts[tx.category] || 0) + 1;
-  }
+  const counts = Object.fromEntries(state.categories.map(c => [c.name, c.count]));
   const cats = categories(state);
   const deleting = state.ui.deletingCategory;
   const deletingCount = deleting ? (counts[deleting] || 0) : 0;
@@ -70,8 +67,8 @@ export const actions = {
       if (input) input.value = '';
       return;
     }
-    await api.addCategory(state.activeAccountId, name);
-    set({ customCategories: [...new Set([...state.customCategories, name])] });
+    await api.addCategory(name);
+    set({ categories: [...state.categories, { name, count: 0 }] });
   },
   'start-rename-category': (el) => setUi({ editingCategory: el.dataset.cat, deletingCategory: null }),
   'cancel-rename-category': () => setUi({ editingCategory: null }),
@@ -83,13 +80,9 @@ export const actions = {
       return;
     }
     const state = get();
-    await api.renameCategory(state.activeAccountId, from, to);
+    await api.renameCategory(from, to);
     state.ui.editingCategory = null;
-    set({
-      transactions: state.transactions.map(tx => tx.category === from ? { ...tx, category: to } : tx),
-      rules: state.rules.map(r => r.category === from ? { ...r, category: to } : r),
-      customCategories: [...new Set(state.customCategories.map(c => c === from ? to : c))],
-    });
+    await loadAccount(state.activeAccountId);
   },
   'start-delete-category': (el) => setUi({ deletingCategory: el.dataset.cat, editingCategory: null }),
   'cancel-delete-category': () => setUi({ deletingCategory: null }),
@@ -100,8 +93,8 @@ export const actions = {
     const replacement = mode === 'new'
       ? document.getElementById('del-replacement')?.value.trim()
       : 'Uncategorized';
-    if (!replacement) return;
-    await api.deleteCategory(state.activeAccountId, category, replacement);
+    if (!replacement || replacement === category) return;
+    await api.deleteCategory(category, replacement);
     state.ui.deletingCategory = null;
     await loadAccount(state.activeAccountId);
   },

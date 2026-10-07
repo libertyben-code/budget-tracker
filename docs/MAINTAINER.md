@@ -3,7 +3,7 @@
 ## Stack
 
 - **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
-- **Backend**: Express 5 + better-sqlite3. All routes in one file.
+- **Backend**: Express 5 + better-sqlite3. App routes in `routes/api.js`, bank sync in `routes/bank.js`. No other runtime dependencies — the Enable Banking JWT is signed with Node's `crypto`.
 - **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from the absolute host path in `DATA_DIR` (a required stack variable — the compose file has no default, so a missing value fails the deploy rather than mounting the wrong folder).
 - **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
 
@@ -26,13 +26,21 @@ budget-tracker/
 │       ├── i18n.js                       — EN/FR strings
 │       └── views/                        — one module per screen (dashboard, transactions,
 │                                            savings, joint-split, filters, category-manager,
-│                                            rules-panel, batch-edit-modal, header)
+│                                            rules-panel, batch-edit-modal, header,
+│                                            bank-sync)
 ├── server/
 │   ├── src/
-│   │   ├── index.js                      — Express app, security headers
-│   │   ├── db.js                         — SQLite connection/init
+│   │   ├── index.js                      — process entry: env, DB, listen
+│   │   ├── app.js                        — Express app factory (security headers, routers, static)
+│   │   ├── db.js                         — SQLite connection/init + idempotent migrations
 │   │   ├── schema.sql
-│   │   └── routes/api.js                 — ~25 REST endpoints
+│   │   ├── enablebanking.js              — Enable Banking client (RS256 JWT, AIS endpoints)
+│   │   ├── bank-sync.js                  — bank row mapping + per-account sync
+│   │   └── routes/
+│   │       ├── api.js                    — ~25 REST endpoints
+│   │       └── bank.js                   — /api/bank/* (link, callback, sync, mapping, unlink)
+│   ├── test/                             — node:test suites (`npm test`), mock provider inline
+│   ├── tools/dev-harness.mjs             — fake provider + the app, for clicking through bank sync
 │   └── package.json
 ├── shared/                               — pure ESM, imported by both Node and the browser
 │   ├── categorize.js                     — rule-based categorization engine
@@ -113,15 +121,27 @@ Consequence for handlers: these are `data-action` (click), not `data-action-chan
 
 ### Server
 
-`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category create/rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
+`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category create/rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Categories, category rules and savings accounts are global; everything else is per budget account.
 
-**Categories** are not a first-class table of record — the list shown in every picker is derived (`client/js/derive.js` `categories()`) as the union of the categories actually used by transactions **plus** any user-defined names in the `custom_categories` table (per account). This lets a brand-new category with zero transactions exist and be selectable. `POST /accounts/:id/categories` adds one; rename/delete keep `custom_categories` in sync alongside the transaction/rule propagation. `POST /accounts/:id/autocategorize` ("Apply Rules to All" in the UI) re-applies every rule across **all** transactions, overwriting where a rule matches the description (rule patterns are matched as case-insensitive substrings — see `shared/categorize.js`).
+**Categories** are global and not a first-class table of record — `categoryList()` in `api.js` derives them as the union of the categories used by transactions of **every** budget account plus the user-defined names in `custom_categories` (no owner), each with its transaction count across all accounts. This lets a brand-new category with zero transactions exist and be selectable. The list rides along on `GET /accounts/:id/data` as `categories` and is also `GET /categories`; the client re-reads it when the category manager opens, since its counts span accounts it does not hold. `client/js/derive.js` `categories()` unions it with the active account's transactions, so a name typed inline shows up before any reload. `POST /categories` adds one; `POST /categories/rename` and `/categories/delete` rewrite transactions in every account, rules, savings links and `custom_categories` in one transaction (rename uses `UPDATE OR REPLACE` so renaming onto an existing custom name merges; delete refuses a replacement equal to the category). CSV and bank imports guess against the global list. `POST /accounts/:id/autocategorize` ("Apply Rules to All" in the UI) re-applies every rule across **all** transactions, overwriting where a rule matches the description (rule patterns are matched as case-insensitive substrings — see `shared/categorize.js`).
 
-Recurring savings deposits live in `savings_recurring` (amount + day 1–28); due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up, using deterministic history ids (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
+**Savings** are global: `savings_accounts` has no owner, so deleting a budget account leaves them alone. `savingsPayload()` builds the whole Savings state (accounts, history, recurring; the *fed by* picker uses the global category list); it rides along on `GET /accounts/:id/data` so one request loads the app, and `GET /savings` returns it alone — the client re-reads it on entering the Savings tab, since transaction edits in any account move fed balances. Recurring savings deposits live in `savings_recurring` (amount + day 1–28); due deposits are applied lazily, for every savings account, whenever that payload is built, with multi-month catch-up, using deterministic history ids (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
+
+A savings account may instead be **fed by a category** (`savings_accounts.category`): every budget account's transactions in that category are its movements — a debit is a deposit, a credit a withdrawal — and the stored `balance` is then the *opening* balance they add to. The derivation is server-side (`fedMovements()` / `fedNet()` in `api.js`). The API always speaks in the balance the user sees: responses return opening + net, and `POST /savings` / `PATCH /savings/:sid` store what they are sent minus the net, which is why a fed account may legitimately store a negative opening; a PATCH without `balance` keeps the shown one, so relinking re-derives the opening. Manual deposits, withdrawals and recurring rules answer 400 for a fed account and `applyDueRecurring` skips it. Category rename and delete reach every budget account, so a **rename carries the link** to the new name with all its movements, and a **delete** turns the account manual, folding the net into `balance` so the figure shown does not move. This is how a Revolut Pocket, which open banking does not expose, is tracked: its transfers appear in the main account, so a rule (or a manual re-categorisation) tags them and the account fills itself.
+
+**Bank sync** (`routes/bank.js`, `bank-sync.js`, `enablebanking.js`) pulls transactions from banks through Enable Banking's account-information API, using its free restricted-production mode (only accounts linked in their Control Panel are readable). The feature is off unless `EB_APP_ID` and `EB_PRIVATE_KEY` are set; `GET /api/bank/status` reports `configured: false` and every other bank route answers 503. The flow: `POST /link` asks the provider for an authorisation URL (consent length capped at the bank's `maximum_consent_validity`, itself capped at 180 days) and remembers the user's choices under a random `state`; the bank sends the browser to `GET /callback`, which exchanges the code for a session, stores it, **runs the first sync right there** (Revolut only hands out full history in the first minutes after consent), and redirects to `/?bank=linked&…` which the client turns into a toast. `bank_connections` is one row per consent; `bank_accounts` is keyed by the provider's stable `identification_hash`, not the session-scoped `uid`, so renewing a consent re-points the existing rows and keeps their budget-account mapping and `synced_to` cursor — connections left with no accounts are deleted and their session revoked. Each sync fetches from `synced_to` minus seven days (late bookings), floored by the per-account `sync_from` cutover, keeps `BOOK` rows only, and hands the mapped rows to `importTransactions()`. **Dedup rule:** a bank row carries `external_id` (`<bank account id>:<entry_reference or transaction_id>`) and is a duplicate only if that id is already stored *or* its date|description|amount|type key matches a row with **no** external id (the CSV/manual era); two identical bank rows on one day therefore stay two rows. User-triggered syncs forward `Psu-Ip-Address`/`Psu-User-Agent` so the bank counts them as user-present, outside the PSD2 four-unattended-fetches-a-day cap. Provider failures surface as 502 with the provider's message; a failing account records `last_sync_status` and does not abort the others.
+
+A bank account targets either `account_id` (transactions) or `savings_account_id` (balance + history), never both — `PATCH /api/bank/accounts/:id` clears one when the other is set. The savings path sets `savings_accounts.balance` from `GET /accounts/{uid}/balances` (closing booked, then closing available, then the rest — `pickBalance()`) and turns booked movements into `savings_history` rows with ids `bank_<external_id>` via `INSERT OR IGNORE`, so re-fetches are idempotent; it never adjusts the balance from those rows, the bank's figure wins. Switching to a new savings target resets `synced_to` so the history is fetched from the cutover. Accounts the bank flags `cash_account_type = SVGS` are stored unmapped at link time (`kind` column) rather than defaulting to the budget account. Re-mapping to another budget account moves the rows whose `external_id` starts with the bank account's id (`moved` in the response), guarded against a same-id row already present in the target.
+
+Schema changes that touch an existing table cannot live in `schema.sql` (it is `CREATE … IF NOT EXISTS` only): `db.js` `migrate()` adds missing columns via `PRAGMA table_info` and creates the partial unique index on `(account_id, external_id)`; every step is idempotent and `meta.schema_version` is informational. Removing a column that carries a foreign key needs a table rebuild — v3 (`dropSavingsOwner()`) dropped `savings_accounts.account_id` that way: create, copy, drop, rename, with `PRAGMA foreign_keys = OFF` set *outside* the transaction (it is a no-op inside one) and a `foreign_key_check` before commit. With foreign keys on, the `DROP TABLE` would have cascaded into `savings_history` / `savings_recurring` and nulled `bank_accounts.savings_account_id`. The v3 migration is not additive: code from before it fails on a migrated DB (its `schema.sql` indexes `savings_accounts(account_id)`), so a rollback means restoring a backup. v4 (`dropCategoryOwner()`) dropped `custom_categories.account_id` the same way, merging names several accounts had (earliest `created_at` kept); nothing references that table, so it runs with foreign keys on. It is not additive either — earlier code inserts `account_id` into it.
 
 ### Shared
 
 `shared/categorize.js`, `shared/csv.js`, `shared/dates.js` are pure ESM modules imported by both the server (Node) and the client (browser) — one categorization/CSV/date implementation, no drift between import-time and display-time behavior.
+
+### Tests
+
+`cd server && npm test` runs the `node:test` suites in `server/test/` — no test dependencies. `enablebanking.test.js` checks the JWT (signature verified with the public key), key decoding and the HTTP client against a fake `fetch`; `bank-sync.test.js` checks the row mapping and then drives the real Express app on an ephemeral port against an in-process mock provider: link → callback → initial sync → idempotent resync → renewal → remap → unlink, plus provider outages. `node server/tools/dev-harness.mjs` starts the same kind of mock plus the app on :3055 with a throwaway DB and key, for clicking through the UI without a bank.
 
 ### PWA
 
@@ -139,7 +159,7 @@ The SVG is also the browser-tab favicon (declared before the PNG, so browsers th
 
 ## Known gotchas
 
-See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups).
+See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups; bank history windows and unattended-fetch caps; column migrations living outside `schema.sql`).
 
 ## Smoke test checklist
 

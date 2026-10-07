@@ -196,6 +196,47 @@ sudo chown 1000:1000 budget.db
 
 and start the stack again. For off-box safety, sync `../backups/` to a NAS or rclone target.
 
+## Bank sync (Enable Banking)
+
+Transactions can be pulled straight from your banks instead of importing CSV exports. The app talks to [Enable Banking](https://enablebanking.com), a licensed open-banking aggregator whose **restricted production** mode is free for reading your own accounts. The feature is hidden until the server has credentials.
+
+### One-time setup in the Enable Banking Control Panel
+
+1. Sign in at https://enablebanking.com/sign-in/ and add a **Production** application. Keep the default "generate in the browser" key option.
+2. **Allowed redirect URLs**: the app's address with `/api/bank/callback` appended, one per line — e.g. `https://budget.<tailnet>.ts.net/api/bank/callback`, plus `http://localhost:3000/api/bank/callback` for local development. The path must be exactly that; the server derives the URL from the request unless `EB_REDIRECT_URL` pins it.
+3. Register. The browser downloads `<application-id>.pem` — that is the private key. Keep it outside the repo (`*.pem` is git-ignored) and never paste it anywhere public.
+4. The application starts **Inactive**. Click **Activate by linking accounts** and authorise each bank you want to read. In restricted mode the API only returns data for accounts linked this way, so a bank that is not linked here will show up in the app but sync nothing.
+
+### Server variables
+
+| Variable | Value |
+|---|---|
+| `EB_APP_ID` | the application ID (the `.pem` filename without the extension) |
+| `EB_PRIVATE_KEY` | the PEM file, **base64-encoded on one line**: `base64 -w0 <id>.pem` (Linux) or `[Convert]::ToBase64String([IO.File]::ReadAllBytes('<id>.pem'))` (PowerShell). The raw PEM also works if your environment preserves newlines. |
+| `EB_PRIVATE_KEY_FILE` | alternative to the above for local runs: a path to the `.pem` file |
+| `EB_REDIRECT_URL` | optional; pin the callback URL when the request-derived one is wrong (e.g. behind a proxy that does not forward the host) |
+| `EB_API_BASE` | optional; only for pointing at a mock (see below) |
+
+In Portainer these are stack environment variables, next to `DATA_DIR` and `TS_AUTHKEY`. `docker-compose.yml` passes them through with empty defaults, so a stack without them deploys with the feature switched off. Redeploy after adding them; the startup log prints `bank sync: Enable Banking app …` when they are picked up.
+
+### Using it
+
+Settings ▸ **Bank sync**. *Link a bank*: pick the country and bank, the budget account the transactions should land in, and optionally a **Sync from** date. Set that to the day after your last CSV import — descriptions from the API and from a CSV export are never identical, so overlapping history would otherwise be imported twice. Leave it empty to take all the history the bank offers.
+
+Each linked bank account has a **Sync into** target: a budget account (its movements become transactions) or a savings account (the Savings tab gets the bank's balance, and deposits and withdrawals fill its history). Both can be created from the row itself. Accounts the bank flags as savings — a livret, a Revolut Savings account — start unmapped so their movements never land in the budget; pick their target once. Re-mapping a bank account to another budget account moves the transactions it already imported, so a bank that exposes a personal and a joint account can be split after the first sync. If an account you expect is not listed in the panel, the bank does not expose it over open banking — Revolut Pockets are sub-balances of the main account rather than accounts of their own, and cannot be fetched. Track those by giving the savings account a category (Savings tab ▸ edit ▸ *Fed by*) and tagging the pocket transfers with it, by rule or by hand.
+
+Connecting sends you to the bank to approve, then straight back into the app, and the first sync runs immediately — some banks (Revolut) only hand out full history in the first minutes after consent. After that, **Sync now** on a bank, or **Sync all accounts** in the Settings menu for every bank at once, fetches new transactions; new rows go through the same duplicate check and category rules as a CSV import. Each linked bank account can be re-mapped to another budget account, switched off, or given a different cutover date from the panel.
+
+Consents expire (180 days for most banks, 90 for Revolut). The panel shows the days left and turns the badge amber inside two weeks; **Renew consent** repeats the bank approval and keeps the mapping and cursor. Syncs you trigger from the app are marked "user present" for the bank, which exempts them from the four-unattended-fetches-a-day PSD2 cap.
+
+### Testing without a bank
+
+```bash
+node server/tools/dev-harness.mjs
+```
+
+starts a fake Enable Banking on port 4545 and the app on http://localhost:3055 with a throwaway database and key, so the whole link → approve → callback → sync flow can be clicked through. `cd server && npm test` runs the unit and end-to-end tests against the same fake.
+
 ## Architecture notes
 
 - `client/` — static frontend, native ES modules, no build step. Views in `client/js/views/`, one module per screen; state in `client/js/store.js`; all server calls in `client/js/api.js`.
@@ -203,7 +244,7 @@ and start the stack again. For off-box safety, sync `../backups/` to a NAS or rc
 - `server/` — Express 5 + better-sqlite3. All routes in `server/src/routes/api.js`; schema in `server/src/schema.sql`.
 - Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed as `dd/mm/yy`. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
 - Recurring savings deposits: rules live in `savings_recurring` (amount + day 1–28). Due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up; history ids are deterministic (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
-- CSV import (parse → skip REVERTED/PENDING → dedup → categorize) runs server-side in `importTransactions()` — a future bank-sync connector (e.g. Enable Banking) can feed the same function.
+- CSV import (parse → skip REVERTED/PENDING → dedup → categorize) runs server-side in `importTransactions()`. Bank sync feeds the same function: `server/src/enablebanking.js` is the provider client, `server/src/bank-sync.js` maps and syncs, `server/src/routes/bank.js` holds the `/api/bank/*` routes, and `bank_connections` / `bank_accounts` in the schema hold consents and per-account mapping. Bank rows carry a provider `external_id` and are deduplicated on it; CSV/manual rows still use the date|description|amount|type key.
 
 ## Security model
 

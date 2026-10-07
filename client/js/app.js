@@ -11,6 +11,7 @@ import * as categoryManager from './views/category-manager.js';
 import * as dashboard from './views/dashboard.js';
 import * as jointSplit from './views/joint-split.js';
 import * as savings from './views/savings.js';
+import * as bankSync from './views/bank-sync.js';
 
 const views = { dashboard, transactions, joint: jointSplit, savings };
 const actions = {
@@ -23,6 +24,7 @@ const actions = {
   ...dashboard.actions,
   ...jointSplit.actions,
   ...savings.actions,
+  ...bankSync.actions,
 };
 
 const appEl = document.getElementById('app');
@@ -43,7 +45,7 @@ function render() {
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t);
+  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t);
 
   dashboard.afterRender(state, t);
   savings.afterRender(state);
@@ -109,11 +111,31 @@ function syncTabFromHash() {
   const tab = location.hash.replace('#/', '') || 'dashboard';
   setUi({ tab: views[tab] ? tab : 'dashboard' });
 }
-window.addEventListener('hashchange', syncTabFromHash);
+window.addEventListener('hashchange', () => {
+  syncTabFromHash();
+  // fed balances are derived server-side from every budget account, so re-read them on entry
+  if (get().ui.tab === 'savings' && get().loaded && !get().offline) refreshSavings().catch(() => {});
+});
 
 export async function refreshBootstrap() {
   const boot = await api.bootstrap();
   set({ accounts: boot.accounts, rules: boot.rules });
+}
+
+function savingsState(data) {
+  return {
+    savingsAccounts: data.savingsAccounts,
+    savingsHistory: data.savingsHistory,
+    savingsRecurring: data.savingsRecurring,
+  };
+}
+
+export async function refreshCategories() {
+  set({ categories: await api.categories() });
+}
+
+export async function refreshSavings() {
+  set(savingsState(await api.savings()));
 }
 
 export async function loadAccount(accountId) {
@@ -121,15 +143,36 @@ export async function loadAccount(accountId) {
   set({
     activeAccountId: accountId,
     transactions: data.transactions,
-    customCategories: data.customCategories || [],
-    savingsAccounts: data.savingsAccounts,
-    savingsHistory: data.savingsHistory,
-    savingsRecurring: data.savingsRecurring,
+    categories: data.categories,
+    ...savingsState(data),
     selection: new Set(),
     editingId: null,
     visibleCount: 100,
   });
   await refreshBootstrap();
+}
+
+// The bank's redirect lands on `/?bank=linked|error&...` (see server routes/bank.js): turn
+// it into a toast, open the panel, and scrub the query so a reload does not repeat it.
+function handleBankReturn() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('bank')) return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  const t = translator();
+  if (params.get('bank') === 'linked') {
+    let message = t('bank.linkedToast', { imported: params.get('imported') || 0, skipped: params.get('skipped') || 0 });
+    if (Number(params.get('errors')) > 0) message += ` ${t('bank.linkedWithErrors')}`;
+    toast(message);
+  } else {
+    toast(t('bank.linkError', { reason: params.get('reason') || '' }));
+  }
+  // On a phone the bank's redirect usually lands in a browser tab, not in the installed app;
+  // say so, or the browser's "open in app" bar reads as a broken layout.
+  if ('ontouchstart' in window && !window.matchMedia('(display-mode: standalone)').matches) {
+    setTimeout(() => toast(t('bank.openInApp')), 3600);
+  }
+  setUi({ panel: 'bank' });
+  bankSync.loadStatus();
 }
 
 function setOffline(offline) {
@@ -154,16 +197,15 @@ async function boot() {
       rules: bootData.rules,
       activeAccountId: accountId,
       transactions: data.transactions,
-      customCategories: data.customCategories || [],
-      savingsAccounts: data.savingsAccounts,
-      savingsHistory: data.savingsHistory,
-      savingsRecurring: data.savingsRecurring,
+      categories: data.categories,
+      ...savingsState(data),
     });
   } catch {
     set({ loaded: true, offline: true });
   }
 
   syncTabFromHash();
+  if (!get().offline) handleBankReturn();
 
   if ('serviceWorker' in navigator) {
     const registration = await navigator.serviceWorker.register('/sw.js').catch(() => null);

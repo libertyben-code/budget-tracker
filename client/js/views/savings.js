@@ -1,6 +1,8 @@
 import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
+import { refreshSavings } from '../app.js';
+import { categories } from '../derive.js';
 import { isoToDisplay } from '/shared/dates.js';
 
 let chart = null;
@@ -32,11 +34,24 @@ export function render(state, t) {
       <div class="row">
         <input id="new-savings-name" class="grow" placeholder="${esc(t('savings.savingsAccountName'))}" data-action-key="add-savings">
         <input id="new-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('savings.initialBalance'))}" style="width:130px" data-action-key="add-savings">
+      </div>
+      <div class="row">
+        ${categorySelect('new-savings-category', '', state, t)}
         <button class="btn small primary" data-action="add-savings">${esc(t('common.save'))}</button>
       </div>
     </div>` : ''}
     ${accounts.map(a => renderAccount(a, state, t, total)).join('') || `<p class="muted">${esc(t('savings.noAccounts'))}</p>`}
   </section>`;
+}
+
+function categorySelect(id, selected, state, t) {
+  return `
+        <label class="row grow" style="gap:6px"><span class="muted" style="font-size:0.8rem;white-space:nowrap">${esc(t('savings.fedBy'))}</span>
+          <select id="${id}" class="grow">
+            <option value="">${esc(t('savings.manual'))}</option>
+            ${categories(state).map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          </select>
+        </label>`;
 }
 
 function renderAccount(a, state, t, total) {
@@ -52,6 +67,9 @@ function renderAccount(a, state, t, total) {
       <div class="row">
         <input id="edit-savings-name" class="grow" value="${esc(a.name)}" placeholder="${esc(t('savings.name'))}">
         <input id="edit-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(a.balance)}" style="width:130px">
+      </div>
+      <div class="row">
+        ${categorySelect('edit-savings-category', a.category || '', state, t)}
         <button class="btn small primary" data-action="save-savings" data-id="${esc(a.id)}">${esc(t('common.save'))}</button>
         <button class="btn small" data-action="cancel-edit-savings">${esc(t('common.cancel'))}</button>
       </div>
@@ -63,21 +81,23 @@ function renderAccount(a, state, t, total) {
     <div class="row">
       <div class="grow">
         <strong>${esc(a.name)}</strong>
-        <div class="muted" style="font-size:0.8rem">${esc(t('savings.percentOfTotal', { percent: pct }))}</div>
+        <div class="muted" style="font-size:0.8rem">${esc(t('savings.percentOfTotal', { percent: pct }))}${a.category ? ` · ${esc(t('savings.fedByCategory', { category: a.category }))}` : ''}</div>
       </div>
       <span class="num" style="font-weight:650">${eur(a.balance)}</span>
       <button class="icon-btn accent" data-action="edit-savings" data-id="${esc(a.id)}" title="${esc(t('common.edit'))}">${icons.edit}</button>
       <button class="icon-btn danger" data-action="delete-savings" data-id="${esc(a.id)}" title="${esc(t('common.delete'))}">${icons.trash}</button>
     </div>
+    ${a.category ? '' : `
     <div class="row">
       <input id="sav-amount-${esc(a.id)}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('common.amount'))}" class="grow" style="max-width:160px">
       <button class="btn small" data-action="savings-op" data-id="${esc(a.id)}" data-type="deposit">＋ ${esc(t('savings.deposit'))}</button>
       <button class="btn small" data-action="savings-op" data-id="${esc(a.id)}" data-type="withdrawal">− ${esc(t('savings.withdraw'))}</button>
-    </div>
+    </div>`}
     <div class="row" style="gap:12px">
+      ${a.category ? '' : `
       <button class="btn small ghost" data-action="toggle-recurring" data-id="${esc(a.id)}">
         ${recurringOpen ? '▾' : '▸'} ${icons.repeat} ${esc(t('savings.recurring'))}${recurring.length ? ` (${recurring.length})` : ''}
-      </button>
+      </button>`}
       ${history.length > 0 ? `
       <button class="btn small ghost" data-action="toggle-history" data-id="${esc(a.id)}">
         ${historyOpen ? '▾' : '▸'} ${esc(t('savings.transactionHistory', { count: history.length }))}
@@ -121,8 +141,8 @@ export function afterRender(state) {
   // slot by stable account order so filters/deletions elsewhere never repaint survivors
   const slotByName = new Map(state.savingsAccounts.map((a, i) => [a.name, i]));
   const data = state.savingsAccounts
-    .filter(a => a.balance > 0)
     .map(a => ({ name: a.name, value: a.balance }))
+    .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const box = document.getElementById('savings-chart-box');
@@ -179,22 +199,23 @@ export const actions = {
   'add-savings': async () => {
     const name = document.getElementById('new-savings-name')?.value.trim();
     const balance = parseFloat(document.getElementById('new-savings-balance')?.value) || 0;
+    const category = document.getElementById('new-savings-category')?.value || null;
     if (!name || balance < 0) return;
-    const state = get();
-    const account = await api.createSavings(state.activeAccountId, name, balance);
-    state.ui.addingSavings = false;
-    set({ savingsAccounts: [...state.savingsAccounts, account] });
+    // a fed account's history comes from the server, so reload rather than append
+    await api.createSavings(name, balance, category);
+    get().ui.addingSavings = false;
+    await refreshSavings();
   },
   'edit-savings': (el) => setUi({ editingSavingsId: el.dataset.id }),
   'cancel-edit-savings': () => setUi({ editingSavingsId: null }),
   'save-savings': async (el) => {
     const name = document.getElementById('edit-savings-name')?.value.trim();
     const balance = parseFloat(document.getElementById('edit-savings-balance')?.value);
+    const category = document.getElementById('edit-savings-category')?.value || null;
     if (!name || Number.isNaN(balance) || balance < 0) return;
-    const updated = await api.patchSavings(el.dataset.id, { name, balance });
-    const state = get();
-    state.ui.editingSavingsId = null;
-    set({ savingsAccounts: state.savingsAccounts.map(a => a.id === updated.id ? updated : a) });
+    await api.patchSavings(el.dataset.id, { name, balance, category });
+    get().ui.editingSavingsId = null;
+    await refreshSavings();
   },
   'delete-savings': async (el, ev, t) => {
     if (!(await confirmDialog(t('savings.confirmDelete'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
