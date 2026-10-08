@@ -4,6 +4,14 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.1.1 — 2026-10-08
+
+### Fixes & improvements
+
+- **Saving a transaction on a wide screen keeps what you typed.** On a computer or tablet (640px and wider), adding or editing a transaction saved it as €0 with no description, today's date and Uncategorized, whatever you had entered. Phones were not affected.
+
+---
+
 ## 2.1.0 — 2026-10-07
 
 ### What's new
