@@ -5,7 +5,7 @@ import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
 import { loadStatus as loadBankStatus } from './bank-sync.js';
 
-const VERSION = 'v2.1.0';
+const VERSION = 'v2.1.1';
 
 const ACCENTS = ['indigo', 'violet', 'blue', 'green', 'amber', 'coral'];
 
