@@ -31,10 +31,10 @@ export function render(state, t) {
   const editCats = cats.includes('Uncategorized') ? cats : ['Uncategorized', ...cats];
   const editRow = (tx, isNew = false) => `
     <div class="tx-edit-grid" data-editing="${isNew ? 'new' : tx.id}">
-      <input id="edit-date" type="date" value="${esc(tx.date)}">
-      <input id="edit-amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">
-      <input id="edit-desc" class="span2" placeholder="${esc(t('common.description'))}" value="${esc(tx.description)}">
-      <select id="edit-cat" class="span2">
+      <input name="date" type="date" value="${esc(tx.date)}">
+      <input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">
+      <input name="description" class="span2" placeholder="${esc(t('common.description'))}" value="${esc(tx.description)}">
+      <select name="category" class="span2">
         ${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
       </select>
       <button class="btn primary" data-action="${isNew ? 'save-new-tx' : 'save-tx'}" ${isNew ? '' : `data-id="${tx.id}"`}>${esc(t('common.save'))}</button>
@@ -117,20 +117,23 @@ export function render(state, t) {
   </section>`;
 }
 
-function readEditForm() {
+// The form is rendered twice (cards + table, one hidden by CSS), so read the copy the clicked button sits in.
+function readEditForm(button) {
+  const grid = button.closest('.tx-edit-grid');
+  const field = (name) => grid.querySelector(`[name="${name}"]`).value;
   return {
-    date: document.getElementById('edit-date')?.value || todayIso(),
-    amount: parseFloat(document.getElementById('edit-amount')?.value) || 0,
-    description: document.getElementById('edit-desc')?.value.trim() || '',
-    category: document.getElementById('edit-cat')?.value || 'Uncategorized',
+    date: field('date') || todayIso(),
+    amount: parseFloat(field('amount')) || 0,
+    description: field('description').trim(),
+    category: field('category') || 'Uncategorized',
   };
 }
 
 export const actions = {
   'add-tx': () => set({ creatingTx: true, editingId: null }),
   'cancel-create': () => set({ creatingTx: false }),
-  'save-new-tx': async () => {
-    const form = readEditForm();
+  'save-new-tx': async (el) => {
+    const form = readEditForm(el);
     const state = get();
     const tx = await api.createTransaction(state.activeAccountId, {
       ...form,
@@ -167,7 +170,7 @@ export const actions = {
   },
   'save-tx': async (el) => {
     const id = Number(el.dataset.id);
-    const form = readEditForm();
+    const form = readEditForm(el);
     const state = get();
     const learnRule = Boolean(form.description && form.category && form.category !== 'Uncategorized');
     set({

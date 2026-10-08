@@ -238,6 +238,12 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-10-08 — Desktop Save stored blank transactions (branch: fix/duplicate-edit-form-ids)
+
+- **Bug.** At ≥ 640px, saving a new or edited transaction stored today's date, amount 0, an empty description and Uncategorized. `editRow()` renders in both `.tx-cards` and `.tx-table` (one hidden by CSS) under the same `edit-*` ids, and `getElementById` returned the hidden card copy. Phones were unaffected because the card copy is first and visible there.
+- **Fix.** `readEditForm(button)` reads from the clicked Save button's own `.tx-edit-grid`; the ids became `name` attributes. Both copies stay rendered, so a phone rotated mid-edit still saves the copy in use.
+- **Checked** in the dev harness, create and edit at 1024px and 375px, with the hidden copy holding different values each time: the server stored the visible form's values.
+
 ### 2026-10-06 — Global categories (branch: feature/global-categories, from feature/bank-sync)
 
 - **Ask.** A category should be usable in every budget account, not only the one it was created or used in.

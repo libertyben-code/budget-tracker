@@ -42,6 +42,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Adding a transaction then pressing Cancel no longer leaves an empty transaction — ＋ now opens a draft that only saves to the server on Save — OK
 - [x] `update.sh` backups were silently worthless — a `cp` of a WAL-mode `budget.db` captures a stale (possibly table-less) database; `backup.sh` now uses `sqlite3 .backup` — OK
+- [x] Saving a new or edited transaction at ≥ 640px stored blank values (amount 0, empty description) — the edit form is rendered in both the hidden cards and the visible table under the same ids, so `getElementById` read the hidden copy; Save now reads the form it sits in, and the ids are gone — OK
 
 ## Bank sync
 
