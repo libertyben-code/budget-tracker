@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { autoCategorize, guessCategory, dedupKey } from '../../../shared/categorize.js';
 import { parseImportCsv, toExportCsv } from '../../../shared/csv.js';
 import { isoToDisplay, todayIso } from '../../../shared/dates.js';
@@ -186,7 +187,7 @@ export function createApiRouter(db) {
   router.post('/accounts', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Name required' });
-    const id = `account_${Date.now()}`;
+    const id = `account_${randomUUID()}`;
     db.prepare('INSERT INTO accounts (id, name) VALUES (?, ?)').run(id, name);
     res.status(201).json(accountRow(db, id));
   });
@@ -444,7 +445,7 @@ export function createApiRouter(db) {
     if (!name || !Number.isFinite(balance) || balance < 0) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
-    const id = `savings_${Date.now()}`;
+    const id = `savings_${randomUUID()}`;
     db.prepare('INSERT INTO savings_accounts (id, name, balance, category) VALUES (?, ?, ?, ?)')
       .run(id, name, round2(balance - fedNet(db, category)), category);
     res.status(201).json(savingsRow(db, id));
@@ -483,7 +484,7 @@ export function createApiRouter(db) {
     const [y, m] = today.split('-').map(Number);
     let nextDate = monthDate(y, m, day);
     if (nextDate < today) nextDate = nextMonthDate(nextDate, day);
-    const id = `rec_${Date.now()}`;
+    const id = `rec_${randomUUID()}`;
     db.prepare('INSERT INTO savings_recurring (id, savings_account_id, amount, day, next_date) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.params.sid, amount, day, nextDate);
     res.status(201).json({ id, amount, day, nextDate });
@@ -513,7 +514,7 @@ export function createApiRouter(db) {
       db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?')
         .run(Number(newBalance.toFixed(2)), account.id);
       const entry = {
-        id: `tx_${Date.now()}`,
+        id: `tx_${randomUUID()}`,
         date: todayIso(),
         type,
         amount: value,

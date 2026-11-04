@@ -20,8 +20,6 @@ Format: `- [ ] description` pending, `- [x] description — OK` once fixed.
 
 ## Savings
 
-- [ ] Ids are `Date.now()`; `savings_history.id` is a global primary key, so two deposits in the same millisecond collide and answer 500. Two users make this likely — switch to `crypto.randomUUID()`.
-
 ## Joint Split
 
 ## Auth / UI

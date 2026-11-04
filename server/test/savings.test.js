@@ -156,3 +156,14 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 0);
   assert.equal(db.prepare("SELECT savings_account_id AS sid FROM bank_accounts WHERE id = 'b1'").get().sid, null);
 });
+
+test('deposits in the same millisecond each get their own history entry', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 0 }))).body;
+  const deposits = await Promise.all(
+    Array.from({ length: 5 }, () => post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 10 }))
+  );
+  assert.deepEqual(deposits.map(r => r.status), [200, 200, 200, 200, 200]);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 5);
+});

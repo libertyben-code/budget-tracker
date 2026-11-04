@@ -46,6 +46,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Transaction dates are validated — `POST`/`PATCH` refuse anything but `YYYY-MM-DD` instead of storing `[object Object]` that the month filters then hid — OK
 - [x] Savings amounts and balances must be finite — `"1e400"` stored Infinity, which serialised as `null` and broke the total and history — OK
 - [x] A request without a JSON body answers 400 instead of throwing — Express 5 leaves `req.body` undefined when no parser matches; it now defaults to `{}` — OK
+- [x] Generated ids use `crypto.randomUUID()` instead of `Date.now()` — two savings deposits in the same millisecond collided on `savings_history.id` and answered 500 — OK
 
 ## Bank sync
 
