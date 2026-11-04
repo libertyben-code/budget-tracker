@@ -4,6 +4,14 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.1.3 — 2026-11-04
+
+### Fixes & improvements
+
+- **An exported CSV can be imported again.** A description containing a comma (such as "Shop, Ltd") shifted the columns on import, so the amount came back as €0; quotes, line breaks and descriptions starting with `=`, `+`, `-` or `@` now come back exactly as exported.
+
+---
+
 ## 2.1.2 — 2026-11-04
 
 ### Fixes & improvements
