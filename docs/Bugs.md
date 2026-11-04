@@ -8,7 +8,6 @@ Format: `- [ ] description` pending, `- [x] description — OK` once fixed.
 
 ## Transactions
 
-- [ ] `shared/csv.js` cannot round-trip: import splits on bare commas while export quotes fields with commas and prefixes `'` to a leading `-`. `"Shop, Ltd",-5.5` comes back as amount 0, type `'-5.5`. The app cannot re-import its own export (found in review, 2026-09-28).
 - [ ] `PATCH`/`DELETE /transactions/:txId` and the batch routes take ids with no account scope. Harmless with one user; blocking for the auth rollout.
 
 ## Categorization

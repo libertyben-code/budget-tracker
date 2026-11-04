@@ -1,19 +1,58 @@
 import { displayToIso } from './dates.js';
 
+function parseRecords(text) {
+  const records = [];
+  let values = [];
+  let field = '';
+  let quoted = false;
+  let line = 1;
+  let recordLine = 1;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else { if (c === '\n') line++; field += c; }
+    } else if (c === '"' && !field.trim()) {
+      quoted = true;
+    } else if (c === ',') {
+      values.push(field);
+      field = '';
+    } else if (c === '\n') {
+      values.push(field);
+      records.push({ line: recordLine, values });
+      values = [];
+      field = '';
+      recordLine = ++line;
+    } else if (c !== '\r') {
+      field += c;
+    }
+  }
+  if (values.length || field) {
+    values.push(field);
+    records.push({ line: recordLine, values });
+  }
+  return records;
+}
+
+// Undoes csvText's formula guard, so the app's own export imports back unchanged.
+function stripFormulaGuard(s) {
+  return /^'[=+\-@\t\r]/.test(s) ? s.slice(1) : s;
+}
+
 export function parseImportCsv(text) {
-  const lines = text.split(/\r?\n/);
-  const headers = (lines[0] || '').split(',').map(h => h.trim());
+  const [header, ...records] = parseRecords(text);
+  const headers = (header?.values || []).map(h => h.trim());
   const rows = [];
   const failedLines = [];
 
-  lines.slice(1).forEach((line, idx) => {
-    if (!line.trim()) return;
-    const lineNumber = idx + 2;
+  records.forEach(({ line: lineNumber, values }) => {
+    if (values.every(v => !v.trim())) return;
 
-    const values = line.split(',');
     const row = {};
-    headers.forEach((header, i) => {
-      row[header] = values[i]?.trim() || '';
+    headers.forEach((h, i) => {
+      row[h] = stripFormulaGuard(values[i]?.trim() || '');
     });
 
     const description = row['Description'] || '';
