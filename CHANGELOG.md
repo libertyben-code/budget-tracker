@@ -4,6 +4,18 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.1.2 — 2026-11-04
+
+### Fixes & improvements
+
+- **Savings deposits made at the same moment are all recorded.** Two deposits arriving together could fail with an error; each now gets its own history entry.
+- **Out-of-range savings amounts are refused.** A balance or deposit too large to be a real number (such as `1e400`) used to be saved and broke the savings total and history from then on.
+- **Transaction dates are checked.** A transaction sent with a malformed date is refused instead of being saved and then silently hidden by the month filters.
+- **One-letter category rules are refused.** A single-character rule matched almost every transaction; rules now need at least two characters, and any one-letter rule already saved is ignored.
+- **Server dependencies updated** to their latest patched versions.
+
+---
+
 ## 2.1.1 — 2026-10-08
 
 ### Fixes & improvements
