@@ -1,6 +1,6 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { autoCategorize, guessCategory, dedupKey } from '../../../shared/categorize.js';
+import { autoCategorize, guessCategory, dedupKey, MIN_RULE_PATTERN } from '../../../shared/categorize.js';
 import { parseImportCsv, toExportCsv } from '../../../shared/csv.js';
 import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 
@@ -256,7 +256,7 @@ export function createApiRouter(db) {
     `).run(next.date, next.description, next.category, next.amount, req.params.txId);
 
     let rule = null;
-    if (learnRule && next.description && next.category && next.category !== 'Uncategorized') {
+    if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
       const pattern = next.description.toLowerCase().trim();
       db.prepare(`
         INSERT INTO category_rules (pattern, category) VALUES (?, ?)
@@ -350,7 +350,9 @@ export function createApiRouter(db) {
   router.post('/rules', (req, res) => {
     const pattern = (req.body.pattern || '').toLowerCase().trim();
     const category = (req.body.category || '').trim();
-    if (!pattern || !category) return res.status(400).json({ error: 'pattern and category required' });
+    if (pattern.length < MIN_RULE_PATTERN || !category) {
+      return res.status(400).json({ error: `pattern of at least ${MIN_RULE_PATTERN} characters and category required` });
+    }
     db.prepare(`
       INSERT INTO category_rules (pattern, category) VALUES (?, ?)
       ON CONFLICT(pattern) DO UPDATE SET category = excluded.category

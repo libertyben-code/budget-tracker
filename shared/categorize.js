@@ -1,6 +1,10 @@
+// a single character is a substring of nearly every description
+export const MIN_RULE_PATTERN = 2;
+
 export function autoCategorize(description, rules) {
   const desc = (description || '').toLowerCase();
   for (const rule of rules) {
+    if (rule.pattern.trim().length < MIN_RULE_PATTERN) continue;
     if (desc.includes(rule.pattern.toLowerCase())) return rule.category;
   }
   return 'Uncategorized';

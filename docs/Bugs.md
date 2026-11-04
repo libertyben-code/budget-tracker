@@ -14,7 +14,6 @@ Format: `- [ ] description` pending, `- [x] description — OK` once fixed.
 ## Categorization
 
 - [ ] Category rename/delete rewrite or delete `category_rules` for every account (`routes/api.js`): rules are global while categories are per account.
-- [ ] A one-character rule pattern matches every description (`shared/categorize.js`).
 
 ## Dashboard
 
