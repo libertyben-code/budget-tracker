@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { openDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
+import { autoCategorize } from '../../shared/categorize.js';
 
 function startApp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-categories-'));
@@ -119,4 +120,14 @@ test('v4 migration merges the per-account custom categories into one list', (t) 
 
   db.prepare("DELETE FROM accounts WHERE id = 'joint'").run();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_categories').get().n, 2, 'no longer owned by an account');
+});
+
+test('a one-character rule is refused, and one already stored matches nothing', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  assert.equal((await post(app.base, '/api/rules', { pattern: 'a', category: 'Groceries' })).status, 400);
+  assert.equal((await post(app.base, '/api/rules', { pattern: 'aldi', category: 'Groceries' })).status, 201);
+  const rules = [{ pattern: 'e', category: 'Fun' }, { pattern: 'aldi', category: 'Groceries' }];
+  assert.equal(autoCategorize('Netflix', rules), 'Uncategorized');
+  assert.equal(autoCategorize('ALDI Nord', rules), 'Groceries');
 });

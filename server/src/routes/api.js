@@ -1,9 +1,11 @@
 import express from 'express';
-import { autoCategorize, guessCategory, dedupKey } from '../../../shared/categorize.js';
+import { randomUUID } from 'node:crypto';
+import { autoCategorize, guessCategory, dedupKey, MIN_RULE_PATTERN } from '../../../shared/categorize.js';
 import { parseImportCsv, toExportCsv } from '../../../shared/csv.js';
 import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 
 const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state, source';
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function accountRow(db, id) {
   const row = db.prepare(`
@@ -185,7 +187,7 @@ export function createApiRouter(db) {
   router.post('/accounts', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Name required' });
-    const id = `account_${Date.now()}`;
+    const id = `account_${randomUUID()}`;
     db.prepare('INSERT INTO accounts (id, name) VALUES (?, ?)').run(id, name);
     res.status(201).json(accountRow(db, id));
   });
@@ -218,6 +220,7 @@ export function createApiRouter(db) {
 
   router.post('/accounts/:id/transactions', requireAccount, (req, res) => {
     const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
+    if (date && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount);
     const info = db.prepare(`
       INSERT INTO transactions (account_id, date, description, category, amount, type, state, source)
@@ -239,6 +242,7 @@ export function createApiRouter(db) {
     const current = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
     if (!current) return res.status(404).json({ error: 'Transaction not found' });
     const { date, description, category, amount, learnRule } = req.body;
+    if (date != null && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount ?? current.amount);
     const next = {
       date: String(date ?? current.date),
@@ -252,7 +256,7 @@ export function createApiRouter(db) {
     `).run(next.date, next.description, next.category, next.amount, req.params.txId);
 
     let rule = null;
-    if (learnRule && next.description && next.category && next.category !== 'Uncategorized') {
+    if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
       const pattern = next.description.toLowerCase().trim();
       db.prepare(`
         INSERT INTO category_rules (pattern, category) VALUES (?, ?)
@@ -304,7 +308,7 @@ export function createApiRouter(db) {
   // --- Import / export ---
 
   router.post('/accounts/:id/import', requireAccount, express.text({ type: 'text/csv', limit: '20mb' }), (req, res) => {
-    const { rows, failedLines } = parseImportCsv(req.body || '');
+    const { rows, failedLines } = parseImportCsv(typeof req.body === 'string' ? req.body : '');
     const { imported, skippedDuplicates } = importTransactions(db, req.params.id, rows);
     res.json({ imported, skippedDuplicates, failedLines });
   });
@@ -346,7 +350,9 @@ export function createApiRouter(db) {
   router.post('/rules', (req, res) => {
     const pattern = (req.body.pattern || '').toLowerCase().trim();
     const category = (req.body.category || '').trim();
-    if (!pattern || !category) return res.status(400).json({ error: 'pattern and category required' });
+    if (pattern.length < MIN_RULE_PATTERN || !category) {
+      return res.status(400).json({ error: `pattern of at least ${MIN_RULE_PATTERN} characters and category required` });
+    }
     db.prepare(`
       INSERT INTO category_rules (pattern, category) VALUES (?, ?)
       ON CONFLICT(pattern) DO UPDATE SET category = excluded.category
@@ -438,10 +444,10 @@ export function createApiRouter(db) {
     const name = (req.body.name || '').trim();
     const balance = Number(req.body.balance);
     const category = String(req.body.category || '').trim() || null;
-    if (!name || Number.isNaN(balance) || balance < 0) {
+    if (!name || !Number.isFinite(balance) || balance < 0) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
-    const id = `savings_${Date.now()}`;
+    const id = `savings_${randomUUID()}`;
     db.prepare('INSERT INTO savings_accounts (id, name, balance, category) VALUES (?, ?, ?, ?)')
       .run(id, name, round2(balance - fedNet(db, category)), category);
     res.status(201).json(savingsRow(db, id));
@@ -454,7 +460,7 @@ export function createApiRouter(db) {
     const name = req.body.name !== undefined ? String(req.body.name).trim() : current.name;
     const balance = req.body.balance !== undefined ? Number(req.body.balance) : current.balance;
     const category = req.body.category !== undefined ? (String(req.body.category || '').trim() || null) : current.category;
-    if (!name || Number.isNaN(balance) || (req.body.balance !== undefined && balance < 0)) {
+    if (!name || !Number.isFinite(balance) || (req.body.balance !== undefined && balance < 0)) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     db.prepare('UPDATE savings_accounts SET name = ?, balance = ?, category = ? WHERE id = ?')
@@ -473,14 +479,14 @@ export function createApiRouter(db) {
     if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
     const amount = Number(req.body.amount);
     const day = Number(req.body.day);
-    if (Number.isNaN(amount) || amount <= 0 || !Number.isInteger(day) || day < 1 || day > 28) {
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(day) || day < 1 || day > 28) {
       return res.status(400).json({ error: 'positive amount and day 1-28 required' });
     }
     const today = todayIso();
     const [y, m] = today.split('-').map(Number);
     let nextDate = monthDate(y, m, day);
     if (nextDate < today) nextDate = nextMonthDate(nextDate, day);
-    const id = `rec_${Date.now()}`;
+    const id = `rec_${randomUUID()}`;
     db.prepare('INSERT INTO savings_recurring (id, savings_account_id, amount, day, next_date) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.params.sid, amount, day, nextDate);
     res.status(201).json({ id, amount, day, nextDate });
@@ -494,7 +500,7 @@ export function createApiRouter(db) {
   router.post('/savings/:sid/transactions', (req, res) => {
     const { type, amount } = req.body;
     const value = Number(amount);
-    if (!['deposit', 'withdrawal'].includes(type) || Number.isNaN(value) || value <= 0) {
+    if (!['deposit', 'withdrawal'].includes(type) || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: 'type deposit|withdrawal and positive amount required' });
     }
     if (db.prepare('SELECT category FROM savings_accounts WHERE id = ?').get(req.params.sid)?.category) {
@@ -510,7 +516,7 @@ export function createApiRouter(db) {
       db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?')
         .run(Number(newBalance.toFixed(2)), account.id);
       const entry = {
-        id: `tx_${Date.now()}`,
+        id: `tx_${randomUUID()}`,
         date: todayIso(),
         type,
         amount: value,
