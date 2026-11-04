@@ -4,6 +4,7 @@ import { parseImportCsv, toExportCsv } from '../../../shared/csv.js';
 import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 
 const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state, source';
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function accountRow(db, id) {
   const row = db.prepare(`
@@ -218,6 +219,7 @@ export function createApiRouter(db) {
 
   router.post('/accounts/:id/transactions', requireAccount, (req, res) => {
     const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
+    if (date && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount);
     const info = db.prepare(`
       INSERT INTO transactions (account_id, date, description, category, amount, type, state, source)
@@ -239,6 +241,7 @@ export function createApiRouter(db) {
     const current = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
     if (!current) return res.status(404).json({ error: 'Transaction not found' });
     const { date, description, category, amount, learnRule } = req.body;
+    if (date != null && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount ?? current.amount);
     const next = {
       date: String(date ?? current.date),
@@ -304,7 +307,7 @@ export function createApiRouter(db) {
   // --- Import / export ---
 
   router.post('/accounts/:id/import', requireAccount, express.text({ type: 'text/csv', limit: '20mb' }), (req, res) => {
-    const { rows, failedLines } = parseImportCsv(req.body || '');
+    const { rows, failedLines } = parseImportCsv(typeof req.body === 'string' ? req.body : '');
     const { imported, skippedDuplicates } = importTransactions(db, req.params.id, rows);
     res.json({ imported, skippedDuplicates, failedLines });
   });
@@ -438,7 +441,7 @@ export function createApiRouter(db) {
     const name = (req.body.name || '').trim();
     const balance = Number(req.body.balance);
     const category = String(req.body.category || '').trim() || null;
-    if (!name || Number.isNaN(balance) || balance < 0) {
+    if (!name || !Number.isFinite(balance) || balance < 0) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     const id = `savings_${Date.now()}`;
@@ -454,7 +457,7 @@ export function createApiRouter(db) {
     const name = req.body.name !== undefined ? String(req.body.name).trim() : current.name;
     const balance = req.body.balance !== undefined ? Number(req.body.balance) : current.balance;
     const category = req.body.category !== undefined ? (String(req.body.category || '').trim() || null) : current.category;
-    if (!name || Number.isNaN(balance) || (req.body.balance !== undefined && balance < 0)) {
+    if (!name || !Number.isFinite(balance) || (req.body.balance !== undefined && balance < 0)) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     db.prepare('UPDATE savings_accounts SET name = ?, balance = ?, category = ? WHERE id = ?')
@@ -473,7 +476,7 @@ export function createApiRouter(db) {
     if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
     const amount = Number(req.body.amount);
     const day = Number(req.body.day);
-    if (Number.isNaN(amount) || amount <= 0 || !Number.isInteger(day) || day < 1 || day > 28) {
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(day) || day < 1 || day > 28) {
       return res.status(400).json({ error: 'positive amount and day 1-28 required' });
     }
     const today = todayIso();
@@ -494,7 +497,7 @@ export function createApiRouter(db) {
   router.post('/savings/:sid/transactions', (req, res) => {
     const { type, amount } = req.body;
     const value = Number(amount);
-    if (!['deposit', 'withdrawal'].includes(type) || Number.isNaN(value) || value <= 0) {
+    if (!['deposit', 'withdrawal'].includes(type) || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: 'type deposit|withdrawal and positive amount required' });
     }
     if (db.prepare('SELECT category FROM savings_accounts WHERE id = ?').get(req.params.sid)?.category) {

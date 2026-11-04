@@ -27,6 +27,12 @@ export function createApp(db, { bank }) {
   });
 
   app.use(express.json({ limit: '5mb' }));
+  // Express 5 leaves req.body undefined when no parser matched, and every route reads it.
+  // A later route-level parser (the CSV import's express.text) still replaces it.
+  app.use((req, res, next) => {
+    req.body ??= {};
+    next();
+  });
   app.use('/api/bank', createBankRouter(db, bank));
   app.use('/api', createApiRouter(db));
   // Anything under /api the router did not claim is a 404, not the SPA shell:
