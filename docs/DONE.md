@@ -48,6 +48,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] A request without a JSON body answers 400 instead of throwing — Express 5 leaves `req.body` undefined when no parser matches; it now defaults to `{}` — OK
 - [x] Generated ids use `crypto.randomUUID()` instead of `Date.now()` — two savings deposits in the same millisecond collided on `savings_history.id` and answered 500 — OK
 - [x] A one-character rule pattern no longer matches every description — rules need at least 2 characters, and shorter ones already stored are skipped — OK
+- [x] Server dependencies upgraded with `npm audit fix` (`qs`, `body-parser`, `proxy-addr`, `content-type`) — audit clean — OK
 
 ## Bank sync
 
