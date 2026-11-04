@@ -49,6 +49,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Generated ids use `crypto.randomUUID()` instead of `Date.now()` — two savings deposits in the same millisecond collided on `savings_history.id` and answered 500 — OK
 - [x] A one-character rule pattern no longer matches every description — rules need at least 2 characters, and shorter ones already stored are skipped — OK
 - [x] Server dependencies upgraded with `npm audit fix` (`qs`, `body-parser`, `proxy-addr`, `content-type`) — audit clean — OK
+- [x] Category rename/delete reaching `category_rules` for every account — intended since global categories (2026-10-06): categories and rules are both global — OK
 
 ## Bank sync
 
