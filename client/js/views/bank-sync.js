@@ -215,7 +215,7 @@ function summarize(results, t) {
 async function remap(bankAccountId, patch, t) {
   const status = await api.bankPatchAccount(bankAccountId, patch);
   setUi({ bankStatus: status, bankNewAccountFor: null, bankNewSavingsFor: null });
-  if (status.moved) toast(t('bank.moved', { count: status.moved }));
+  if (status.moved) toast(t('bank.moved', { count: status.moved }), { type: 'success' });
   await loadAccount(get().activeAccountId);
 }
 
@@ -293,7 +293,7 @@ export const actions = {
     try {
       const { results, status } = await api.bankSync(el.dataset.id || undefined);
       setUi({ bankStatus: status });
-      toast(summarize(results, t));
+      toast(summarize(results, t), { type: results.some(r => r.error) ? 'error' : 'success' });
       if (results.some(r => r.imported > 0 || r.mode === 'savings')) await loadAccount(get().activeAccountId);
     } finally {
       setUi({ bankBusy: false });
