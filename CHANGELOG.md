@@ -4,6 +4,14 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.1.4 — 2026-11-07
+
+### Fixes & improvements
+
+- **Edits and deletes stay within their own budget account.** Changing, deleting or batch-editing a transaction now goes through the account it belongs to, and the server refuses to touch another account's transactions. Nothing changes in use; it prepares for adding logins.
+
+---
+
 ## 2.1.3 — 2026-11-04
 
 ### Fixes & improvements
