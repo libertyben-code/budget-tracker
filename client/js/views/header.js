@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
 import { loadStatus as loadBankStatus } from './bank-sync.js';
+import { todayIso } from '/shared/dates.js';
 
 const VERSION = 'v2.1.4';
 
@@ -77,6 +78,28 @@ export function render(state, t) {
               ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
             </div>`).join('')}
             <div class="menu-sep"></div>
+            ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
+            <div role="group" aria-labelledby="balance-form-title">
+              <div class="menu-heading" id="balance-form-title">${esc(t('header.balanceOf', { name: activeAccount.name }))}</div>
+              <div class="account-add">
+                <div class="field grow">
+                  <label for="opening-balance">${esc(t('header.balanceAmount'))}</label>
+                  <input id="opening-balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00"
+                         value="${esc(activeAccount.openingBalance ?? '')}" data-action-key="save-balance">
+                </div>
+              </div>
+              <div class="account-add">
+                <div class="field grow">
+                  <label for="opening-balance-date">${esc(t('header.balanceAsOf'))}</label>
+                  <input id="opening-balance-date" type="date" value="${esc(activeAccount.openingBalanceDate || todayIso())}" data-action-key="save-balance">
+                </div>
+              </div>
+              <div class="account-add">
+                <button class="btn small grow" data-action="cancel-balance">${esc(t('common.cancel'))}</button>
+                <button class="btn small primary grow" data-action="save-balance">${esc(t('common.save'))}</button>
+              </div>
+            </div>` : `
+            <button class="menu-item" data-action="open-balance-form">${esc(t('header.setBalance'))}</button>`}
             ${state.addingAccount ? `
             <div class="account-add">
               <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
@@ -184,7 +207,22 @@ export const actions = {
   'toggle-account-menu': () => {
     const open = get().ui.accountMenuOpen;
     if (open) set({ addingAccount: false });
-    setUi({ accountMenuOpen: !open, settingsOpen: false });
+    setUi({ accountMenuOpen: !open, settingsOpen: false, balanceFormOpen: false });
+  },
+  'open-balance-form': () => {
+    setUi({ balanceFormOpen: true });
+    document.getElementById('opening-balance').focus();
+  },
+  'cancel-balance': () => setUi({ balanceFormOpen: false }),
+  'save-balance': async (el, ev, t) => {
+    const amount = document.getElementById('opening-balance').value.trim();
+    const date = document.getElementById('opening-balance-date').value;
+    if (amount === '' || !Number.isFinite(Number(amount)) || !date) return toast(t('header.balanceInvalid'));
+    const state = get();
+    const account = await api.patchAccountSettings(state.activeAccountId, { openingBalance: Number(amount), openingBalanceDate: date });
+    setUi({ accountMenuOpen: false, balanceFormOpen: false });
+    set({ accounts: state.accounts.map(a => a.id === account.id ? account : a) });
+    toast(t('header.balanceSaved'), { type: 'success' });
   },
   'nav': (el) => {
     location.hash = `#/${el.dataset.tab}`;

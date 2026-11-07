@@ -20,6 +20,7 @@ export const api = {
   createAccount: (name, currency) => request('POST', '/accounts', { name, currency }),
   patchJointSettings: (patch) => request('PATCH', '/settings/joint', patch),
   deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
+  patchAccountSettings: (id, patch) => request('PATCH', `/accounts/${id}/settings`, patch),
 
   createTransaction: (accountId, tx) => request('POST', `/accounts/${accountId}/transactions`, tx),
   patchTransaction: (accountId, id, patch) => request('PATCH', `/accounts/${accountId}/transactions/${id}`, patch),

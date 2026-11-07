@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   salary_person2      TEXT NOT NULL DEFAULT '',
   joint_target_amount TEXT NOT NULL DEFAULT '',
   currency            TEXT NOT NULL DEFAULT 'EUR',
+  -- manual accounts: balance at the start of opening_balance_date, before that day's rows
+  opening_balance      REAL,
+  opening_balance_date TEXT,
   created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -105,9 +108,12 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   sync_from        TEXT,
   synced_to        TEXT,
   last_sync_at     TEXT,
-  last_sync_status TEXT
+  last_sync_status TEXT,
+  -- the bank's own figure at the last sync that could read it, and the day it refers to
+  balance          REAL,
+  balance_date     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '6');
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '7');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

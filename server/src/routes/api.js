@@ -7,13 +7,37 @@ import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state, source';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// A budget account fed by enabled bank accounts takes the sum of their last bank balances,
+// dated by the oldest; one that has never been read leaves the balance unknown. Otherwise an
+// opening balance plus every row from its date on.
 function accountRow(db, id) {
   const row = db.prepare(`
-    SELECT a.id, a.name, a.currency,
+    SELECT a.id, a.name, a.currency, a.opening_balance AS openingBalance, a.opening_balance_date AS openingBalanceDate,
            (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS txCount
     FROM accounts a WHERE a.id = ?
   `).get(id);
-  return row;
+  const bank = db.prepare(`
+    SELECT COUNT(*) AS feeds, COUNT(balance) AS known, SUM(balance) AS total, MIN(balance_date) AS asOf
+    FROM bank_accounts WHERE account_id = ? AND enabled = 1
+  `).get(id);
+  if (bank.feeds) {
+    const complete = bank.known === bank.feeds;
+    return { ...row, balance: complete ? round2(bank.total) : null, balanceAsOf: complete ? bank.asOf : null, balanceSource: 'bank' };
+  }
+  if (row.openingBalanceDate) {
+    const since = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total, MAX(date) AS last FROM transactions WHERE account_id = ? AND date >= ?')
+      .get(id, row.openingBalanceDate);
+    const asOf = since.last && since.last > row.openingBalanceDate ? since.last : row.openingBalanceDate;
+    return { ...row, balance: round2(row.openingBalance + since.total), balanceAsOf: asOf, balanceSource: 'manual' };
+  }
+  return { ...row, balance: null, balanceAsOf: null, balanceSource: null };
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && ISO_DATE.test(value)
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 }
 
 // one list for every budget account: what their transactions use plus the custom ones,
@@ -123,8 +147,6 @@ function applyDueRecurring(db) {
   })();
 }
 
-const round2 = (n) => Math.round(n * 100) / 100;
-
 // A category-fed savings account: every budget account's transactions in that category are its
 // movements — a debit is a deposit, a credit a withdrawal — on top of the stored opening balance.
 function fedMovements(db, category) {
@@ -221,6 +243,33 @@ export function createApiRouter(db) {
     const id = `account_${randomUUID()}`;
     db.prepare('INSERT INTO accounts (id, name, currency) VALUES (?, ?, ?)').run(id, name, currency);
     res.status(201).json(accountRow(db, id));
+  });
+
+  // '' or null clears a field; the amount and its date are set or cleared together
+  router.patch('/accounts/:id/settings', requireAccount, (req, res) => {
+    const current = db.prepare('SELECT opening_balance AS openingBalance, opening_balance_date AS openingBalanceDate FROM accounts WHERE id = ?')
+      .get(req.params.id);
+    const next = { ...current };
+    for (const [key, value] of Object.entries(req.body)) {
+      const cleared = value === '' || value === null;
+      if (key === 'openingBalance') {
+        const amount = Number(value);
+        const valid = cleared || ((typeof value === 'number' || typeof value === 'string') && Number.isFinite(amount));
+        if (!valid) return res.status(400).json({ error: 'openingBalance must be an amount' });
+        next.openingBalance = cleared ? null : round2(amount);
+      } else if (key === 'openingBalanceDate') {
+        if (!cleared && !isIsoDate(value)) return res.status(400).json({ error: 'openingBalanceDate must be YYYY-MM-DD' });
+        next.openingBalanceDate = cleared ? null : value;
+      } else {
+        return res.status(400).json({ error: `Unknown setting: ${key}` });
+      }
+    }
+    if ((next.openingBalance === null) !== (next.openingBalanceDate === null)) {
+      return res.status(400).json({ error: 'openingBalance and openingBalanceDate are set together' });
+    }
+    db.prepare('UPDATE accounts SET opening_balance = ?, opening_balance_date = ? WHERE id = ?')
+      .run(next.openingBalance, next.openingBalanceDate, req.params.id);
+    res.json(accountRow(db, req.params.id));
   });
 
   router.delete('/accounts/:id', requireAccount, (req, res) => {

@@ -69,12 +69,19 @@ test('isBooked keeps booked and status-less rows, drops pending', () => {
 
 test('pickBalance prefers closing booked, then available, then whatever is numeric', () => {
   const amt = (a) => ({ amount: a, currency: 'EUR' });
-  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLBD', balance_amount: amt('2') }]), 2);
-  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLAV', balance_amount: amt('3') }]), 3);
-  assert.equal(pickBalance([{ balance_type: 'OTHR', balance_amount: amt('7.5') }]), 7.5);
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLBD', balance_amount: amt('2') }]).amount, 2);
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLAV', balance_amount: amt('3') }]).amount, 3);
+  assert.equal(pickBalance([{ balance_type: 'OTHR', balance_amount: amt('7.5') }]).amount, 7.5);
   assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt('abc') }]), null);
   assert.equal(pickBalance([]), null);
   assert.equal(pickBalance(undefined), null);
+});
+
+test('pickBalance dates the figure by its reference date, then its last change, then today', () => {
+  const amt = { amount: '5', currency: 'EUR' };
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt, reference_date: '2026-11-01' }], '2026-11-07').date, '2026-11-01');
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt, last_change_date_time: '2026-11-03T08:12:00Z' }], '2026-11-07').date, '2026-11-03');
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt }], '2026-11-07').date, '2026-11-07');
 });
 
 test('syncWindow: overlap behind the cursor, floored by sync_from, wide default on first sync', () => {
