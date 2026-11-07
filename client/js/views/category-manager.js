@@ -4,12 +4,36 @@ import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount } from '../app.js';
 
+function deleteRow(category, count, t) {
+  return `
+        <div class="panel-list-item delete-confirm" id="delete-cat-row" role="group" aria-labelledby="delete-cat-title" tabindex="-1">
+          <h3 id="delete-cat-title">${esc(t('categoryManager.deleteTitle', { category }))}</h3>
+          ${count > 0 ? `
+          <p class="muted">${esc(t('categoryManager.hasTransactions', { count }))} ${esc(t('categoryManager.whatToDo'))}</p>
+          <div class="delete-choices">
+            <div class="delete-choice">
+              <input type="radio" id="del-mode-uncategorized" name="del-mode" value="uncategorized" checked>
+              <label for="del-mode-uncategorized">${esc(t('categoryManager.setUncategorized'))}</label>
+            </div>
+            <div class="delete-choice">
+              <input type="radio" id="del-mode-new" name="del-mode" value="new">
+              <label for="del-mode-new">${esc(t('categoryManager.enterNewCategory'))}</label>
+            </div>
+            <input id="del-replacement" aria-label="${esc(t('categoryManager.newCategoryName'))}" placeholder="${esc(t('categoryManager.newCategoryName'))}" data-action-input="pick-new-replacement" data-action-key="apply-delete-category">
+          </div>` : `
+          <p class="muted">${esc(t('categoryManager.emptyDelete'))}</p>`}
+          <div class="row" style="justify-content:flex-end">
+            <button class="btn" data-action="cancel-delete-category">${esc(t('common.cancel'))}</button>
+            <button class="btn danger" data-action="apply-delete-category">${esc(t('categoryManager.deleteCategory'))}</button>
+          </div>
+        </div>`;
+}
+
 export function render(state, t) {
   if (state.ui.panel !== 'categories') return '';
   const counts = Object.fromEntries(state.categories.map(c => [c.name, c.count]));
   const cats = categories(state);
   const deleting = state.ui.deletingCategory;
-  const deletingCount = deleting ? (counts[deleting] || 0) : 0;
 
   return `
   <div class="modal-backdrop" data-action="close-panel" data-self-only>
@@ -29,7 +53,7 @@ export function render(state, t) {
           <input id="rename-cat-input" class="grow" value="${esc(c)}" data-action-key="apply-rename-category" data-cat="${esc(c)}">
           <button class="btn small primary" data-action="apply-rename-category" data-cat="${esc(c)}">${esc(t('common.save'))}</button>
           <button class="btn small" data-action="cancel-rename-category">${esc(t('common.cancel'))}</button>
-        </div>` : `
+        </div>` : deleting === c ? deleteRow(c, counts[c] || 0, t) : `
         <div class="panel-list-item">
           <span class="grow">${esc(c)}</span>
           <span class="badge">${esc(t('categoryManager.transactionCount', { count: counts[c] || 0, suffix: (counts[c] || 0) === 1 ? '' : 's' }))}</span>
@@ -37,22 +61,6 @@ export function render(state, t) {
           <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">${icons.trash}</button>
         </div>`).join('')}
       </div>
-      ${deleting ? `
-      <div class="card" style="margin-top:12px">
-        <h3>${esc(t('categoryManager.deleteTitle', { category: deleting }))}</h3>
-        ${deletingCount > 0 ? `
-        <p class="muted">${esc(t('categoryManager.hasTransactions', { count: deletingCount }))} ${esc(t('categoryManager.whatToDo'))}</p>
-        <div class="field">
-          <label class="row" style="gap:6px"><input type="radio" name="del-mode" value="uncategorized" checked> ${esc(t('categoryManager.setUncategorized'))}</label>
-          <label class="row" style="gap:6px"><input type="radio" name="del-mode" value="new"> ${esc(t('categoryManager.enterNewCategory'))}</label>
-          <input id="del-replacement" placeholder="${esc(t('categoryManager.newCategoryName'))}">
-        </div>` : `
-        <p class="muted">${esc(t('categoryManager.emptyDelete'))}</p>`}
-        <div class="row" style="justify-content:flex-end">
-          <button class="btn" data-action="cancel-delete-category">${esc(t('common.cancel'))}</button>
-          <button class="btn danger" data-action="apply-delete-category">${esc(t('categoryManager.deleteCategory'))}</button>
-        </div>
-      </div>` : ''}
     </div>
   </div>`;
 }
@@ -84,8 +92,16 @@ export const actions = {
     state.ui.editingCategory = null;
     await loadAccount(state.activeAccountId);
   },
-  'start-delete-category': (el) => setUi({ deletingCategory: el.dataset.cat, editingCategory: null }),
+  'start-delete-category': (el) => {
+    setUi({ deletingCategory: el.dataset.cat, editingCategory: null });
+    const row = document.getElementById('delete-cat-row');
+    row?.scrollIntoView({ block: 'nearest' });
+    row?.focus({ preventScroll: true });
+  },
   'cancel-delete-category': () => setUi({ deletingCategory: null }),
+  'pick-new-replacement': () => {
+    document.getElementById('del-mode-new').checked = true;
+  },
   'apply-delete-category': async () => {
     const state = get();
     const category = state.ui.deletingCategory;
@@ -93,7 +109,10 @@ export const actions = {
     const replacement = mode === 'new'
       ? document.getElementById('del-replacement')?.value.trim()
       : 'Uncategorized';
-    if (!replacement || replacement === category) return;
+    if (!replacement || replacement === category) {
+      document.getElementById('del-replacement')?.focus();
+      return;
+    }
     await api.deleteCategory(category, replacement);
     state.ui.deletingCategory = null;
     await loadAccount(state.activeAccountId);
