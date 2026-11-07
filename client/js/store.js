@@ -27,7 +27,6 @@ const state = {
   sort: { key: null, direction: 'asc' },
   selection: new Set(),
   visibleCount: 100,
-  editingId: null,
   creatingTx: false,
   addingAccount: false,
   ui: {

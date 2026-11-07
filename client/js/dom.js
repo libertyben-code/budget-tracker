@@ -46,7 +46,9 @@ const toastRegions = {
 let dismissCurrentToast = () => {};
 
 // type: 'error' (default) | 'success' | 'info'. action: { label, onClick } adds a button.
-export function toast(message, { type = 'error', action } = {}) {
+// onExpire runs when the toast runs out or the next toast replaces it, not after its action or
+// the returned dismiss().
+export function toast(message, { type = 'error', action, onExpire } = {}) {
   dismissCurrentToast();
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
@@ -56,8 +58,16 @@ export function toast(message, { type = 'error', action } = {}) {
   el.appendChild(text);
 
   let timer;
-  const dismiss = () => { clearTimeout(timer); el.remove(); };
-  const arm = () => { timer = setTimeout(dismiss, action ? 6000 : 3500); };
+  let open = true;
+  const dismiss = () => {
+    const wasOpen = open;
+    open = false;
+    clearTimeout(timer);
+    el.remove();
+    return wasOpen;
+  };
+  const expire = () => { if (dismiss()) onExpire?.(); };
+  const arm = () => { timer = setTimeout(expire, action ? 6000 : 3500); };
   if (action) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -72,8 +82,9 @@ export function toast(message, { type = 'error', action } = {}) {
     el.addEventListener('focusout', arm);
   }
   (type === 'error' ? toastRegions.alert : toastRegions.polite).appendChild(el);
-  dismissCurrentToast = dismiss;
+  dismissCurrentToast = expire;
   arm();
+  return dismiss;
 }
 
 // styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop

@@ -197,6 +197,31 @@ button.chip-select {
 .picker-option.current { color: var(--accent-strong); font-weight: 600; }
 .picker-option.action { color: var(--accent-strong); font-weight: 550; }
 
+.tx-sheet:focus { outline: none; }
+@media (min-width: 640px) {
+  .tx-sheet { max-width: 440px; }
+}
+.tx-sheet .modal-head { align-items: flex-start; gap: var(--space-3); }
+.tx-sheet .modal-head h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.tx-sheet-amount { margin: 0 0 var(--space-3); font-size: 1.75rem; font-weight: 700; }
+.tx-sheet-facts { margin: 0 0 var(--space-4); }
+.tx-sheet-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.tx-sheet-facts dt { flex-shrink: 0; color: var(--muted); font-size: 0.9rem; }
+.tx-sheet-facts dd { margin: 0; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.tx-sheet-facts .chip-select { max-width: 100%; }
+.tx-sheet-actions { display: flex; gap: var(--space-2); }
+.tx-sheet-actions .btn { flex: 1; }
+.btn.tx-sheet-delete { color: var(--danger); }
+.tx-sheet .tx-edit-grid > .btn { margin-top: var(--space-2); }
+
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3); }
 .field label { font-size: 0.85rem; color: var(--muted); }
 
