@@ -1,4 +1,4 @@
-import { esc, eur, eurSigned, icons, checkPill, toast, confirmDialog } from '../dom.js';
+import { esc, eur, eurSigned, icons, checkPill, toast } from '../dom.js';
 import { get, set, setUi, setFilter } from '../store.js';
 import { api } from '../api.js';
 import { filteredTransactions, stats, accountBalance, dayTitle, monthTitle } from '../derive.js';
@@ -31,6 +31,12 @@ function dayHeading(iso, lang, t) {
   const name = new Intl.DateTimeFormat(localeOf(lang), { weekday: 'long', day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })
     .format(new Date(year, month - 1, day));
   return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+function longDate(iso, lang) {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat(localeOf(lang), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    .format(new Date(year, month - 1, day));
 }
 
 function emptyMessage(f, lang, t) {
@@ -80,6 +86,8 @@ export function renderTiles(state, rows, t) {
   </div>`;
 }
 
+const editField = (label, control, span2 = false) => `<div class="tx-field${span2 ? ' span2' : ''}"><label><span>${esc(label)}</span>${control}</label></div>`;
+
 export function render(state, t) {
   const filtered = filteredTransactions(state);
   const visible = filtered.slice(0, state.visibleCount);
@@ -87,32 +95,28 @@ export function render(state, t) {
   const selecting = Boolean(state.selecting) || selection.size > 0;
   const allVisibleSelected = filtered.length > 0 && filtered.every(tx => selection.has(tx.id));
   const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
+  const rowAction = selecting ? 'toggle-select' : 'open-tx';
+  const opensSheet = selecting ? '' : ' aria-haspopup="dialog"';
 
-  const editField = (label, control, span2 = false) => `<div class="tx-field${span2 ? ' span2' : ''}"><label><span>${esc(label)}</span>${control}</label></div>`;
-  const editRow = (tx, isNew = false) => {
-    const key = isNew ? 'new' : tx.id;
-    const v = state.txDraft?.key === key ? state.txDraft : tx;
-    return `
-    <div class="tx-edit-grid" data-editing="${key}">
-      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(v.date)}">`)}
-      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(v.amount)}">`)}
-      ${editField(t('common.description'), `<input name="description" value="${esc(v.description)}">`, true)}
-      ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(v.category)}"><button type="button" class="chip-select" data-action="pick-form-category" aria-haspopup="dialog">${esc(v.category)}</button>`, true)}
-      <button class="btn primary" data-action="${isNew ? 'save-new-tx' : 'save-tx'}" ${isNew ? '' : `data-id="${tx.id}"`}>${esc(t('common.save'))}</button>
-      <button class="btn" data-action="${isNew ? 'cancel-create' : 'cancel-edit'}">${esc(t('common.cancel'))}</button>
+  const draft = state.txDraft || { date: todayIso(), amount: '', description: '', category: 'Uncategorized' };
+  const createForm = `
+    <div class="tx-edit-grid">
+      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(draft.date)}">`)}
+      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(draft.amount)}">`)}
+      ${editField(t('common.description'), `<input name="description" value="${esc(draft.description)}">`, true)}
+      ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(draft.category)}"><button type="button" class="chip-select" data-action="pick-form-category" aria-haspopup="dialog">${esc(draft.category)}</button>`, true)}
+      <button class="btn primary" data-action="save-new-tx">${esc(t('common.save'))}</button>
+      <button class="btn" data-action="cancel-create">${esc(t('common.cancel'))}</button>
     </div>`;
-  };
-  const draftTx = { date: todayIso(), amount: '', description: '', category: 'Uncategorized' };
-  const draftItem = state.creatingTx ? `<div class="card tx-item editing">${editRow(draftTx, true)}</div>` : '';
-  const draftRow = state.creatingTx ? `<tr><td colspan="5">${editRow(draftTx, true)}</td></tr>` : '';
+  const draftItem = state.creatingTx ? `<div class="card tx-item editing">${createForm}</div>` : '';
+  const draftRow = state.creatingTx ? `<tr><td colspan="5">${createForm}</td></tr>` : '';
 
   const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button>`;
 
   const item = (tx) => {
-    if (state.editingId === tx.id) return `<div class="tx-item editing">${editRow(tx)}</div>`;
     const on = selection.has(tx.id);
     return `
-      <button type="button" class="tx-item${on ? ' selected' : ''}" data-action="${selecting ? 'toggle-select' : 'edit-tx'}" data-id="${tx.id}"${selecting ? ` aria-pressed="${on}"` : ''}>
+      <button type="button" class="tx-item${on ? ' selected' : ''}" data-action="${rowAction}" data-id="${tx.id}"${selecting ? ` aria-pressed="${on}"` : opensSheet}>
         ${selecting ? `<span class="check-box" aria-hidden="true">${icons.check}</span>` : ''}
         <span class="tx-item-main">
           <span class="tx-desc">${esc(tx.description) || '—'}</span>
@@ -154,19 +158,20 @@ export function render(state, t) {
     : `${filtered.length ? `<button class="btn" data-action="tx-select-mode">${esc(t('transactionTable.select'))}</button>` : ''}
       <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>`;
 
-  const tableRows = visible.map(tx => state.editingId === tx.id
-    ? `<tr><td colspan="5">${editRow(tx)}</td></tr>`
-    : `
-    <tr class="selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
+  const checkButton = (on, action, label, data = '') =>
+    `<button class="check-box-btn${on ? ' on' : ''}" data-action="${action}" ${data} role="checkbox" aria-checked="${on}" aria-label="${esc(label)}"><span class="check-box">${icons.check}</span></button>`;
+
+  const tableRows = visible.map(tx => {
+    const on = selection.has(tx.id);
+    return `
+    <tr class="selectable ${on ? 'selected' : ''}" data-action="${rowAction}" data-id="${tx.id}">
+      <td class="check-cell">${checkButton(on, 'toggle-select', t('transactionTable.selectRow', { description: tx.description }), `data-id="${tx.id}"`)}</td>
       <td class="num">${esc(isoToDisplay(tx.date))}</td>
-      <td>${esc(tx.description)}</td>
+      <td><button class="tx-open" data-action="${rowAction}" data-id="${tx.id}"${opensSheet}>${esc(tx.description) || '—'}</button></td>
       <td>${catSelect(tx)}</td>
       <td class="amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</td>
-      <td style="white-space:nowrap">
-        <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
-        <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">${icons.trash}</button>
-      </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   return `
   <section class="view ${selection.size > 0 ? 'has-selection' : ''}">
@@ -189,11 +194,11 @@ export function render(state, t) {
       <table>
         <thead>
           <tr>
+            <th class="check-cell">${checkButton(allVisibleSelected, 'select-all', t('transactionTable.selectAll'))}</th>
             <th class="sortable" data-action="sort" data-key="date">${esc(t('common.date'))}${sortIndicator('date')}</th>
             <th>${esc(t('common.description'))}</th>
             <th class="sortable" data-action="sort" data-key="category">${esc(t('common.category'))}${sortIndicator('category')}</th>
             <th class="sortable" data-action="sort" data-key="amount" style="text-align:right">${esc(t('common.amount'))}${sortIndicator('amount')}</th>
-            <th>${esc(t('common.actions'))}</th>
           </tr>
         </thead>
         <tbody>${draftRow}${tableRows}</tbody>
@@ -206,6 +211,85 @@ export function render(state, t) {
     </div>` : ''}
   </section>`;
 }
+
+// The detail sheet lives in `#modals`. Its state is `ui.txSheet = { id, draft }`; `draft` is set while editing.
+export function renderSheet(state, t) {
+  const sheet = state.ui.txSheet;
+  const tx = sheet && state.transactions.find(row => row.id === sheet.id);
+  if (!tx) return '';
+  const head = (title) => `
+    <div class="modal-head">
+      <h2 id="tx-sheet-title">${esc(title)}</h2>
+      <button class="icon-btn" id="tx-sheet-close" data-action="tx-sheet-close" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
+    </div>`;
+
+  let body;
+  if (sheet.draft) {
+    const v = sheet.draft;
+    body = `
+      ${head(t('transactionDetail.editTitle'))}
+      <div class="tx-edit-grid">
+        ${editField(t('common.description'), `<input id="tx-sheet-description" name="description" value="${esc(v.description)}" data-action-key="save-tx">`, true)}
+        ${editField(t('common.amount'), `<input id="tx-sheet-amount" name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(v.amount)}" data-action-key="save-tx">`)}
+        ${editField(t('common.date'), `<input id="tx-sheet-date" name="date" type="date" value="${esc(v.date)}" data-action-key="save-tx">`)}
+        ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(v.category)}"><button type="button" id="tx-sheet-category" class="chip-select" data-action="tx-sheet-pick-category" aria-haspopup="dialog">${esc(v.category)}</button>`, true)}
+        <button class="btn" id="tx-sheet-cancel" data-action="tx-sheet-cancel">${esc(t('common.cancel'))}</button>
+        <button class="btn primary" id="tx-sheet-save" data-action="save-tx">${esc(t('common.save'))}</button>
+      </div>`;
+  } else {
+    const account = state.accounts.find(a => a.id === state.activeAccountId);
+    body = `
+      ${head(tx.description || t('transactionDetail.title'))}
+      <p class="tx-sheet-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eurSigned(tx.amount)}</p>
+      <dl class="tx-sheet-facts">
+        <div><dt>${esc(t('common.date'))}</dt><dd>${esc(longDate(tx.date, state.ui.lang))}</dd></div>
+        <div>
+          <dt>${esc(t('common.category'))}</dt>
+          <dd><button id="tx-sheet-category" class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button></dd>
+        </div>
+        <div><dt>${esc(t('transactionDetail.account'))}</dt><dd>${esc(account?.name)}</dd></div>
+      </dl>
+      <div class="tx-sheet-actions">
+        <button class="btn tx-sheet-delete" id="tx-sheet-delete" data-action="delete-tx" data-id="${tx.id}">${icons.trash}${esc(t('common.delete'))}</button>
+        <button class="btn primary" id="tx-sheet-edit" data-action="tx-sheet-edit">${icons.edit}${esc(t('common.edit'))}</button>
+      </div>`;
+  }
+
+  return `
+  <div class="modal-backdrop" data-action="tx-sheet-close" data-self-only>
+    <div class="modal tx-sheet" id="tx-sheet" role="dialog" aria-modal="true" aria-labelledby="tx-sheet-title" tabindex="-1">${body}</div>
+  </div>`;
+}
+
+// Rows are rendered twice (phone list and desktop table, one hidden by CSS): focus the visible one.
+function focusRow(id) {
+  [...document.querySelectorAll(`.tx-item[data-id="${id}"], .tx-open[data-id="${id}"]`)].find(el => el.offsetParent)?.focus();
+}
+
+function openSheet(id) {
+  setUi({ txSheet: { id, draft: null } });
+  document.getElementById('tx-sheet')?.focus();
+}
+
+function closeSheet() {
+  const sheet = get().ui.txSheet;
+  setUi({ txSheet: null });
+  if (sheet) focusRow(sheet.id);
+}
+
+document.addEventListener('keydown', (ev) => {
+  // The category picker above the sheet takes the Escape first and marks it handled.
+  if (ev.key !== 'Escape' || ev.defaultPrevented || !get().ui.txSheet) return;
+  ev.preventDefault();
+  closeSheet();
+});
+
+// What is typed goes into the draft without a re-render, so the next render (the picker opening,
+// a toast's Undo) rebuilds the form with it instead of dropping it.
+document.addEventListener('input', (ev) => {
+  const draft = get().ui.txSheet?.draft;
+  if (draft && ev.target.closest('#tx-sheet') && ev.target.name in draft) draft[ev.target.name] = ev.target.value;
+});
 
 function clearFieldError(input) {
   input.closest('.tx-field').querySelector('.field-error')?.remove();
@@ -227,7 +311,7 @@ function showFieldError(input, message) {
   input.addEventListener('input', () => clearFieldError(input), { once: true });
 }
 
-// The form is rendered twice (cards + table, one hidden by CSS), so read the copy the clicked button sits in.
+// The add form is rendered twice (list + table, one hidden by CSS), so read the copy the clicked button sits in.
 // Returns null, with the problems shown next to their fields, when it can't be saved.
 function readEditForm(button, t) {
   const grid = button.closest('.tx-edit-grid');
@@ -291,8 +375,84 @@ function showLearnedRule({ rule, applied }, description, t) {
   });
 }
 
+// A delete waits for its Undo snackbar to run out before reaching the server. At most one is pending:
+// the next toast replaces the snackbar, which sends it.
+let pendingDelete = null;
+
+function deleteWithUndo(ids, t) {
+  const state = get();
+  const remove = new Set(ids);
+  const visible = filteredTransactions(state).slice(0, state.visibleCount);
+  const at = visible.findIndex(tx => remove.has(tx.id));
+  const neighbour = at < 0 ? null : visible.slice(at).find(tx => !remove.has(tx.id)) || visible[at - 1];
+  const rows = state.transactions.flatMap((tx, index) => remove.has(tx.id) ? [{ tx, index }] : []);
+  set({ transactions: state.transactions.filter(tx => !remove.has(tx.id)), selection: new Set(), selecting: false });
+  if (neighbour) focusRow(neighbour.id);
+
+  const pending = { accountId: state.activeAccountId, rows };
+  pending.dismiss = toast(t(rows.length === 1 ? 'transactionTable.deletedOne' : 'transactionTable.deletedMany', { count: rows.length }), {
+    type: 'success',
+    action: {
+      label: t('transactionTable.undo'),
+      onClick: () => {
+        restoreRows(pending);
+        focusRow(rows[0].tx.id);
+      },
+    },
+    onExpire: () => sendDelete(pending, t),
+  });
+  pendingDelete = pending;
+}
+
+function restoreRows(pending) {
+  if (pendingDelete === pending) pendingDelete = null;
+  const state = get();
+  if (state.activeAccountId !== pending.accountId) return;
+  const transactions = [...state.transactions];
+  for (const { tx, index } of pending.rows) {
+    if (!transactions.some(row => row.id === tx.id)) transactions.splice(index, 0, tx);
+  }
+  set({ transactions });
+}
+
+async function sendDelete(pending, t) {
+  if (pendingDelete === pending) pendingDelete = null;
+  const ids = pending.rows.map(row => row.tx.id);
+  try {
+    await api.batchDelete(pending.accountId, ids);
+  } catch (err) {
+    restoreRows(pending);
+    toast(t('transactionTable.notDeleted', { message: err.message }), { type: err.network ? 'info' : 'error' });
+    return;
+  }
+  // An account reload inside the Undo window brings the rows back from the server.
+  const gone = new Set(ids);
+  if (get().transactions.some(tx => gone.has(tx.id))) set({ transactions: get().transactions.filter(tx => !gone.has(tx.id)) });
+}
+
+// Leaving or closing the app inside the Undo window would lose the delete: send it now, with
+// keepalive so the request outlives the page.
+function sendPendingDeleteNow() {
+  const pending = pendingDelete;
+  if (!pending) return;
+  pendingDelete = null;
+  pending.dismiss();
+  fetch(`/api/accounts/${pending.accountId}/transactions/batch-delete`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: pending.rows.map(row => row.tx.id) }),
+  }).then(res => {
+    if (!res.ok) throw new Error(res.status);
+  }).catch(() => restoreRows(pending));
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') sendPendingDeleteNow();
+});
+window.addEventListener('pagehide', sendPendingDeleteNow);
+
 export const actions = {
-  'add-tx': () => set({ creatingTx: true, editingId: null, txDraft: null }),
+  'add-tx': () => set({ creatingTx: true, txDraft: null }),
   'cancel-create': () => set({ creatingTx: false, txDraft: null }),
   'save-new-tx': async (el, ev, t) => {
     const form = readEditForm(el, t);
@@ -310,36 +470,62 @@ export const actions = {
       filter: { ...state.filter },
     });
   },
-  'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false, txDraft: null }),
-  'cancel-edit': () => set({ editingId: null, txDraft: null }),
-  'pick-tx-category': (el) => {
-    const id = Number(el.dataset.id);
-    const tx = get().transactions.find(row => row.id === id);
-    openCategoryPicker({ title: tx.description, current: tx.category, onPick: (category, t) => setCategory(id, category, t) });
-  },
-  // Opening the picker re-renders the app, which would rebuild the form and drop what was typed: keep it as a draft.
+  // Opening the picker re-renders the app, which would rebuild the add form and drop what was typed: keep it as a draft.
   'pick-form-category': (el, ev, t) => {
     const grid = el.closest('.tx-edit-grid');
     const value = (name) => grid.querySelector(`[name="${name}"]`).value;
-    const key = grid.dataset.editing === 'new' ? 'new' : Number(grid.dataset.editing);
-    set({ txDraft: { key, date: value('date'), amount: value('amount'), description: value('description'), category: value('category') } });
+    set({ txDraft: { date: value('date'), amount: value('amount'), description: value('description'), category: value('category') } });
     openCategoryPicker({
       title: value('description') || t('common.category'),
       current: value('category'),
       onPick: (category) => set({ txDraft: { ...get().txDraft, category } }),
     });
   },
-  'save-tx': async (el, ev, t) => {
+  'pick-tx-category': (el) => {
     const id = Number(el.dataset.id);
+    const tx = get().transactions.find(row => row.id === id);
+    openCategoryPicker({
+      title: tx.description,
+      current: tx.category,
+      onPick: (category, t) => {
+        document.getElementById('tx-sheet-category')?.focus();
+        return setCategory(id, category, t);
+      },
+    });
+  },
+  'open-tx': (el) => openSheet(Number(el.dataset.id)),
+  'tx-sheet-close': closeSheet,
+  'tx-sheet-edit': () => {
+    const sheet = get().ui.txSheet;
+    const tx = get().transactions.find(row => row.id === sheet.id);
+    setUi({ txSheet: { ...sheet, draft: { description: tx.description, amount: tx.amount, date: tx.date, category: tx.category } } });
+    document.getElementById('tx-sheet-description').focus();
+  },
+  'tx-sheet-cancel': () => {
+    setUi({ txSheet: { ...get().ui.txSheet, draft: null } });
+    document.getElementById('tx-sheet-edit').focus();
+  },
+  'tx-sheet-pick-category': (el, ev, t) => {
+    const { draft } = get().ui.txSheet;
+    openCategoryPicker({
+      title: draft.description || t('common.category'),
+      current: draft.category,
+      onPick: (category) => {
+        const sheet = get().ui.txSheet;
+        if (sheet?.draft) setUi({ txSheet: { ...sheet, draft: { ...sheet.draft, category } } });
+        document.getElementById('tx-sheet-category')?.focus();
+      },
+    });
+  },
+  'save-tx': async (el, ev, t) => {
     const form = readEditForm(el, t);
     if (!form) return;
     const state = get();
-    const learnRule = Boolean(form.description && form.category && form.category !== 'Uncategorized');
-    set({
-      editingId: null,
-      txDraft: null,
-      transactions: state.transactions.map(tx => tx.id === id ? { ...tx, ...form } : tx),
-    });
+    const { id } = state.ui.txSheet;
+    const learnRule = form.category !== 'Uncategorized';
+    set({ transactions: state.transactions.map(tx => tx.id === id ? { ...tx, ...form } : tx) });
+    setUi({ txSheet: { id, draft: null } });
+    document.getElementById('tx-sheet-edit')?.focus();
     try {
       const result = await api.patchTransaction(state.activeAccountId, id, { ...form, learnRule });
       if (result.rule) showLearnedRule(result, form.description, t);
@@ -348,20 +534,11 @@ export const actions = {
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
     }
   },
-  'delete-tx': async (el, ev, t) => {
-    if (!(await confirmDialog(t('transactionTable.confirmDelete'), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
-    const id = Number(el.dataset.id);
-    const state = get();
-    const selection = new Set(state.selection);
-    selection.delete(id);
-    set({ transactions: state.transactions.filter(tx => tx.id !== id), selection });
-    try {
-      await api.deleteTransaction(state.activeAccountId, id);
-    } catch (err) {
-      toast(err.message);
-      await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
-    }
+  'delete-tx': (el, ev, t) => {
+    setUi({ txSheet: null });
+    deleteWithUndo([Number(el.dataset.id)], t);
   },
+  'batch-delete': (el, ev, t) => deleteWithUndo([...get().selection], t),
   'toggle-select': (el) => {
     const selection = new Set(get().selection);
     const id = Number(el.dataset.id);
@@ -376,7 +553,7 @@ export const actions = {
     set({ selection: allSelected ? new Set() : new Set(filtered.map(tx => tx.id)) });
   },
   'clear-selection': () => set({ selection: new Set(), selecting: false }),
-  'tx-select-mode': () => set({ selecting: true, editingId: null, creatingTx: false, txDraft: null }),
+  'tx-select-mode': () => set({ selecting: true, creatingTx: false, txDraft: null }),
   'tx-select-cancel': () => set({ selection: new Set(), selecting: false }),
   'tx-show-all': () => setFilter({ currentMonth: false, dateFilterType: 'all', year: '', month: '', startDate: '', endDate: '', categories: [], description: '' }),
   'sort': (el) => {
@@ -390,16 +567,5 @@ export const actions = {
     });
   },
   'load-more': () => set({ visibleCount: get().visibleCount + 100 }),
-  'batch-delete': async (el, ev, t) => {
-    const state = get();
-    const ids = [...state.selection];
-    if (!(await confirmDialog(t('transactionTable.confirmBatchDelete', { count: ids.length }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
-    await api.batchDelete(state.activeAccountId, ids);
-    set({
-      transactions: state.transactions.filter(tx => !state.selection.has(tx.id)),
-      selection: new Set(),
-      selecting: false,
-    });
-  },
   'open-batch-edit': () => setUi({ batchEditOpen: true, batchNewCategory: false }),
 };

@@ -325,7 +325,7 @@ export const actions = {
   },
   'welcome-import-csv': () => document.getElementById('welcome-csv-file').click(),
   'welcome-add-tx': () => {
-    set({ creatingTx: true, editingId: null });
+    set({ creatingTx: true });
     location.hash = '#/transactions';
   },
   'open-set-balance': () => {

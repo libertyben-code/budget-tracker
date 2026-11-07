@@ -51,7 +51,7 @@ function render() {
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + categoryPicker.render(state, t);
+  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
 
   dashboard.afterRender(state, t);
   savings.afterRender(state);
@@ -189,7 +189,6 @@ export async function loadAccount(accountId) {
     categories: data.categories,
     ...savingsState(data),
     selection: new Set(),
-    editingId: null,
     visibleCount: 100,
   });
   await refreshBootstrap();
