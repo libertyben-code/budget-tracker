@@ -7,7 +7,7 @@ import { renderStarterOffer } from './category-manager.js';
 const RECENT_KEY = 'recentCategories';
 const SEARCH_ID = 'category-picker-search';
 
-function readRecent() {
+export function readRecent() {
   try {
     const recent = JSON.parse(localStorage.getItem(RECENT_KEY));
     return Array.isArray(recent) ? recent : [];

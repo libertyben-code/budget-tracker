@@ -222,6 +222,31 @@ button.chip-select {
 .btn.tx-sheet-delete { color: var(--danger); }
 .tx-sheet .tx-edit-grid > .btn { margin-top: var(--space-2); }
 
+.tx-add { display: flex; flex-direction: column; gap: var(--space-3); }
+.tx-add > * { flex-shrink: 0; }
+.tx-sheet.tx-add .modal-head { margin-bottom: 0; align-items: center; }
+.seg.tx-add-kind { display: flex; }
+.seg.tx-add-kind button { flex: 1; min-height: 44px; font-weight: 600; }
+.tx-add-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tx-add-label { font-size: 0.8rem; color: var(--muted); }
+.tx-add-field > input { width: 100%; }
+.tx-add-amount { position: relative; }
+.tx-add-amount input { width: 100%; padding-left: 44px; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tx-add-sign {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.15rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+.tx-add-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tx-add-chips .picker-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-add .field-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
+.tx-add [aria-invalid="true"] { border-color: var(--danger); }
+#tx-add-save { width: 100%; margin-top: var(--space-1); }
+
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3); }
 .field label { font-size: 0.85rem; color: var(--muted); }
 
