@@ -1,5 +1,6 @@
 :root {
-  color-scheme: light dark;
+  /* Follows data-theme, not the OS, so a Light override on a dark phone keeps native controls light */
+  color-scheme: light;
 
   --bg: #f1f3f9;
   --surface: #ffffff;
@@ -45,6 +46,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #12141c;
   --surface: #1c1f2b;
   --surface-2: #242836;

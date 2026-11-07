@@ -27,7 +27,11 @@ const translations = {
     header: {
       light: 'Light',
       dark: 'Dark',
+      matchPhone: 'Match phone',
       appearance: 'Appearance',
+      groupData: 'Data',
+      groupOrganise: 'Organise',
+      groupPreferences: 'Preferences',
       accentColor: 'Colour',
       accent: {
         indigo: 'Indigo',
@@ -266,7 +270,11 @@ const translations = {
     header: {
       light: 'Clair',
       dark: 'Sombre',
+      matchPhone: 'Comme le téléphone',
       appearance: 'Apparence',
+      groupData: 'Données',
+      groupOrganise: 'Organiser',
+      groupPreferences: 'Préférences',
       accentColor: 'Couleur',
       accent: {
         indigo: 'Indigo',

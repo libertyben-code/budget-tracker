@@ -16,16 +16,35 @@ const TABS = [
   ['savings', 'header.savings'],
 ];
 
-// Applied to the root rather than held in CSS alone: Android reads the
-// theme-color meta for the status bar and cannot resolve a CSS variable, so the
+const THEMES = [
+  ['system', 'header.matchPhone'],
+  ['light', 'header.light'],
+  ['dark', 'header.dark'],
+];
+
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+function isDark(theme) {
+  return theme === 'dark' || (theme === 'system' && darkQuery.matches);
+}
+
+// Applied to the root rather than held in CSS alone: a browser tab reads the
+// theme-color meta for its address bar and cannot resolve a CSS variable, so the
 // resolved value has to be written back after the attribute changes.
 export function applyTheme(state) {
   const root = document.documentElement;
-  root.dataset.theme = state.ui.dark ? 'dark' : 'light';
+  root.dataset.theme = isDark(state.ui.theme) ? 'dark' : 'light';
   root.dataset.accent = state.ui.accent;
   const resolved = getComputedStyle(root).getPropertyValue('--accent').trim();
   if (resolved) document.querySelector('meta[name="theme-color"]').content = resolved;
 }
+
+// Charts take their colours from CSS when drawn, so a phone switching theme needs a render too.
+darkQuery.addEventListener('change', () => {
+  if (get().ui.theme !== 'system') return;
+  applyTheme(get());
+  setUi({});
+});
 
 export function render(state, t) {
   const cats = categories(state);
@@ -71,30 +90,45 @@ export function render(state, t) {
         <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>
-          <label class="menu-item" style="cursor:pointer">
-            ${icons.import} ${esc(t('header.importCsv'))}
-            <input type="file" accept=".csv" data-action-change="import-csv" hidden>
-          </label>
-          <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
-          <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
-          <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
-          ${state.ui.bankStatus?.configured && state.ui.bankStatus.connections.length ? `
-          <button class="menu-item" data-action="bank-sync" ${state.ui.bankBusy ? 'disabled' : ''}>${icons.repeat} ${esc(t(state.ui.bankBusy ? 'bank.syncing' : 'header.syncAllAccounts'))}</button>` : ''}
-          <div class="menu-sep"></div>
-          <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
-          <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
-          <div class="menu-sep"></div>
-          <button class="menu-item" data-action="toggle-dark">${state.ui.dark ? icons.sun : icons.moon} ${esc(t('header.appearance'))}: ${esc(t(state.ui.dark ? 'header.dark' : 'header.light'))}</button>
-          <div class="menu-item accent-row">
-            ${icons.palette}
-            <span class="grow">${esc(t('header.accentColor'))}</span>
-            <span class="accent-swatches">
-              ${ACCENTS.map(a => `
-              <button class="accent-swatch ${state.ui.accent === a ? 'active' : ''}" data-accent="${a}" data-action="set-accent"
-                      title="${esc(t(`header.accent.${a}`))}" aria-label="${esc(t(`header.accent.${a}`))}"></button>`).join('')}
-            </span>
+          <div role="group" aria-labelledby="menu-group-data">
+            <div class="menu-heading" id="menu-group-data">${esc(t('header.groupData'))}</div>
+            <button class="menu-item" data-action="pick-csv">${icons.import} ${esc(t('header.importCsv'))}</button>
+            <input type="file" id="import-csv-file" accept=".csv" data-action-change="import-csv" hidden>
+            <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
+            <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
+            ${state.ui.bankStatus?.configured && state.ui.bankStatus.connections.length ? `
+            <button class="menu-item" data-action="bank-sync" ${state.ui.bankBusy ? 'disabled' : ''}>${icons.repeat} ${esc(t(state.ui.bankBusy ? 'bank.syncing' : 'header.syncAllAccounts'))}</button>` : ''}
+            <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
           </div>
-          <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-group-organise">
+            <div class="menu-heading" id="menu-group-organise">${esc(t('header.groupOrganise'))}</div>
+            <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
+            <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-group-preferences">
+            <div class="menu-heading" id="menu-group-preferences">${esc(t('header.groupPreferences'))}</div>
+            <div class="menu-item theme-row">
+              ${isDark(state.ui.theme) ? icons.moon : icons.sun}
+              <span class="grow" id="theme-label">${esc(t('header.appearance'))}</span>
+              <div class="seg theme-seg" role="group" aria-labelledby="theme-label">
+                ${THEMES.map(([value, key]) => `
+                <button id="theme-${value}" class="${state.ui.theme === value ? 'active' : ''}" data-action="set-theme" data-value="${value}"
+                        aria-pressed="${state.ui.theme === value}">${esc(t(key))}</button>`).join('')}
+              </div>
+            </div>
+            <div class="menu-item accent-row">
+              ${icons.palette}
+              <span class="grow">${esc(t('header.accentColor'))}</span>
+              <span class="accent-swatches">
+                ${ACCENTS.map(a => `
+                <button class="accent-swatch ${state.ui.accent === a ? 'active' : ''}" data-accent="${a}" data-action="set-accent"
+                        title="${esc(t(`header.accent.${a}`))}" aria-label="${esc(t(`header.accent.${a}`))}"></button>`).join('')}
+              </span>
+            </div>
+            <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
+          </div>
         </div>` : ''}
       </div>
     </div>
@@ -124,12 +158,13 @@ export function renderNav(state, t) {
 }
 
 export const actions = {
-  'toggle-dark': () => {
-    const dark = !get().ui.dark;
-    localStorage.setItem('darkMode', String(dark));
-    setUi({ dark });
+  'set-theme': (el) => {
+    const theme = el.dataset.value;
+    localStorage.setItem('theme', theme);
+    setUi({ theme });
     applyTheme(get());
   },
+  'pick-csv': () => document.getElementById('import-csv-file').click(),
   'set-accent': (el) => {
     const accent = el.dataset.accent;
     localStorage.setItem('accent', accent);
