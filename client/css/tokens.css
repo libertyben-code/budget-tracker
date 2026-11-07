@@ -7,14 +7,16 @@
   --border: #e2e5ef;
   --text: #1c2233;
   --muted: #6b7288;
-  --accent: #4f6df5;
+  --accent: #4d6aee;
   --accent-strong: #3b55d9;
   --accent-soft: #e6ebfe;
-  --danger: #d94a54;
+  /* Text on filled colours (accent, danger): the dark-mode fills are light, so it flips to dark */
+  --on-accent: #fff;
+  --danger: #b63e47;
   --danger-soft: #fdeaec;
-  --success: #2e9e6b;
+  --success: #227650;
   --success-soft: #e3f5ec;
-  --warning: #b97f18;
+  --warning: #946613;
   --warning-soft: #fdf3dd;
 
   /* Categorical palette: fixed slot order is the CVD-safety mechanism — never reorder or cycle past 8 */
@@ -52,7 +54,8 @@
   --accent: #6d86f7;
   --accent-strong: #8399f8;
   --accent-soft: #262f52;
-  --danger: #e4707a;
+  --on-accent: #12141c;
+  --danger: #e67982;
   --danger-soft: #3a2228;
   --success: #4fbb8b;
   --success-soft: #1d3529;
@@ -86,7 +89,7 @@
 :root[data-accent="blue"]   { --accent: #1d6fd0; --accent-strong: #1558a8; --accent-soft: #dfeafc; }
 :root[data-accent="green"]  { --accent: #1b7f4b; --accent-strong: #13653a; --accent-soft: #dcf3e6; }
 :root[data-accent="amber"]  { --accent: #b45309; --accent-strong: #8f4107; --accent-soft: #fdeed3; }
-:root[data-accent="coral"]  { --accent: #d4453a; --accent-strong: #ad342b; --accent-soft: #ffe4e1; }
+:root[data-accent="coral"]  { --accent: #d14439; --accent-strong: #ad342b; --accent-soft: #ffe4e1; }
 
 :root[data-theme="dark"][data-accent="violet"] { --accent: #a98bf5; --accent-strong: #c4a8ff; --accent-soft: #2b2140; }
 :root[data-theme="dark"][data-accent="blue"]   { --accent: #6aa8f5; --accent-strong: #7fb6ff; --accent-soft: #16283f; }

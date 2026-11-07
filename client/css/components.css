@@ -12,9 +12,9 @@
   white-space: nowrap;
 }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-strong); }
-.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
 .btn.ghost { background: transparent; }
 .btn.small { min-height: 32px; padding: 4px 10px; font-size: 0.85rem; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -175,12 +175,12 @@
   flex-shrink: 0;
 }
 .accent-swatch.active { border-color: var(--text); }
-.accent-swatch[data-accent="indigo"] { background: #4f6df5; }
+.accent-swatch[data-accent="indigo"] { background: #4d6aee; }
 .accent-swatch[data-accent="violet"] { background: #7c3aed; }
 .accent-swatch[data-accent="blue"]   { background: #1d6fd0; }
 .accent-swatch[data-accent="green"]  { background: #1b7f4b; }
 .accent-swatch[data-accent="amber"]  { background: #b45309; }
-.accent-swatch[data-accent="coral"]  { background: #d4453a; }
+.accent-swatch[data-accent="coral"]  { background: #d14439; }
 :root[data-theme="dark"] .accent-swatch[data-accent="indigo"] { background: #6d86f7; }
 :root[data-theme="dark"] .accent-swatch[data-accent="violet"] { background: #a98bf5; }
 :root[data-theme="dark"] .accent-swatch[data-accent="blue"]   { background: #6aa8f5; }
@@ -220,7 +220,7 @@
 .check-row.on .check-box, .check-pill.on .check-box {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .check-box svg { width: 14px; height: 14px; stroke-width: 3; }
 
@@ -254,11 +254,11 @@
   margin: -9px 0 -9px -8px;
   flex-shrink: 0;
 }
-.check-box-btn.on .check-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+.check-box-btn.on .check-box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .seg button { padding: 7px 12px; min-height: 38px; background: var(--surface); color: var(--muted); }
-.seg button.active { background: var(--accent); color: #fff; }
+.seg button.active { background: var(--accent); color: var(--on-accent); }
 
 .tile { padding: var(--space-4); }
 .tile.total-tile { text-align: center; }
@@ -273,7 +273,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
   padding: 10px 18px;
   border-radius: var(--radius);
   z-index: 100;
