@@ -1,7 +1,8 @@
 import { esc, eur, eurSigned, chartColors, icons } from '../dom.js';
-import { get, set, setUi, setFilter } from '../store.js';
+import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { renderStarterOffer } from './category-manager.js';
+import { openInbox } from './categorise.js';
 import {
   categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
   addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, lastBankSync,
@@ -314,15 +315,7 @@ export const actions = {
     setUi({ dashMonth: next >= monthKey(todayIso()) ? '' : next });
   },
   'dash-month-now': () => setUi({ dashMonth: '' }),
-  'dash-categorise': () => {
-    const month = dashboardMonth(get());
-    const isNow = month === monthKey(todayIso());
-    setFilter({
-      categories: ['Uncategorized'], description: '', categorySearch: '',
-      currentMonth: isNow, dateFilterType: isNow ? 'all' : 'month', year: '', month: isNow ? '' : month, startDate: '', endDate: '',
-    });
-    location.hash = '#/transactions';
-  },
+  'dash-categorise': openInbox,
   'welcome-import-csv': () => document.getElementById('welcome-csv-file').click(),
   'welcome-add-tx': () => {
     set({ creatingTx: true });
