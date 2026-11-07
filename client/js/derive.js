@@ -74,6 +74,32 @@ export function transactionsUpTo(state, month) {
   return state.transactions.filter(t => monthKey(t.date) <= month);
 }
 
+// A manual balance is summed here too (the server does the same) so an added or edited row
+// shows at once; accounts only reload with the account data.
+export function accountBalance(state) {
+  const account = state.accounts.find(a => a.id === state.activeAccountId);
+  if (account?.balanceSource !== 'manual') {
+    return { amount: account?.balance ?? null, asOf: account?.balanceAsOf ?? null, source: account?.balanceSource ?? null };
+  }
+  let total = account.openingBalance;
+  let asOf = account.openingBalanceDate;
+  for (const t of state.transactions) {
+    if (t.date < account.openingBalanceDate) continue;
+    total += t.amount;
+    if (t.date > asOf) asOf = t.date;
+  }
+  return { amount: Math.round(total * 100) / 100, asOf, source: 'manual' };
+}
+
+export function lastBankSync(state) {
+  return (state.ui.bankStatus?.connections || [])
+    .flatMap(c => c.accounts)
+    .filter(a => a.enabled && a.accountId === state.activeAccountId && a.lastSyncAt)
+    .map(a => a.lastSyncAt)
+    .sort()
+    .at(-1) || null;
+}
+
 export function categories(state) {
   return [...new Set([
     ...state.transactions.map(t => t.category),
@@ -183,6 +209,12 @@ export function monthLabel(m, lang) {
   const date = new Date(Number(year), Number(month) - 1, 1);
   const name = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' }).format(date);
   return `${name.charAt(0).toUpperCase()}${name.slice(1).replace('.', '')}-${year.slice(-2)}`;
+}
+
+export function dayTitle(iso, lang) {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    .format(new Date(year, month - 1, day));
 }
 
 export function monthTitle(m, lang) {

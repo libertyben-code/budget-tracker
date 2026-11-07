@@ -1,22 +1,49 @@
-import { esc, eur, icons, checkPill, toast, confirmDialog } from '../dom.js';
+import { esc, eur, eurSigned, icons, checkPill, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { filteredTransactions, categories, stats } from '../derive.js';
+import { filteredTransactions, categories, stats, accountBalance, dayTitle, monthTitle } from '../derive.js';
 import { isoToDisplay, todayIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
 import { openCategoryPicker } from './category-picker.js';
 
-export function renderTiles(rows, t) {
+function periodLabel(state, t) {
+  const f = state.filter;
+  if (f.currentMonth) return t('app.thisMonth');
+  if (f.dateFilterType === 'year' && f.year) return f.year;
+  if (f.dateFilterType === 'month' && f.month) {
+    const named = { __last_month__: 'app.lastMonth', __last_3_months__: 'app.last3Months', __last_6_months__: 'app.last6Months' }[f.month];
+    return named ? t(named) : monthTitle(f.month, state.ui.lang);
+  }
+  if (f.dateFilterType === 'dateRange' && f.startDate && f.endDate) return `${isoToDisplay(f.startDate)} – ${isoToDisplay(f.endDate)}`;
+  return t('app.allTime');
+}
+
+export function renderTiles(state, rows, t) {
   const s = stats(rows);
+  const balance = accountBalance(state);
+  let balanceBody;
+  if (balance.amount !== null) {
+    balanceBody = `
+      <div class="value ${balance.amount < 0 ? 'neg' : ''}">${balance.amount < 0 ? eurSigned(balance.amount) : eur(balance.amount)}</div>
+      <div class="tile-meta">${esc(balance.asOf === todayIso() ? t('app.asOfToday') : t('app.asOf', { date: dayTitle(balance.asOf, state.ui.lang) }))}</div>`;
+  } else if (balance.source === 'bank') {
+    balanceBody = `<div class="value muted">—</div><div class="tile-meta">${esc(t('app.balancePending'))}</div>`;
+  } else {
+    balanceBody = `<div class="value muted">—</div><button class="btn small" data-action="open-set-balance">${esc(t('header.setBalance'))}</button>`;
+  }
   return `
   <div class="tiles">
     <div class="card tile total-tile">
-      <div class="label">${esc(t('app.totalBalance'))}</div>
-      <div class="value big ${s.total >= 0 ? 'pos' : 'neg'}">${eur(s.total)}</div>
+      <div class="label">${esc(t('app.balance'))}</div>
+      ${balanceBody}
     </div>
     <div class="card tile total-tile">
-      <div class="label">${esc(t('app.totalSpending'))}</div>
-      <div class="value big neg">${eur(s.spending)}</div>
+      <div class="label">${esc(t('app.netPeriod', { period: periodLabel(state, t) }))}</div>
+      <div class="value ${s.total >= 0 ? 'pos' : 'neg'}">${eurSigned(s.total)}</div>
+      <div class="tile-meta">
+        <span>${esc(t('app.moneyIn'))} <span class="pos">${eur(s.income)}</span></span>
+        <span>${esc(t('app.moneyOut'))} <span class="neg">${eur(s.spending)}</span></span>
+      </div>
     </div>
   </div>`;
 }
@@ -80,7 +107,7 @@ export function render(state, t) {
 
   return `
   <section class="view ${selection.size > 0 ? 'has-selection' : ''}">
-    ${renderTiles(filtered, t)}
+    ${renderTiles(state, filtered, t)}
     ${renderFilters(state, t)}
     ${selection.size > 0 ? `
     <div class="selection-bar">

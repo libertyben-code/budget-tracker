@@ -1,13 +1,14 @@
-import { esc, eur, chartColors } from '../dom.js';
-import { get, setUi } from '../store.js';
+import { esc, eur, eurSigned, chartColors } from '../dom.js';
+import { get, setUi, setFilter } from '../store.js';
+import { api } from '../api.js';
 import {
-  categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, OTHER,
-  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months,
+  categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
+  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, lastBankSync,
 } from '../derive.js';
 import { monthKey, todayIso } from '/shared/dates.js';
-import { renderTiles } from './transactions.js';
 
 const kept = new Map();
+let bankStatusAsked = false;
 
 const RANGE_MONTHS = { '6m': 6, '12m': 12, all: Infinity };
 
@@ -22,6 +23,50 @@ function renderMonthStepper(state, t, month) {
     <button class="month-label ${isNow ? '' : 'past'}" data-action="dash-month-now" aria-live="polite" ${isNow ? '' : `title="${esc(t('dashboard.backToThisMonth'))}"`}>${esc(monthTitle(month, state.ui.lang))}</button>
     <button class="icon-btn" data-action="dash-month-step" data-step="1" aria-label="${esc(t('dashboard.nextMonth'))}" ${isNow ? 'disabled' : ''}>${chevron('m9 18 6-6-6-6')}</button>
   </div>`;
+}
+
+function renderBalance(state, t) {
+  const { amount, asOf, source } = accountBalance(state);
+  const lang = state.ui.lang;
+  let body;
+  if (amount !== null) {
+    const when = asOf === todayIso() ? t('app.asOfToday') : t('app.asOf', { date: dayTitle(asOf, lang) });
+    const sync = source === 'bank' ? lastBankSync(state) : null;
+    body = `
+      <div class="glance-value ${amount < 0 ? 'neg' : ''}">${amount < 0 ? eurSigned(amount) : eur(amount)}</div>
+      <div class="glance-meta">${esc(t(source === 'bank' ? 'app.fromBank' : 'app.fromOpening'))} · ${esc(when)}</div>
+      ${sync ? `<div class="glance-meta">${esc(t('bank.lastSync', { date: new Date(sync).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) }))}</div>` : ''}`;
+  } else if (source === 'bank') {
+    body = `<div class="glance-value muted">—</div><div class="glance-meta">${esc(t('app.balancePending'))}</div>`;
+  } else {
+    body = `
+      <div class="glance-value muted">—</div>
+      <button class="btn small" data-action="open-set-balance">${esc(t('header.setBalance'))}</button>`;
+  }
+  return `
+  <div class="card glance-card">
+    <div class="glance-label">${esc(t('app.balance'))}</div>
+    ${body}
+  </div>`;
+}
+
+function renderMonth(rows, t) {
+  const s = stats(rows);
+  const uncategorized = rows.filter(r => r.category === 'Uncategorized').length;
+  return `
+  <div class="card glance-card">
+    <div class="glance-label">${esc(t('app.net'))}</div>
+    <div class="glance-value ${s.total >= 0 ? 'pos' : 'neg'}">${eurSigned(s.total)}</div>
+    <div class="glance-flows">
+      <div><span class="glance-label">${esc(t('app.moneyIn'))}</span><span class="pos">${eur(s.income)}</span></div>
+      <div><span class="glance-label">${esc(t('app.moneyOut'))}</span><span class="neg">${eur(s.spending)}</span></div>
+    </div>
+  </div>
+  ${uncategorized ? `
+  <div class="card glance-todo">
+    <span class="grow">${esc(uncategorized === 1 ? t('dashboard.toCategoriseOne') : t('dashboard.toCategoriseMany', { count: uncategorized }))}</span>
+    <button class="btn small primary" data-action="dash-categorise">${esc(t('dashboard.categorise'))}</button>
+  </div>` : ''}`;
 }
 
 // render() replaces the whole DOM; an unchanged chart moves its old box into the new
@@ -43,8 +88,9 @@ export function render(state, t) {
 
   return `
   <section class="view">
+    ${renderBalance(state, t)}
     ${renderMonthStepper(state, t, month)}
-    ${renderTiles(monthTransactions(state, month), t)}
+    ${renderMonth(monthTransactions(state, month), t)}
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
@@ -83,6 +129,11 @@ export function render(state, t) {
 }
 
 export function afterRender(state, t) {
+  // The Balance card's last sync time comes from the bank status, otherwise loaded only by the bank panel.
+  if (state.ui.tab === 'dashboard' && !bankStatusAsked && !state.ui.bankStatus && accountBalance(state).source === 'bank') {
+    bankStatusAsked = true;
+    api.bankStatus().then(bankStatus => setUi({ bankStatus }), () => {});
+  }
   if (state.ui.tab !== 'dashboard' || typeof Chart === 'undefined') {
     for (const { chart } of kept.values()) chart.destroy();
     kept.clear();
@@ -238,4 +289,17 @@ export const actions = {
     setUi({ dashMonth: next >= monthKey(todayIso()) ? '' : next });
   },
   'dash-month-now': () => setUi({ dashMonth: '' }),
+  'dash-categorise': () => {
+    const month = dashboardMonth(get());
+    const isNow = month === monthKey(todayIso());
+    setFilter({
+      categories: ['Uncategorized'], description: '', categorySearch: '',
+      currentMonth: isNow, dateFilterType: isNow ? 'all' : 'month', year: '', month: isNow ? '' : month, startDate: '', endDate: '',
+    });
+    location.hash = '#/transactions';
+  },
+  'open-set-balance': () => {
+    setUi({ accountMenuOpen: true, settingsOpen: false, balanceFormOpen: true });
+    document.getElementById('opening-balance').focus();
+  },
 };
