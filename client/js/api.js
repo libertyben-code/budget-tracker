@@ -1,14 +1,42 @@
+// What the app knows about reaching the server. While `paused`, writes fail at once instead of
+// being sent. `onDown` runs before a network failure is thrown, so the app can pause first.
+export const net = {
+  message: 'Network error',
+  paused: false,
+  failedWrites: 0,
+  cachedAt: null,
+  heardAt: null,
+  onDown: () => {},
+  onCached: () => {},
+};
+
 async function request(method, path, body, type = 'application/json') {
+  const write = method !== 'GET';
+  if (write && net.paused) {
+    net.failedWrites++;
+    throw Object.assign(new Error(net.message), { network: true });
+  }
   const opts = { method, headers: {} };
   if (body !== undefined) {
     opts.headers['Content-Type'] = type;
     opts.body = type === 'application/json' ? JSON.stringify(body) : body;
   }
-  const res = await fetch('/api' + path, opts);
+  let res;
+  try {
+    res = await fetch('/api' + path, opts);
+  } catch {
+    if (write) net.failedWrites++;
+    net.onDown(net.heardAt);
+    throw Object.assign(new Error(net.message), { network: true });
+  }
+  const stamp = res.headers.get('X-BT-Cached-At');
+  if (!write) net.cachedAt = stamp ? Date.parse(stamp) : null;
+  if (stamp) net.onCached(net.cachedAt);
+  else net.heardAt = Date.now();
   if (!res.ok) {
     let message = `${res.status}`;
     try { message = (await res.json()).error || message; } catch {}
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: res.status });
   }
   if (res.status === 204) return null;
   return res.json();
