@@ -104,6 +104,10 @@ const translations = {
       confirmBatchDelete: 'Delete {count} selected transaction(s)?',
       amountInvalid: 'Enter an amount other than 0',
       descriptionRequired: 'Enter a description',
+      appliedOne: '{category} set on 1 more transaction like “{description}”',
+      appliedMany: '{category} set on {count} more transactions like “{description}”',
+      ruleSaved: 'Rule saved: future “{description}” → {category}',
+      undo: 'Undo',
     },
     joint: {
       title: 'Joint Account Split',
@@ -347,6 +351,10 @@ const translations = {
       confirmBatchDelete: 'Supprimer les {count} transaction(s) sélectionnée(s) ?',
       amountInvalid: 'Saisissez un montant différent de 0',
       descriptionRequired: 'Saisissez une description',
+      appliedOne: '{category} appliqué à 1 autre transaction « {description} »',
+      appliedMany: '{category} appliqué à {count} autres transactions « {description} »',
+      ruleSaved: 'Règle enregistrée : les prochaines « {description} » → {category}',
+      undo: 'Annuler',
     },
     joint: {
       title: 'Répartition du compte joint',
