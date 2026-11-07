@@ -238,6 +238,12 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-11-07 — Transaction routes scoped to an account (branch: fix/scope-tx-routes)
+
+- **Bug.** `PATCH`/`DELETE /transactions/:txId`, `/transactions/batch` and `/transactions/batch-delete` took bare ids, so any caller could change any account's rows. Harmless with one user, blocking for the auth rollout.
+- **Fix.** The routes moved under `/accounts/:id/transactions/…` behind `requireAccount`, and every query adds `AND account_id = ?`. Another account's id answers 404 on `PATCH` and changes nothing on the others. The client passes `activeAccountId`; no SW bump, since the shell is network-first.
+- **Checked** with a new test in `input-guards.test.js` that tries all four routes from a second account, and in the dev harness: category change, batch edit, delete and batch delete all hit the new URLs.
+
 ### 2026-10-08 — Desktop Save stored blank transactions (branch: fix/duplicate-edit-form-ids)
 
 - **Bug.** At ≥ 640px, saving a new or edited transaction stored today's date, amount 0, an empty description and Uncategorized. `editRow()` renders in both `.tx-cards` and `.tx-table` (one hidden by CSS) under the same `edit-*` ids, and `getElementById` returned the hidden card copy. Phones were unaffected because the card copy is first and visible there.

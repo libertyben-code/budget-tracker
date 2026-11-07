@@ -238,8 +238,9 @@ export function createApiRouter(db) {
     res.status(201).json(tx);
   });
 
-  router.patch('/transactions/:txId', (req, res) => {
-    const current = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
+  router.patch('/accounts/:id/transactions/:txId', requireAccount, (req, res) => {
+    const current = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ? AND account_id = ?`)
+      .get(req.params.txId, req.params.id);
     if (!current) return res.status(404).json({ error: 'Transaction not found' });
     const { date, description, category, amount, learnRule } = req.body;
     if (date != null && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
@@ -252,8 +253,8 @@ export function createApiRouter(db) {
     };
     db.prepare(`
       UPDATE transactions SET date = ?, description = ?, category = ?, amount = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(next.date, next.description, next.category, next.amount, req.params.txId);
+      WHERE id = ? AND account_id = ?
+    `).run(next.date, next.description, next.category, next.amount, req.params.txId, req.params.id);
 
     let rule = null;
     if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
@@ -269,12 +270,12 @@ export function createApiRouter(db) {
     res.json({ transaction: tx, rule });
   });
 
-  router.delete('/transactions/:txId', (req, res) => {
-    db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.txId);
+  router.delete('/accounts/:id/transactions/:txId', requireAccount, (req, res) => {
+    db.prepare('DELETE FROM transactions WHERE id = ? AND account_id = ?').run(req.params.txId, req.params.id);
     res.status(204).end();
   });
 
-  router.post('/transactions/batch', (req, res) => {
+  router.post('/accounts/:id/transactions/batch', requireAccount, (req, res) => {
     const { ids = [], set = {} } = req.body;
     if (!ids.length || (set.description === undefined && set.category === undefined)) {
       return res.status(400).json({ error: 'ids and at least one field required' });
@@ -284,23 +285,23 @@ export function createApiRouter(db) {
         description = COALESCE(?, description),
         category = COALESCE(?, category),
         updated_at = datetime('now')
-      WHERE id = ?
+      WHERE id = ? AND account_id = ?
     `);
     let updated = 0;
     db.transaction(() => {
       for (const id of ids) {
-        updated += update.run(set.description ?? null, set.category ?? null, id).changes;
+        updated += update.run(set.description ?? null, set.category ?? null, id, req.params.id).changes;
       }
     })();
     res.json({ updated });
   });
 
-  router.post('/transactions/batch-delete', (req, res) => {
+  router.post('/accounts/:id/transactions/batch-delete', requireAccount, (req, res) => {
     const { ids = [] } = req.body;
-    const del = db.prepare('DELETE FROM transactions WHERE id = ?');
+    const del = db.prepare('DELETE FROM transactions WHERE id = ? AND account_id = ?');
     let deleted = 0;
     db.transaction(() => {
-      for (const id of ids) deleted += del.run(id).changes;
+      for (const id of ids) deleted += del.run(id, req.params.id).changes;
     })();
     res.json({ deleted });
   });

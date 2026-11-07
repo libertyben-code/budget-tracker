@@ -56,7 +56,7 @@ export const actions = {
     if (category) setFields.category = category;
     if (Object.keys(setFields).length === 0) return;
     const ids = [...state.selection];
-    await api.batchEdit(ids, setFields);
+    await api.batchEdit(state.activeAccountId, ids, setFields);
     set({
       transactions: state.transactions.map(tx =>
         state.selection.has(tx.id) ? { ...tx, ...setFields } : tx),

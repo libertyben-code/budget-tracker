@@ -22,10 +22,10 @@ export const api = {
   deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
 
   createTransaction: (accountId, tx) => request('POST', `/accounts/${accountId}/transactions`, tx),
-  patchTransaction: (id, patch) => request('PATCH', `/transactions/${id}`, patch),
-  deleteTransaction: (id) => request('DELETE', `/transactions/${id}`),
-  batchEdit: (ids, set) => request('POST', '/transactions/batch', { ids, set }),
-  batchDelete: (ids) => request('POST', '/transactions/batch-delete', { ids }),
+  patchTransaction: (accountId, id, patch) => request('PATCH', `/accounts/${accountId}/transactions/${id}`, patch),
+  deleteTransaction: (accountId, id) => request('DELETE', `/accounts/${accountId}/transactions/${id}`),
+  batchEdit: (accountId, ids, set) => request('POST', `/accounts/${accountId}/transactions/batch`, { ids, set }),
+  batchDelete: (accountId, ids) => request('POST', `/accounts/${accountId}/transactions/batch-delete`, { ids }),
 
   importCsv: (accountId, text) => request('POST', `/accounts/${accountId}/import`, text, 'text/csv'),
   autocategorize: (accountId) => request('POST', `/accounts/${accountId}/autocategorize`),

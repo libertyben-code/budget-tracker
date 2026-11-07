@@ -51,6 +51,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Server dependencies upgraded with `npm audit fix` (`qs`, `body-parser`, `proxy-addr`, `content-type`) — audit clean — OK
 - [x] Category rename/delete reaching `category_rules` for every account — intended since global categories (2026-10-06): categories and rules are both global — OK
 - [x] The app re-imports its own CSV export — import split on bare commas, so a quoted `"Shop, Ltd"` shifted every later column; it now reads quoted fields (commas, `""`, line breaks) and strips the export's `'` formula guard — OK
+- [x] Transaction edit/delete routes are scoped to an account — `PATCH`/`DELETE` and the batch routes moved under `/accounts/:id/transactions/…` and only touch that account's rows, so another account's id answers 404 or changes nothing (auth rollout prep) — OK
 
 ## Bank sync
 
