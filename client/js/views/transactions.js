@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { filteredTransactions, categories, stats } from '../derive.js';
 import { isoToDisplay, todayIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
+import { openCategoryPicker } from './category-picker.js';
 
 export function renderTiles(state, t) {
   const s = stats(filteredTransactions(state));
@@ -43,7 +44,7 @@ export function render(state, t) {
   const draftCard = state.creatingTx ? `<div class="card tx-card editing">${editRow(draftTx, true)}</div>` : '';
   const draftRow = state.creatingTx ? `<tr><td colspan="5">${editRow(draftTx, true)}</td></tr>` : '';
 
-  const catSelect = (tx) => `<select class="chip-select" data-action="noop" data-action-change="set-category" data-id="${tx.id}" aria-label="${esc(t('common.category'))}">${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button>`;
 
   const cards = visible.map(tx => state.editingId === tx.id
     ? `<div class="card tx-card editing">${editRow(tx)}</div>`
@@ -160,6 +161,21 @@ function readEditForm(button, t) {
   };
 }
 
+async function setCategory(id, category, t) {
+  const state = get();
+  const tx = state.transactions.find(row => row.id === id);
+  if (!tx || tx.category === category) return;
+  const learnRule = Boolean(tx.description && category !== 'Uncategorized');
+  set({ transactions: state.transactions.map(row => row.id === id ? { ...row, category } : row) });
+  try {
+    const result = await api.patchTransaction(state.activeAccountId, id, { category, learnRule });
+    if (result.rule) showLearnedRule(result, tx.description, t);
+  } catch (err) {
+    toast(err.message);
+    await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
+  }
+}
+
 function showLearnedRule({ rule, applied }, description, t) {
   const ids = new Set(applied.ids);
   const withCategory = (category, from) => get().transactions.map(tx =>
@@ -205,22 +221,10 @@ export const actions = {
   },
   'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false }),
   'cancel-edit': () => set({ editingId: null }),
-  'noop': () => {},
-  'set-category': async (el, ev, t) => {
+  'pick-tx-category': (el) => {
     const id = Number(el.dataset.id);
-    const category = el.value;
-    const state = get();
-    const tx = state.transactions.find(row => row.id === id);
-    if (!tx || tx.category === category) return;
-    const learnRule = Boolean(tx.description && category !== 'Uncategorized');
-    set({ transactions: state.transactions.map(row => row.id === id ? { ...row, category } : row) });
-    try {
-      const result = await api.patchTransaction(state.activeAccountId, id, { category, learnRule });
-      if (result.rule) showLearnedRule(result, tx.description, t);
-    } catch (err) {
-      toast(err.message);
-      await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
-    }
+    const tx = get().transactions.find(row => row.id === id);
+    openCategoryPicker({ title: tx.description, current: tx.category, onPick: (category, t) => setCategory(id, category, t) });
   },
   'save-tx': async (el, ev, t) => {
     const id = Number(el.dataset.id);

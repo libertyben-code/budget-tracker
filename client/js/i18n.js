@@ -192,6 +192,15 @@ const translations = {
       renameCategory: 'Rename category',
       deleteCategoryTitle: 'Delete category',
     },
+    categoryPicker: {
+      trigger: 'Category: {category}',
+      search: 'Search or create a category',
+      newPlaceholder: 'Name of the new category',
+      recent: 'Recent',
+      all: 'All categories',
+      newCategory: 'New category',
+      create: 'Create “{name}”',
+    },
     dashboard: {
       spendingByCategory: 'Spending by Category',
       spendingByCategoryMonth: 'Spending by Category',
@@ -464,6 +473,15 @@ const translations = {
       deleteCategory: 'Supprimer la catégorie',
       renameCategory: 'Renommer la catégorie',
       deleteCategoryTitle: 'Supprimer la catégorie',
+    },
+    categoryPicker: {
+      trigger: 'Catégorie : {category}',
+      search: 'Rechercher ou créer une catégorie',
+      newPlaceholder: 'Nom de la nouvelle catégorie',
+      recent: 'Récentes',
+      all: 'Toutes les catégories',
+      newCategory: 'Nouvelle catégorie',
+      create: 'Créer « {name} »',
     },
     dashboard: {
       spendingByCategory: 'Dépenses par catégorie',
