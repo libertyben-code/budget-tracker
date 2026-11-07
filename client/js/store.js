@@ -4,6 +4,7 @@ const state = {
   accounts: [],
   activeAccountId: localStorage.getItem('activeAccountId') || 'default',
   rules: [],
+  joint: null,
   transactions: [],
   categories: [],
   savingsAccounts: [],

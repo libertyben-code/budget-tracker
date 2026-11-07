@@ -142,29 +142,14 @@ export function monthlyData(filtered) {
 }
 
 export function jointData(state) {
-  const nowMonth = monthKey(todayIso());
-  const currentMonthTx = state.transactions.filter(t => monthKey(t.date) === nowMonth);
-  const bills = currentMonthTx.filter(t => (t.category || '').toLowerCase().includes('bill'));
-  const billsTotal = bills.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-  const nonBillCount = currentMonthTx.length - bills.length;
-
-  const account = state.accounts.find(a => a.id === state.activeAccountId) || {};
-  const salary1 = parseFloat(account.salaryPerson1) || 0;
-  const salary2 = parseFloat(account.salaryPerson2) || 0;
-  const target = parseFloat(account.jointTargetAmount) || 0;
-  const totalToSplit = target > 0 ? target : billsTotal;
+  const wanted = state.joint.wanted || 0;
+  const salary1 = state.joint.salary1 || 0;
+  const salary2 = state.joint.salary2 || 0;
   const totalSalaries = salary1 + salary2;
-
   return {
-    bills,
-    billsTotal,
-    nonBillCount,
-    salary1,
-    salary2,
-    totalToSplit,
-    person1: totalSalaries > 0 ? (totalToSplit * salary1) / totalSalaries : 0,
-    person2: totalSalaries > 0 ? (totalToSplit * salary2) / totalSalaries : 0,
-    hasSalaries: totalSalaries > 0,
+    person1: totalSalaries > 0 ? (wanted * salary1) / totalSalaries : 0,
+    person2: totalSalaries > 0 ? (wanted * salary2) / totalSalaries : 0,
+    ready: wanted > 0 && totalSalaries > 0,
   };
 }
 

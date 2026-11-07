@@ -18,7 +18,7 @@ export const api = {
   bootstrap: () => request('GET', '/bootstrap'),
   accountData: (id) => request('GET', `/accounts/${id}/data`),
   createAccount: (name) => request('POST', '/accounts', { name }),
-  patchAccountSettings: (id, patch) => request('PATCH', `/accounts/${id}/settings`, patch),
+  patchJointSettings: (patch) => request('PATCH', '/settings/joint', patch),
   deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
 
   createTransaction: (accountId, tx) => request('POST', `/accounts/${accountId}/transactions`, tx),
