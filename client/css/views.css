@@ -297,6 +297,20 @@ main {
 
 .tx-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4); text-align: center; }
 .tx-empty p { margin: 0; color: var(--muted); }
+.tx-empty h3 { margin: 0; }
+
+/* To categorise inbox */
+.inbox-head { display: flex; align-items: center; gap: var(--space-2); }
+.inbox-head .icon-btn { flex-shrink: 0; margin-left: -6px; color: var(--text); }
+.inbox-head h2 { margin: 0; font-size: 1.25rem; }
+.inbox-head p { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.inbox-seg { align-self: stretch; }
+.inbox-seg button { flex: 1; }
+@media (min-width: 640px) { .inbox-seg { align-self: flex-start; } }
+.inbox-hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.inbox-list { padding: 0; overflow: hidden; }
+.tx-item .inbox-meta { font-size: 0.8rem; color: var(--muted); }
+.inbox-more { align-self: center; }
 
 .chip-select {
   font-size: 0.85rem;

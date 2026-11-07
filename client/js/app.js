@@ -13,8 +13,9 @@ import * as jointSplit from './views/joint-split.js';
 import * as savings from './views/savings.js';
 import * as bankSync from './views/bank-sync.js';
 import * as categoryPicker from './views/category-picker.js';
+import * as categorise from './views/categorise.js';
 
-const views = { dashboard, transactions, joint: jointSplit, savings };
+const views = { dashboard, transactions, joint: jointSplit, savings, categorise };
 const actions = {
   ...header.actions,
   ...filters.actions,
@@ -27,6 +28,7 @@ const actions = {
   ...savings.actions,
   ...bankSync.actions,
   ...categoryPicker.actions,
+  ...categorise.actions,
   'retry-connection': retryConnection,
 };
 

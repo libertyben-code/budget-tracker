@@ -10,6 +10,10 @@ export function autoCategorize(description, rules) {
   return 'Uncategorized';
 }
 
+export function normalizeDescription(description) {
+  return (description || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 const INTENTS = [
   { tags: ['grocery', 'supermarket', 'aldi', 'lidl', 'tesco', 'carrefour', 'auchan', 'food'], aliases: ['grocer', 'grocery', 'supermarket', 'food'] },
   { tags: ['restaurant', 'cafe', 'coffee', 'uber eats', 'deliveroo', 'just eat', 'takeaway'], aliases: ['restaurant', 'dining', 'food', 'eating out'] },
