@@ -92,6 +92,13 @@
 .banner.warning { background: var(--warning-soft); color: var(--warning); }
 .banner.offline { background: var(--surface-2); color: var(--muted); }
 .banner .grow { flex: 1; }
+.banner.connection {
+  margin: var(--space-3) var(--space-4) 0;
+  background: var(--warning-soft);
+  color: var(--warning);
+  align-items: center;
+}
+.banner.connection svg, .banner.connection .btn { flex-shrink: 0; }
 
 .modal-backdrop {
   position: fixed;

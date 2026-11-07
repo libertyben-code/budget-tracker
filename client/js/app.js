@@ -1,7 +1,7 @@
 import { get, set, setUi, subscribe } from './store.js';
-import { api } from './api.js';
+import { api, net } from './api.js';
 import { createTranslator } from './i18n.js';
-import { debounce, toast } from './dom.js';
+import { debounce, esc, icons, toast } from './dom.js';
 import * as header from './views/header.js';
 import * as filters from './views/filters.js';
 import * as transactions from './views/transactions.js';
@@ -25,6 +25,7 @@ const actions = {
   ...jointSplit.actions,
   ...savings.actions,
   ...bankSync.actions,
+  'retry-connection': retryConnection,
 };
 
 const appEl = document.getElementById('app');
@@ -46,7 +47,7 @@ function render() {
   const selStart = active?.selectionStart;
 
   const view = views[state.ui.tab] || views.dashboard;
-  appEl.innerHTML = header.render(state, t) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
+  appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
   modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t);
 
   dashboard.afterRender(state, t);
@@ -63,13 +64,47 @@ function render() {
   }
 }
 
+function connectionBanner(connection, t, lang) {
+  if (!connection) return '';
+  const text = connection.down
+    ? [t('connection.unreachable'), connection.asOf && t('connection.asOf', { when: formatTime(connection.asOf, t, lang) }), t('connection.paused')].filter(Boolean).join(' ')
+    : t('connection.loadFailed', { message: connection.error });
+  return `
+  <div class="banner connection">
+    ${icons.offline}
+    <span class="grow">${esc(text)}</span>
+    <button class="btn small" data-action="retry-connection" ${connection.retrying ? 'disabled' : ''}>${esc(t('connection.retry'))}</button>
+  </div>`;
+}
+
+function formatTime(time, t, lang) {
+  const locale = lang === 'fr' ? 'fr-FR' : 'en-GB';
+  const date = new Date(time);
+  const clock = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === new Date().toDateString()) return t('connection.today', { time: clock });
+  if (date.toDateString() === yesterday.toDateString()) return t('connection.yesterday', { time: clock });
+  return `${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}, ${clock}`;
+}
+
 async function runAction(name, el, ev) {
   const action = actions[name];
   if (!action) return;
+  const t = translator();
+  net.message = t('connection.unreachable');
+  const { connection, ...before } = get();
+  const failedWrites = net.failedWrites;
   try {
-    await action(el, ev, translator());
+    await action(el, ev, t);
   } catch (err) {
-    toast(err.message || 'Error');
+    if (!err.network) toast(err.message || 'Error');
+    else if (net.failedWrites === failedWrites) toast(err.message, { type: 'info' });
+  }
+  if (net.failedWrites !== failedWrites) {
+    // The write never reached the server: take back what the action showed before trying it.
+    set(before);
+    toast(t('connection.pausedToast'), { type: 'info' });
   }
 }
 
@@ -116,7 +151,7 @@ function syncTabFromHash() {
 window.addEventListener('hashchange', () => {
   syncTabFromHash();
   // fed balances are derived server-side from every budget account, so re-read them on entry
-  if (get().ui.tab === 'savings' && get().loaded && !get().offline) refreshSavings().catch(() => {});
+  if (get().ui.tab === 'savings' && get().loaded && !get().connection) refreshSavings().catch(() => {});
 });
 
 export async function refreshBootstrap() {
@@ -141,6 +176,9 @@ export async function refreshSavings() {
 }
 
 export async function loadAccount(accountId) {
+  // A failed write reloads its account to undo itself. While the server is down that would show an
+  // older cached copy instead, so runAction undoes it.
+  if (get().connection?.down && accountId === get().activeAccountId) return;
   const data = await api.accountData(accountId);
   set({
     activeAccountId: accountId,
@@ -181,16 +219,31 @@ function handleBankReturn() {
   bankSync.loadStatus();
 }
 
-function setOffline(offline) {
-  if (get().offline !== offline) set({ offline });
+// `asOf` is the oldest time the data on screen was fetched from the server.
+function markDown(time) {
+  const times = [get().connection?.asOf, time].filter(Boolean);
+  net.paused = true;
+  set({ connection: { down: true, asOf: times.length ? Math.min(...times) : null } });
 }
-window.addEventListener('online', () => setOffline(false));
-window.addEventListener('offline', () => setOffline(true));
+net.onDown = markDown;
+net.onCached = markDown;
 
-async function boot() {
-  header.applyTheme(get());
-  subscribe(render);
+function recheck() {
+  if (get().connection?.down) load();
+}
+window.addEventListener('online', recheck);
+window.addEventListener('offline', () => markDown(net.heardAt));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') recheck();
+});
 
+async function retryConnection(el, ev, t) {
+  set({ connection: { ...get().connection, retrying: true } });
+  await load();
+  if (get().connection?.down) toast(t('connection.stillDown'), { type: 'info' });
+}
+
+async function load() {
   try {
     const bootData = await api.bootstrap();
     let accountId = get().activeAccountId;
@@ -198,7 +251,6 @@ async function boot() {
     const data = await api.accountData(accountId);
     set({
       loaded: true,
-      offline: false,
       accounts: bootData.accounts,
       rules: bootData.rules,
       joint: bootData.joint,
@@ -207,12 +259,24 @@ async function boot() {
       categories: data.categories,
       ...savingsState(data),
     });
-  } catch {
-    set({ loaded: true, offline: true });
+    if (!net.cachedAt) {
+      net.paused = false;
+      set({ connection: null });
+    }
+  } catch (err) {
+    if (err.network) return set({ loaded: true });
+    // An HTTP error (a future 401 among them) means the server answered: not the offline state.
+    net.paused = false;
+    set({ loaded: true, connection: { error: err.message } });
   }
+}
 
+async function boot() {
+  header.applyTheme(get());
+  subscribe(render);
+  await load();
   syncTabFromHash();
-  if (!get().offline) handleBankReturn();
+  if (!get().connection) handleBankReturn();
 
   if ('serviceWorker' in navigator) {
     const registration = await navigator.serviceWorker.register('/sw.js').catch(() => null);
