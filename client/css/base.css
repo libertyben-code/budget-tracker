@@ -78,8 +78,19 @@ table {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  font-size: 1.2rem;
-  color: var(--muted);
+}
+.boot-loading::after {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: boot-spin 0.8s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .boot-loading::after { animation: none; }
 }
 
 .muted { color: var(--muted); }

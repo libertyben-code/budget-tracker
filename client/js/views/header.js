@@ -160,7 +160,7 @@ export function render(state, t) {
   ${importErrors ? `
   <div class="banner warning" style="margin:12px 16px 0">
     <div class="grow">
-      <strong>${esc(t('header.importWarning', { count: importErrors.count, suffix: importErrors.count > 1 ? 's' : '' }))}</strong>
+      <strong>${esc(t(importErrors.count === 1 ? 'header.importWarningOne' : 'header.importWarning', { count: importErrors.count }))}</strong>
       <div>${esc(t('header.importWarningDesc'))}</div>
       <div>${esc(t('header.lines', { lines: shownLines }))}${importErrors.lines.length > 20 ? esc(t('header.andMore', { count: importErrors.lines.length - 20 })) : ''}</div>
     </div>

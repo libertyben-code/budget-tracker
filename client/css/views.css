@@ -46,15 +46,19 @@
 .account-btn {
   max-width: 100%;
   min-height: 40px;
-  padding: 5px 34px 5px 14px;
   border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 600;
   background-color: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent-strong);
-  background-position: right 12px center;
-  background-size: 15px;
+}
+/* .btn.select-btn out-ranks a bare .account-btn, so the pill's own box is set at its specificity.
+   "Main Account" needs ~90px of the ~127px the row leaves the pill at 375px. */
+.btn.account-btn {
+  padding: 5px 24px 5px 12px;
+  background-position: right 8px center;
+  background-size: 12px;
 }
 .account-btn:hover { border-color: var(--accent-strong); }
 /* Desktop only — on a phone the row needs these ~75px for the account name. */
