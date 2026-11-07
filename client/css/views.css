@@ -151,7 +151,7 @@ main {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.chip-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 /* Transactions: cards on mobile, table >= 640px */
 .tx-cards { display: flex; flex-direction: column; gap: var(--space-2); }
