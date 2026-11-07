@@ -156,11 +156,64 @@ main {
 }
 .month-label.past { color: var(--accent); }
 
-.filter-bar { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
-.filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+/* Search takes what the pill leaves, down to a usable 96px. Past that the
+   category part of the pill truncates; the period never does. */
+.filter-bar { display: flex; gap: var(--space-2); }
+.filter-bar input[type="search"] { flex: 1 1 0; min-width: 96px; }
+.filter-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+.filter-pill.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.filter-pill.active .filter-btn { padding-right: 2px; }
+.filter-btn svg, .filter-period { flex-shrink: 0; }
+.filter-cats { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-clear { flex-shrink: 0; width: 38px; border-radius: 999px; }
+/* 2px under the search field's height: the pill's border makes up the rest. */
+@media (pointer: coarse) { .filter-btn { min-height: 42px; } }
 
-.chip-row { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-.chip-row::-webkit-scrollbar { display: none; }
+.filter-sheet { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+@media (min-width: 640px) { .filter-sheet { max-width: 480px; } }
+.filter-sheet .modal-head h2 { margin: 0; }
+.filter-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: 0 var(--space-4) var(--space-3);
+}
+.filter-sheet-body .picker-label:first-child { margin-top: 0; }
+.chip-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.filter-detail { width: 100%; margin-top: var(--space-3); }
+.filter-range { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.filter-range label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.filter-range input { width: 100%; min-width: 0; }
+.filter-sheet-foot {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4) max(var(--space-4), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+.filter-sheet-foot .primary { flex: 1; }
+
 .chip-btn {
   display: inline-flex;
   align-items: center;

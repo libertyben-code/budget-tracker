@@ -3,10 +3,12 @@ import { monthKey, todayIso, relativeMonthStart } from '/shared/dates.js';
 export function filteredTransactions(state) {
   const { filter, sort } = state;
   const nowMonth = monthKey(todayIso());
+  const query = filter.description.toLowerCase();
+  const amountMatches = amountMatcher(filter.description);
 
   const filtered = state.transactions.filter(t => {
     if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
-    if (filter.description && !t.description.toLowerCase().includes(filter.description.toLowerCase())) return false;
+    if (query && !t.description.toLowerCase().includes(query) && !amountMatches?.(t.amount)) return false;
     if (filter.categorySearch && !t.category.toLowerCase().includes(filter.categorySearch.toLowerCase())) return false;
 
     const txMonth = monthKey(t.date);
@@ -44,6 +46,14 @@ export function filteredTransactions(state) {
   }
 
   return filtered;
+}
+
+// "32" finds 32.00 to 32.99 either sign; "32.5" finds 32.50 to 32.59. "32,50" and "€32" read the same.
+function amountMatcher(text) {
+  const q = text.trim().replace(/^[-+]/, '').replace(/[\s€]/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{0,2})?$/.test(q)) return null;
+  if (!q.includes('.')) return (amount) => Math.trunc(Math.abs(amount)) === Number(q);
+  return (amount) => Math.abs(amount).toFixed(2).startsWith(q);
 }
 
 export function addMonths(m, delta) {
