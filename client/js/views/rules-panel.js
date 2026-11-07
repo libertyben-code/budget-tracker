@@ -36,7 +36,7 @@ export function render(state, t) {
       </div>
       ${selection.size > 0 ? `
       <div class="selection-bar">
-        <span class="grow">${esc(t('categoryRules.selectedRules', { count: selection.size, suffix: selection.size > 1 ? 's' : '' }))}</span>
+        <span class="grow">${esc(t(selection.size === 1 ? 'categoryRules.selectedRulesOne' : 'categoryRules.selectedRules', { count: selection.size }))}</span>
         <button class="btn small primary" data-action="open-rule-batch">${esc(t('categoryRules.changeCategory'))}</button>
         <button class="btn small danger" data-action="delete-selected-rules">${esc(t('common.delete'))}</button>
       </div>` : ''}

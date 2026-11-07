@@ -41,6 +41,7 @@ function render() {
   const state = get();
   if (!state.loaded) return;
   const t = translator();
+  document.documentElement.lang = state.ui.lang;
   // Theme actions call setUi() before applyTheme(); charts read their colours from CSS.
   header.applyTheme(state);
 
@@ -100,7 +101,7 @@ async function runAction(name, el, ev) {
   try {
     await action(el, ev, t);
   } catch (err) {
-    if (!err.network) toast(err.message || 'Error');
+    if (!err.network) toast(err.message || t('common.error'));
     else if (net.failedWrites === failedWrites) toast(err.message, { type: 'info' });
   }
   if (net.failedWrites !== failedWrites) {
@@ -274,6 +275,8 @@ async function load() {
 }
 
 async function boot() {
+  document.documentElement.lang = get().ui.lang;
+  document.querySelector('.boot-loading')?.setAttribute('aria-label', translator()('common.loading'));
   header.applyTheme(get());
   subscribe(render);
   await load();

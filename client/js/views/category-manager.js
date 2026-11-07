@@ -56,7 +56,7 @@ export function render(state, t) {
         </div>` : deleting === c ? deleteRow(c, counts[c] || 0, t) : `
         <div class="panel-list-item">
           <span class="grow">${esc(c)}</span>
-          <span class="badge">${esc(t('categoryManager.transactionCount', { count: counts[c] || 0, suffix: (counts[c] || 0) === 1 ? '' : 's' }))}</span>
+          <span class="badge">${esc(t(counts[c] === 1 ? 'categoryManager.transactionCountOne' : 'categoryManager.transactionCount', { count: counts[c] || 0 }))}</span>
           <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}">${icons.edit}</button>
           <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">${icons.trash}</button>
         </div>`).join('')}
