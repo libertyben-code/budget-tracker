@@ -1,6 +1,6 @@
 import { monthKey, todayIso, relativeMonthStart } from '/shared/dates.js';
 
-export function filteredTransactions(state, { ignoreTime = false } = {}) {
+export function filteredTransactions(state) {
   const { filter, sort } = state;
   const nowMonth = monthKey(todayIso());
 
@@ -8,7 +8,6 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
     if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
     if (filter.description && !t.description.toLowerCase().includes(filter.description.toLowerCase())) return false;
     if (filter.categorySearch && !t.category.toLowerCase().includes(filter.categorySearch.toLowerCase())) return false;
-    if (ignoreTime) return true;
 
     const txMonth = monthKey(t.date);
     if (filter.currentMonth && txMonth !== nowMonth) return false;
@@ -17,9 +16,7 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
       if (t.date.slice(0, 4) !== filter.year) return false;
     } else if (filter.dateFilterType === 'month' && filter.month) {
       if (filter.month === '__last_month__') {
-        const now = new Date();
-        const last = monthKey(`${new Date(now.getFullYear(), now.getMonth() - 1, 1).getFullYear()}-${String(new Date(now.getFullYear(), now.getMonth() - 1, 1).getMonth() + 1).padStart(2, '0')}-01`);
-        if (txMonth !== last) return false;
+        if (txMonth !== addMonths(nowMonth, -1)) return false;
       } else if (filter.month === '__last_3_months__') {
         if (txMonth < monthKey(relativeMonthStart(3)) || txMonth > nowMonth) return false;
       } else if (filter.month === '__last_6_months__') {
@@ -47,6 +44,24 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
   }
 
   return filtered;
+}
+
+export function addMonths(m, delta) {
+  const [year, month] = m.split('-').map(Number);
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function dashboardMonth(state) {
+  return state.ui.dashMonth || monthKey(todayIso());
+}
+
+export function monthTransactions(state, month) {
+  return state.transactions.filter(t => monthKey(t.date) === month);
+}
+
+export function transactionsUpTo(state, month) {
+  return state.transactions.filter(t => monthKey(t.date) <= month);
 }
 
 export function categories(state) {
@@ -158,4 +173,11 @@ export function monthLabel(m, lang) {
   const date = new Date(Number(year), Number(month) - 1, 1);
   const name = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' }).format(date);
   return `${name.charAt(0).toUpperCase()}${name.slice(1).replace('.', '')}-${year.slice(-2)}`;
+}
+
+export function monthTitle(m, lang) {
+  const [year, month] = m.split('-');
+  const name = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })
+    .format(new Date(Number(year), Number(month) - 1, 1));
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 }

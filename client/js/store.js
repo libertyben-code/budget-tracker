@@ -40,6 +40,7 @@ const state = {
     categoryDropdownOpen: null,
     chartMode: 'stacked',
     chartRange: '6m',
+    dashMonth: '',
     importErrors: null,
     panel: null,
     batchEditOpen: false,

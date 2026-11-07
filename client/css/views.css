@@ -133,6 +133,25 @@ main {
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .tiles > * { min-width: 0; }
 
+.month-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  max-width: 420px;
+  margin: 0 auto var(--space-3);
+}
+.month-stepper .icon-btn:disabled { opacity: 0.35; cursor: default; background: none; }
+.month-label {
+  flex: 1;
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+}
+.month-label.past { color: var(--accent); }
+
 .filter-bar { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
 .filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 
