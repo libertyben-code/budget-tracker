@@ -189,6 +189,11 @@ main {
 .tx-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); grid-column: 1 / -1; }
 .tx-edit-grid .span2 { grid-column: 1 / -1; }
 .tx-edit-grid input, .tx-edit-grid select { width: 100%; min-width: 0; }
+.tx-field { min-width: 0; }
+.tx-field label { display: flex; flex-direction: column; gap: 4px; }
+.tx-field label > span { font-size: 0.8rem; color: var(--muted); }
+.tx-field .field-error { margin: 4px 0 0; font-size: 0.85rem; color: var(--danger); }
+.tx-edit-grid [aria-invalid="true"] { border-color: var(--danger); }
 
 @media (min-width: 640px) {
   .tx-cards { display: none; }

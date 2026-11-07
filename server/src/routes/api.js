@@ -219,18 +219,20 @@ export function createApiRouter(db) {
   // --- Transactions ---
 
   router.post('/accounts/:id/transactions', requireAccount, (req, res) => {
-    const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
+    const { date, description, category = 'Uncategorized', amount, type = '', state = 'COMPLETED' } = req.body;
     if (date && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount);
+    if (!Number.isFinite(amountNum) || amountNum === 0) return res.status(400).json({ error: 'amount must be a non-zero number' });
+    if (typeof description !== 'string' || !description.trim()) return res.status(400).json({ error: 'description must not be empty' });
     const info = db.prepare(`
       INSERT INTO transactions (account_id, date, description, category, amount, type, state, source)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')
     `).run(
       req.params.id,
       String(date || todayIso()),
-      String(description ?? ''),
+      description.trim(),
       String(category ?? 'Uncategorized'),
-      Number.isFinite(amountNum) ? amountNum : 0,
+      amountNum,
       String(type ?? ''),
       String(state ?? 'COMPLETED')
     );
@@ -245,11 +247,13 @@ export function createApiRouter(db) {
     const { date, description, category, amount, learnRule } = req.body;
     if (date != null && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount ?? current.amount);
+    if (amount != null && (!Number.isFinite(amountNum) || amountNum === 0)) return res.status(400).json({ error: 'amount must be a non-zero number' });
+    if (description != null && (typeof description !== 'string' || !description.trim())) return res.status(400).json({ error: 'description must not be empty' });
     const next = {
       date: String(date ?? current.date),
-      description: String(description ?? current.description),
+      description: description != null ? description.trim() : current.description,
       category: String(category ?? current.category),
-      amount: Number.isFinite(amountNum) ? amountNum : current.amount,
+      amount: amountNum,
     };
     db.prepare(`
       UPDATE transactions SET date = ?, description = ?, category = ?, amount = ?, updated_at = datetime('now')
