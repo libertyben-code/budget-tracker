@@ -86,14 +86,13 @@ function retryable(err, from, fallback) {
 // booked/available, opening booked/available. Whatever the bank sends first otherwise.
 const BALANCE_PREFERENCE = ['CLBD', 'CLAV', 'XPCD', 'ITBD', 'ITAV', 'OPBD', 'OPAV'];
 
-export function pickBalance(balances) {
+export function pickBalance(balances, today = todayIso()) {
   const list = (balances || []).filter(b => Number.isFinite(Number(b?.balance_amount?.amount)));
   if (!list.length) return null;
-  for (const type of BALANCE_PREFERENCE) {
-    const hit = list.find(b => b.balance_type === type);
-    if (hit) return Number(hit.balance_amount.amount);
-  }
-  return Number(list[0].balance_amount.amount);
+  const hit = BALANCE_PREFERENCE.map(type => list.find(b => b.balance_type === type)).find(Boolean) || list[0];
+  const date = [hit.reference_date, hit.last_change_date_time]
+    .map(d => String(d || '').slice(0, 10)).find(d => /^\d{4}-\d{2}-\d{2}$/.test(d)) || today;
+  return { amount: Number(hit.balance_amount.amount), date };
 }
 
 async function fetchWindow(client, bankAccount, from, to, today, psu) {
@@ -137,17 +136,21 @@ export async function syncBankAccount(db, client, bankAccount, { psu, today = to
   const setStatus = db.prepare('UPDATE bank_accounts SET last_sync_at = ?, last_sync_status = ? WHERE id = ?');
   try {
     const raw = await fetchWindow(client, bankAccount, from, to, today, psu);
+    // a bank that cannot serve balances still gets its history synced, and keeps its last balance
+    const picked = pickBalance((await client.fetchBalances(bankAccount.uid, psu).catch(() => null))?.balances, today);
     let result;
     if (mode === 'savings') {
-      // a bank that cannot serve balances still gets its history recorded
-      const balance = pickBalance((await client.fetchBalances(bankAccount.uid, psu).catch(() => null))?.balances);
+      const balance = picked ? picked.amount : null;
       result = { balance, historyAdded: applySavings(db, bankAccount, raw, balance), imported: 0, skippedDuplicates: 0 };
     } else {
       const rows = raw.filter(isBooked).map(tx => mapTransaction(tx, bankAccount.id)).filter(Boolean);
       result = importTransactions(db, bankAccount.account_id, rows, { source: 'bank' });
     }
-    db.prepare('UPDATE bank_accounts SET synced_to = ?, last_sync_at = ?, last_sync_status = ? WHERE id = ?')
-      .run(to, new Date().toISOString(), 'ok', bankAccount.id);
+    db.prepare(`
+      UPDATE bank_accounts SET synced_to = ?, last_sync_at = ?, last_sync_status = ?,
+        balance = COALESCE(?, balance), balance_date = COALESCE(?, balance_date)
+      WHERE id = ?
+    `).run(to, new Date().toISOString(), 'ok', picked ? Math.round(picked.amount * 100) / 100 : null, picked?.date ?? null, bankAccount.id);
     return { bankAccountId: bankAccount.id, mode, fetched: raw.length, ...result };
   } catch (err) {
     const message = err.code === 'ASPSP_RATE_LIMIT_EXCEEDED'

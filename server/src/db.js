@@ -40,7 +40,12 @@ function migrate(db) {
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'").get()) createSettings(db);
   // v6: a budget account has one currency, so a bank account in another one gets its own
   ensureColumn(db, 'accounts', 'currency', "TEXT NOT NULL DEFAULT 'EUR'");
-  db.prepare("UPDATE meta SET value = '6' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 6").run();
+  // v7: real balances, from the bank for synced accounts and an opening balance for manual ones
+  ensureColumn(db, 'bank_accounts', 'balance', 'REAL');
+  ensureColumn(db, 'bank_accounts', 'balance_date', 'TEXT');
+  ensureColumn(db, 'accounts', 'opening_balance', 'REAL');
+  ensureColumn(db, 'accounts', 'opening_balance_date', 'TEXT');
+  db.prepare("UPDATE meta SET value = '7' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 7").run();
 }
 
 // The joint split starts from the budget account whose salaries were filled in, else the default.
