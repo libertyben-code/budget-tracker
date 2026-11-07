@@ -162,9 +162,20 @@
 .menu-item:hover { background: var(--surface-2); }
 .menu-item svg { flex-shrink: 0; color: var(--muted); }
 .menu-sep { border-top: 1px solid var(--border); margin: var(--space-2) 0; }
+.menu-heading {
+  padding: 4px 10px 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
-.accent-row { cursor: default; }
-.accent-row:hover { background: none; }
+.accent-row, .theme-row { cursor: default; }
+.accent-row:hover, .theme-row:hover { background: none; }
+.theme-row { flex-wrap: wrap; }
+.theme-seg { display: flex; width: 100%; }
+.theme-seg button { flex: 1; padding: 7px 8px; white-space: nowrap; }
 .accent-swatches { display: flex; gap: 6px; flex-shrink: 0; }
 .accent-swatch {
   width: 24px;

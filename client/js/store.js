@@ -1,3 +1,6 @@
+// Not migrated to `theme`: appearance now follows the phone unless overridden.
+localStorage.removeItem('darkMode');
+
 const state = {
   loaded: false,
   offline: false,
@@ -29,7 +32,7 @@ const state = {
   addingAccount: false,
   ui: {
     tab: 'dashboard',
-    dark: localStorage.getItem('darkMode') === 'true',
+    theme: localStorage.getItem('theme') || 'system',
     accent: localStorage.getItem('accent') || 'indigo',
     lang: localStorage.getItem('language') || 'en',
     settingsOpen: false,
