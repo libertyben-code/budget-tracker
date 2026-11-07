@@ -12,6 +12,7 @@ import * as dashboard from './views/dashboard.js';
 import * as jointSplit from './views/joint-split.js';
 import * as savings from './views/savings.js';
 import * as bankSync from './views/bank-sync.js';
+import * as categoryPicker from './views/category-picker.js';
 
 const views = { dashboard, transactions, joint: jointSplit, savings };
 const actions = {
@@ -25,6 +26,7 @@ const actions = {
   ...jointSplit.actions,
   ...savings.actions,
   ...bankSync.actions,
+  ...categoryPicker.actions,
   'retry-connection': retryConnection,
 };
 
@@ -48,7 +50,7 @@ function render() {
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t);
+  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + categoryPicker.render(state, t);
 
   dashboard.afterRender(state, t);
   savings.afterRender(state);

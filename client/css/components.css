@@ -134,6 +134,69 @@
 .confirm-modal { max-width: 420px; }
 .confirm-message { margin: 0 0 var(--space-4); line-height: 1.5; }
 
+button.chip-select {
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+/* Fixed height: with the phone keyboard up, a sheet that shrank to its matches would push the search field under it. */
+.category-picker {
+  display: flex;
+  flex-direction: column;
+  height: 85vh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+@media (min-width: 640px) {
+  .category-picker { height: min(600px, 85vh); max-width: 440px; }
+}
+.category-picker .modal-head h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.picker-search { width: 100%; flex-shrink: 0; }
+.picker-body {
+  flex: 1;
+  overflow-y: auto;
+  margin: var(--space-2) calc(-1 * var(--space-4)) 0;
+  padding: 0 var(--space-4) max(var(--space-4), env(safe-area-inset-bottom));
+}
+.picker-label {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.picker-recent { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.picker-chip {
+  min-height: 36px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.picker-chip.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.picker-option:hover { background: var(--surface-2); }
+.picker-option span { min-width: 0; overflow-wrap: anywhere; }
+.picker-option.current { color: var(--accent-strong); font-weight: 600; }
+.picker-option.action { color: var(--accent-strong); font-weight: 550; }
+
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3); }
 .field label { font-size: 0.85rem; color: var(--muted); }
 

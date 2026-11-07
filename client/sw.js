@@ -21,6 +21,7 @@ const SHELL = [
   '/js/views/rules-panel.js',
   '/js/views/category-manager.js',
   '/js/views/bank-sync.js',
+  '/js/views/category-picker.js',
   '/js/views/dashboard.js',
   '/js/views/joint-split.js',
   '/js/views/savings.js',
