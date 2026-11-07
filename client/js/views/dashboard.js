@@ -1,6 +1,7 @@
-import { esc, eur, eurSigned, chartColors } from '../dom.js';
-import { get, setUi, setFilter } from '../store.js';
+import { esc, eur, eurSigned, chartColors, icons } from '../dom.js';
+import { get, set, setUi, setFilter } from '../store.js';
 import { api } from '../api.js';
+import { renderStarterOffer } from './category-manager.js';
 import {
   categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
   addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, lastBankSync,
@@ -82,7 +83,31 @@ function keepOrBuild(id, key, build) {
   kept.set(id, { key, box: canvas.parentElement, chart: build(canvas) });
 }
 
+function renderWelcome(state, t) {
+  const account = state.accounts.find(a => a.id === state.activeAccountId);
+  const title = state.accounts.length > 1 && account ? t('dashboard.emptyTitle', { account: account.name }) : t('dashboard.welcomeTitle');
+  return `
+  <div class="card welcome-card">
+    <h2>${esc(title)}</h2>
+    <p class="muted">${esc(t('dashboard.welcomeText'))}</p>
+    <div class="welcome-actions">
+      <button class="btn primary" data-action="open-bank-sync">${icons.bank} ${esc(t('bank.linkBank'))}</button>
+      <button class="btn" data-action="welcome-import-csv">${icons.import} ${esc(t('header.importCsv'))}</button>
+      <input type="file" id="welcome-csv-file" accept=".csv" data-action-change="import-csv" hidden>
+      <button class="btn" data-action="welcome-add-tx">＋ ${esc(t('dashboard.welcomeAdd'))}</button>
+    </div>
+    ${renderStarterOffer(state, t)}
+  </div>`;
+}
+
 export function render(state, t) {
+  if (!state.transactions.length) {
+    return `
+  <section class="view">
+    ${accountBalance(state).amount !== null ? renderBalance(state, t) : ''}
+    ${renderWelcome(state, t)}
+  </section>`;
+  }
   const month = dashboardMonth(state);
   const rangeBtn = (id, label) => `<button class="${state.ui.chartRange === id ? 'active' : ''}" data-action="chart-range" data-range="${id}">${esc(label)}</button>`;
 
@@ -134,7 +159,7 @@ export function afterRender(state, t) {
     bankStatusAsked = true;
     api.bankStatus().then(bankStatus => setUi({ bankStatus }), () => {});
   }
-  if (state.ui.tab !== 'dashboard' || typeof Chart === 'undefined') {
+  if (state.ui.tab !== 'dashboard' || typeof Chart === 'undefined' || !state.transactions.length) {
     for (const { chart } of kept.values()) chart.destroy();
     kept.clear();
     return;
@@ -296,6 +321,11 @@ export const actions = {
       categories: ['Uncategorized'], description: '', categorySearch: '',
       currentMonth: isNow, dateFilterType: isNow ? 'all' : 'month', year: '', month: isNow ? '' : month, startDate: '', endDate: '',
     });
+    location.hash = '#/transactions';
+  },
+  'welcome-import-csv': () => document.getElementById('welcome-csv-file').click(),
+  'welcome-add-tx': () => {
+    set({ creatingTx: true, editingId: null });
     location.hash = '#/transactions';
   },
   'open-set-balance': () => {

@@ -1,8 +1,41 @@
-import { esc, icons } from '../dom.js';
+import { esc, icons, toast } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount } from '../app.js';
+
+const STARTER_KEY = 'starterCategoriesOffered';
+
+// ui.starterOffered keeps "Not now" for the session when localStorage is unavailable.
+function starterOffered(state) {
+  if (state.ui.starterOffered !== undefined) return state.ui.starterOffered;
+  try {
+    return localStorage.getItem(STARTER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberStarterOffered(offered) {
+  try {
+    if (offered) localStorage.setItem(STARTER_KEY, '1');
+    else localStorage.removeItem(STARTER_KEY);
+  } catch {}
+  setUi({ starterOffered: offered });
+}
+
+export function renderStarterOffer(state, t) {
+  if (starterOffered(state) || categories(state).some(c => c !== 'Uncategorized')) return '';
+  return `
+  <div class="starter-offer">
+    <p class="starter-title">${esc(t('categoryManager.starterTitle'))}</p>
+    <p class="starter-names">${esc(t('categoryManager.starterNames'))}</p>
+    <div class="row">
+      <button class="btn small primary" data-action="add-starter-categories">${esc(t('categoryManager.starterAdd'))}</button>
+      <button class="btn small ghost" data-action="dismiss-starter-categories">${esc(t('categoryManager.starterNotNow'))}</button>
+    </div>
+  </div>`;
+}
 
 function deleteRow(category, count, t) {
   return `
@@ -47,6 +80,7 @@ export function render(state, t) {
         <input id="new-cat-input" class="grow" placeholder="${esc(t('categoryManager.newCategoryName'))}" data-action-key="add-category">
         <button class="btn primary" data-action="add-category">${esc(t('categoryManager.addCategory'))}</button>
       </div>
+      ${renderStarterOffer(state, t)}
       <div class="panel-list">
         ${cats.map(c => state.ui.editingCategory === c ? `
         <div class="panel-list-item">
@@ -66,6 +100,24 @@ export function render(state, t) {
 }
 
 export const actions = {
+  'add-starter-categories': async (el, ev, t) => {
+    const names = t('categoryManager.starterNames').split(', ');
+    await Promise.all(names.map(name => api.addCategory(name)));
+    set({ categories: [...get().categories, ...names.map(name => ({ name, count: 0 }))] });
+    rememberStarterOffered(true);
+    toast(t('categoryManager.starterAdded', { count: names.length }), {
+      type: 'success',
+      action: {
+        label: t('transactionTable.undo'),
+        onClick: async () => {
+          await Promise.all(names.map(name => api.deleteCategory(name, 'Uncategorized')));
+          rememberStarterOffered(false);
+          await loadAccount(get().activeAccountId);
+        },
+      },
+    });
+  },
+  'dismiss-starter-categories': () => rememberStarterOffered(true),
   'add-category': async () => {
     const input = document.getElementById('new-cat-input');
     const name = input?.value.trim();
