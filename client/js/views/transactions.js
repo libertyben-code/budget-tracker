@@ -6,8 +6,8 @@ import { isoToDisplay, todayIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
 import { openCategoryPicker } from './category-picker.js';
 
-export function renderTiles(state, t) {
-  const s = stats(filteredTransactions(state));
+export function renderTiles(rows, t) {
+  const s = stats(rows);
   return `
   <div class="tiles">
     <div class="card tile total-tile">
@@ -80,7 +80,7 @@ export function render(state, t) {
 
   return `
   <section class="view ${selection.size > 0 ? 'has-selection' : ''}">
-    ${renderTiles(state, t)}
+    ${renderTiles(filtered, t)}
     ${renderFilters(state, t)}
     ${selection.size > 0 ? `
     <div class="selection-bar">

@@ -231,6 +231,10 @@ const translations = {
       selectedCount: '{count} selected',
       other: 'Other',
       trendRange: 'Trend range',
+      prevMonth: 'Previous month',
+      nextMonth: 'Next month',
+      backToThisMonth: 'Back to this month',
+      total: 'Total: {amount}',
     },
     bank: {
       title: 'Bank sync',
@@ -530,6 +534,10 @@ const translations = {
       selectedCount: '{count} sélectionné(s)',
       other: 'Autres',
       trendRange: 'Période',
+      prevMonth: 'Mois précédent',
+      nextMonth: 'Mois suivant',
+      backToThisMonth: 'Revenir au mois en cours',
+      total: 'Total : {amount}',
     },
     bank: {
       title: 'Synchronisation bancaire',

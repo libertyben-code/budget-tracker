@@ -1,12 +1,28 @@
 import { esc, eur, chartColors } from '../dom.js';
-import { setUi } from '../store.js';
-import { filteredTransactions, categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, OTHER } from '../derive.js';
-import { render as renderFilters } from './filters.js';
+import { get, setUi } from '../store.js';
+import {
+  categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, OTHER,
+  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months,
+} from '../derive.js';
+import { monthKey, todayIso } from '/shared/dates.js';
 import { renderTiles } from './transactions.js';
 
 const kept = new Map();
 
 const RANGE_MONTHS = { '6m': 6, '12m': 12, all: Infinity };
+
+const chevron = (d) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+
+function renderMonthStepper(state, t, month) {
+  const isNow = month === monthKey(todayIso());
+  const earliest = months(state).at(-1);
+  return `
+  <div class="month-stepper">
+    <button class="icon-btn" data-action="dash-month-step" data-step="-1" aria-label="${esc(t('dashboard.prevMonth'))}" ${!earliest || month <= earliest ? 'disabled' : ''}>${chevron('m15 18-6-6 6-6')}</button>
+    <button class="month-label ${isNow ? '' : 'past'}" data-action="dash-month-now" aria-live="polite" ${isNow ? '' : `title="${esc(t('dashboard.backToThisMonth'))}"`}>${esc(monthTitle(month, state.ui.lang))}</button>
+    <button class="icon-btn" data-action="dash-month-step" data-step="1" aria-label="${esc(t('dashboard.nextMonth'))}" ${isNow ? 'disabled' : ''}>${chevron('m9 18 6-6-6-6')}</button>
+  </div>`;
+}
 
 // render() replaces the whole DOM; an unchanged chart moves its old box into the new
 // placeholder. The box, not just the canvas: Chart.js's ResizeObserver watches the canvas's parent.
@@ -22,12 +38,13 @@ function keepOrBuild(id, key, build) {
 }
 
 export function render(state, t) {
+  const month = dashboardMonth(state);
   const rangeBtn = (id, label) => `<button class="${state.ui.chartRange === id ? 'active' : ''}" data-action="chart-range" data-range="${id}">${esc(label)}</button>`;
 
   return `
   <section class="view">
-    ${renderTiles(state, t)}
-    ${renderFilters(state, t)}
+    ${renderMonthStepper(state, t, month)}
+    ${renderTiles(monthTransactions(state, month), t)}
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
@@ -77,15 +94,15 @@ export function afterRender(state, t) {
   const colorFor = (name) => name === OTHER ? colors.other : colors.palette[palette.slotIndex.get(name) % colors.palette.length];
   const labelFor = (name) => name === OTHER ? t('dashboard.other') : name;
   const monthCount = RANGE_MONTHS[state.ui.chartRange] || 6;
-  const filtered = filteredTransactions(state);
-  const trendTx = filteredTransactions(state, { ignoreTime: true });
+  const month = dashboardMonth(state);
+  const trendTx = transactionsUpTo(state, month);
   Chart.defaults.color = colors.text;
   Chart.defaults.borderColor = colors.grid;
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? { animation: false } : {};
   const shared = [colors, Chart.defaults.font.family, state.ui.lang, motion];
 
-  const hbar = categoryData(filtered, [], palette);
+  const hbar = categoryData(monthTransactions(state, month), [], palette);
   const hbarTotal = hbar.reduce((sum, d) => sum + d.value, 0);
   const hbarData = {
     labels: hbar.map(d => labelFor(d.name)),
@@ -200,7 +217,7 @@ export function afterRender(state, t) {
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${eur(ctx.parsed.y)}`,
-              footer: stacked ? (items) => `Total: ${eur(items.reduce((sum, i) => sum + i.parsed.y, 0))}` : undefined,
+              footer: stacked ? (items) => t('dashboard.total', { amount: eur(items.reduce((sum, i) => sum + i.parsed.y, 0)) }) : undefined,
             },
           },
         },
@@ -216,4 +233,9 @@ export function afterRender(state, t) {
 export const actions = {
   'chart-mode': (el) => setUi({ chartMode: el.dataset.mode }),
   'chart-range': (el) => setUi({ chartRange: el.dataset.range }),
+  'dash-month-step': (el) => {
+    const next = addMonths(dashboardMonth(get()), Number(el.dataset.step));
+    setUi({ dashMonth: next >= monthKey(todayIso()) ? '' : next });
+  },
+  'dash-month-now': () => setUi({ dashMonth: '' }),
 };
