@@ -1,8 +1,8 @@
 import { esc, eur, eurSigned, icons, checkPill, toast, confirmDialog } from '../dom.js';
-import { get, set, setUi } from '../store.js';
+import { get, set, setUi, setFilter } from '../store.js';
 import { api } from '../api.js';
-import { filteredTransactions, categories, stats, accountBalance, dayTitle, monthTitle } from '../derive.js';
-import { isoToDisplay, todayIso } from '/shared/dates.js';
+import { filteredTransactions, stats, accountBalance, dayTitle, monthTitle } from '../derive.js';
+import { isoToDisplay, todayIso, toIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
 import { openCategoryPicker } from './category-picker.js';
 
@@ -16,6 +16,38 @@ function periodLabel(state, t) {
   }
   if (f.dateFilterType === 'dateRange' && f.startDate && f.endDate) return `${isoToDisplay(f.startDate)} – ${isoToDisplay(f.endDate)}`;
   return t('app.allTime');
+}
+
+const localeOf = (lang) => lang === 'fr' ? 'fr-FR' : 'en-GB';
+
+function dayHeading(iso, lang, t) {
+  const today = todayIso();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (iso === today) return t('transactionTable.today');
+  if (iso === toIso(yesterday)) return t('transactionTable.yesterday');
+  const [year, month, day] = iso.split('-').map(Number);
+  const sameYear = iso.slice(0, 4) === today.slice(0, 4);
+  const name = new Intl.DateTimeFormat(localeOf(lang), { weekday: 'long', day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })
+    .format(new Date(year, month - 1, day));
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+function emptyMessage(f, lang, t) {
+  if (f.description.trim() || f.categories.length) return t('transactionTable.emptyFiltered');
+  if (f.currentMonth) return t('transactionTable.emptyThisMonth');
+  if (f.dateFilterType === 'year' && f.year) return t('transactionTable.emptyIn', { period: f.year });
+  if (f.dateFilterType === 'dateRange' && f.startDate && f.endDate) {
+    const day = new Intl.DateTimeFormat(localeOf(lang), { day: 'numeric', month: 'short', year: 'numeric' });
+    return t('transactionTable.emptyRange', { start: day.format(new Date(`${f.startDate}T00:00`)), end: day.format(new Date(`${f.endDate}T00:00`)) });
+  }
+  if (f.dateFilterType === 'month' && f.month) {
+    const named = { __last_month__: 'emptyLastMonth', __last_3_months__: 'emptyLast3Months', __last_6_months__: 'emptyLast6Months' }[f.month];
+    if (named) return t(`transactionTable.${named}`);
+    const [year, month] = f.month.split('-').map(Number);
+    return t('transactionTable.emptyIn', { period: new Intl.DateTimeFormat(localeOf(lang), { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1)) });
+  }
+  return t('transactionTable.emptyFiltered');
 }
 
 export function renderTiles(state, rows, t) {
@@ -51,45 +83,76 @@ export function renderTiles(state, rows, t) {
 export function render(state, t) {
   const filtered = filteredTransactions(state);
   const visible = filtered.slice(0, state.visibleCount);
-  const cats = categories(state);
   const selection = state.selection;
+  const selecting = Boolean(state.selecting) || selection.size > 0;
   const allVisibleSelected = filtered.length > 0 && filtered.every(tx => selection.has(tx.id));
   const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
 
-  const editCats = cats.includes('Uncategorized') ? cats : ['Uncategorized', ...cats];
   const editField = (label, control, span2 = false) => `<div class="tx-field${span2 ? ' span2' : ''}"><label><span>${esc(label)}</span>${control}</label></div>`;
-  const editRow = (tx, isNew = false) => `
-    <div class="tx-edit-grid" data-editing="${isNew ? 'new' : tx.id}">
-      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(tx.date)}">`)}
-      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">`)}
-      ${editField(t('common.description'), `<input name="description" value="${esc(tx.description)}">`, true)}
-      ${editField(t('common.category'), `<select name="category">${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, true)}
+  const editRow = (tx, isNew = false) => {
+    const key = isNew ? 'new' : tx.id;
+    const v = state.txDraft?.key === key ? state.txDraft : tx;
+    return `
+    <div class="tx-edit-grid" data-editing="${key}">
+      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(v.date)}">`)}
+      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(v.amount)}">`)}
+      ${editField(t('common.description'), `<input name="description" value="${esc(v.description)}">`, true)}
+      ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(v.category)}"><button type="button" class="chip-select" data-action="pick-form-category" aria-haspopup="dialog">${esc(v.category)}</button>`, true)}
       <button class="btn primary" data-action="${isNew ? 'save-new-tx' : 'save-tx'}" ${isNew ? '' : `data-id="${tx.id}"`}>${esc(t('common.save'))}</button>
       <button class="btn" data-action="${isNew ? 'cancel-create' : 'cancel-edit'}">${esc(t('common.cancel'))}</button>
     </div>`;
+  };
   const draftTx = { date: todayIso(), amount: '', description: '', category: 'Uncategorized' };
-  const draftCard = state.creatingTx ? `<div class="card tx-card editing">${editRow(draftTx, true)}</div>` : '';
+  const draftItem = state.creatingTx ? `<div class="card tx-item editing">${editRow(draftTx, true)}</div>` : '';
   const draftRow = state.creatingTx ? `<tr><td colspan="5">${editRow(draftTx, true)}</td></tr>` : '';
 
   const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button>`;
 
-  const cards = visible.map(tx => state.editingId === tx.id
-    ? `<div class="card tx-card editing">${editRow(tx)}</div>`
-    : `
-    <div class="card tx-card selectable ${selection.has(tx.id) ? 'selected' : ''}" data-action="toggle-select" data-id="${tx.id}">
-      <div class="tx-row-top">
-        <span class="tx-desc">${esc(tx.description) || '<span class="muted">—</span>'}</span>
-        <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</span>
-      </div>
-      <div class="tx-row-bottom">
-        <span class="tx-date">${esc(isoToDisplay(tx.date))}</span>
-        ${catSelect(tx)}
-        <span class="tx-actions">
-          <button class="icon-btn accent" data-action="edit-tx" data-id="${tx.id}" title="${esc(t('common.edit'))}">${icons.edit}</button>
-          <button class="icon-btn danger" data-action="delete-tx" data-id="${tx.id}" title="${esc(t('common.delete'))}">${icons.trash}</button>
+  const item = (tx) => {
+    if (state.editingId === tx.id) return `<div class="tx-item editing">${editRow(tx)}</div>`;
+    const on = selection.has(tx.id);
+    return `
+      <button type="button" class="tx-item${on ? ' selected' : ''}" data-action="${selecting ? 'toggle-select' : 'edit-tx'}" data-id="${tx.id}"${selecting ? ` aria-pressed="${on}"` : ''}>
+        ${selecting ? `<span class="check-box" aria-hidden="true">${icons.check}</span>` : ''}
+        <span class="tx-item-main">
+          <span class="tx-desc">${esc(tx.description) || '—'}</span>
+          <span class="tx-cat${tx.category === 'Uncategorized' ? ' uncat' : ''}">${esc(tx.category)}</span>
         </span>
-      </div>
-    </div>`).join('');
+        <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eurSigned(tx.amount)}</span>
+      </button>`;
+  };
+  const days = [];
+  for (const tx of visible) {
+    const last = days[days.length - 1];
+    if (last?.date === tx.date) last.rows.push(tx);
+    else days.push({ date: tx.date, rows: [tx] });
+  }
+  const dayList = days.map(day => `
+    <section class="tx-day">
+      <h3 class="tx-day-title">${esc(dayHeading(day.date, state.ui.lang, t))}</h3>
+      <div class="card tx-day-rows">${day.rows.map(item).join('')}</div>
+    </section>`).join('');
+
+  let empty = '';
+  if (!state.creatingTx && state.transactions.length === 0) {
+    empty = `
+    <div class="card tx-empty">
+      <p>${esc(t('transactionTable.emptyAll'))}</p>
+      <button class="btn primary" data-action="add-tx">＋ ${esc(t('transactionTable.addTransaction'))}</button>
+    </div>`;
+  } else if (!state.creatingTx && filtered.length === 0) {
+    empty = `
+    <div class="card tx-empty">
+      <p>${esc(emptyMessage(state.filter, state.ui.lang, t))}</p>
+      <button class="btn" data-action="tx-show-all">${esc(t('transactionTable.showAll'))}</button>
+    </div>`;
+  }
+
+  const listActions = selecting
+    ? `${checkPill({ on: allVisibleSelected, action: 'select-all', label: t('common.all') })}
+      <button class="btn" data-action="tx-select-cancel">${esc(t('common.cancel'))}</button>`
+    : `${filtered.length ? `<button class="btn" data-action="tx-select-mode">${esc(t('transactionTable.select'))}</button>` : ''}
+      <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>`;
 
   const tableRows = visible.map(tx => state.editingId === tx.id
     ? `<tr><td colspan="5">${editRow(tx)}</td></tr>`
@@ -118,10 +181,10 @@ export function render(state, t) {
     </div>` : ''}
     <div class="row" style="align-items:center">
       <h2 class="grow" style="margin:0">${esc(t('transactionTable.title', { count: filtered.length }))}</h2>
-      ${checkPill({ on: allVisibleSelected, action: 'select-all', label: t('common.all') })}
-      <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>
+      ${listActions}
     </div>
-    <div class="tx-cards">${draftCard + cards || `<p class="muted">${esc(t('transactionTable.title', { count: 0 }))}</p>`}</div>
+    ${empty || `
+    <div class="tx-list">${draftItem}${dayList}</div>
     <div class="card tx-table">
       <table>
         <thead>
@@ -135,7 +198,7 @@ export function render(state, t) {
         </thead>
         <tbody>${draftRow}${tableRows}</tbody>
       </table>
-    </div>
+    </div>`}
     ${filtered.length > state.visibleCount ? `
     <div class="row" style="justify-content:center;flex-direction:column;align-items:center">
       <button class="btn" data-action="load-more">${esc(t('transactionTable.loadMore'))}</button>
@@ -229,8 +292,8 @@ function showLearnedRule({ rule, applied }, description, t) {
 }
 
 export const actions = {
-  'add-tx': () => set({ creatingTx: true, editingId: null }),
-  'cancel-create': () => set({ creatingTx: false }),
+  'add-tx': () => set({ creatingTx: true, editingId: null, txDraft: null }),
+  'cancel-create': () => set({ creatingTx: false, txDraft: null }),
   'save-new-tx': async (el, ev, t) => {
     const form = readEditForm(el, t);
     if (!form) return;
@@ -243,15 +306,28 @@ export const actions = {
     set({
       transactions: [tx, ...state.transactions],
       creatingTx: false,
+      txDraft: null,
       filter: { ...state.filter },
     });
   },
-  'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false }),
-  'cancel-edit': () => set({ editingId: null }),
+  'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false, txDraft: null }),
+  'cancel-edit': () => set({ editingId: null, txDraft: null }),
   'pick-tx-category': (el) => {
     const id = Number(el.dataset.id);
     const tx = get().transactions.find(row => row.id === id);
     openCategoryPicker({ title: tx.description, current: tx.category, onPick: (category, t) => setCategory(id, category, t) });
+  },
+  // Opening the picker re-renders the app, which would rebuild the form and drop what was typed: keep it as a draft.
+  'pick-form-category': (el, ev, t) => {
+    const grid = el.closest('.tx-edit-grid');
+    const value = (name) => grid.querySelector(`[name="${name}"]`).value;
+    const key = grid.dataset.editing === 'new' ? 'new' : Number(grid.dataset.editing);
+    set({ txDraft: { key, date: value('date'), amount: value('amount'), description: value('description'), category: value('category') } });
+    openCategoryPicker({
+      title: value('description') || t('common.category'),
+      current: value('category'),
+      onPick: (category) => set({ txDraft: { ...get().txDraft, category } }),
+    });
   },
   'save-tx': async (el, ev, t) => {
     const id = Number(el.dataset.id);
@@ -261,6 +337,7 @@ export const actions = {
     const learnRule = Boolean(form.description && form.category && form.category !== 'Uncategorized');
     set({
       editingId: null,
+      txDraft: null,
       transactions: state.transactions.map(tx => tx.id === id ? { ...tx, ...form } : tx),
     });
     try {
@@ -298,7 +375,10 @@ export const actions = {
     const allSelected = filtered.length > 0 && filtered.every(tx => state.selection.has(tx.id));
     set({ selection: allSelected ? new Set() : new Set(filtered.map(tx => tx.id)) });
   },
-  'clear-selection': () => set({ selection: new Set() }),
+  'clear-selection': () => set({ selection: new Set(), selecting: false }),
+  'tx-select-mode': () => set({ selecting: true, editingId: null, creatingTx: false, txDraft: null }),
+  'tx-select-cancel': () => set({ selection: new Set(), selecting: false }),
+  'tx-show-all': () => setFilter({ currentMonth: false, dateFilterType: 'all', year: '', month: '', startDate: '', endDate: '', categories: [], description: '' }),
   'sort': (el) => {
     const { sort } = get();
     const key = el.dataset.key;
@@ -318,6 +398,7 @@ export const actions = {
     set({
       transactions: state.transactions.filter(tx => !state.selection.has(tx.id)),
       selection: new Set(),
+      selecting: false,
     });
   },
   'open-batch-edit': () => setUi({ batchEditOpen: true, batchNewCategory: false }),
