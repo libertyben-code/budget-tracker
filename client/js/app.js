@@ -121,7 +121,7 @@ window.addEventListener('hashchange', () => {
 
 export async function refreshBootstrap() {
   const boot = await api.bootstrap();
-  set({ accounts: boot.accounts, rules: boot.rules });
+  set({ accounts: boot.accounts, rules: boot.rules, joint: boot.joint });
 }
 
 function savingsState(data) {
@@ -198,6 +198,7 @@ async function boot() {
       offline: false,
       accounts: bootData.accounts,
       rules: bootData.rules,
+      joint: bootData.joint,
       activeAccountId: accountId,
       transactions: data.transactions,
       categories: data.categories,

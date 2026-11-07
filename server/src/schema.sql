@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   name                TEXT NOT NULL,
   salary_person1      TEXT NOT NULL DEFAULT '',
   salary_person2      TEXT NOT NULL DEFAULT '',
-  joint_target_amount TEXT NOT NULL DEFAULT '2100',
+  joint_target_amount TEXT NOT NULL DEFAULT '',
   created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -108,5 +108,5 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 );
 CREATE INDEX IF NOT EXISTS idx_ba_connection ON bank_accounts(connection_id);
 
-INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '4');
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '5');
 INSERT OR IGNORE INTO accounts (id, name) VALUES ('default', 'Main Account');

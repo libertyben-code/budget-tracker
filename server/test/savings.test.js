@@ -148,7 +148,7 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_recurring').get().n, 1);
   assert.equal(db.prepare("SELECT savings_account_id AS sid FROM bank_accounts WHERE id = 'b1'").get().sid, 'sav1');
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '4');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '5');
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
 
   // the rebuilt table is still the parent: deleting it cascades and unlinks as before

@@ -251,8 +251,8 @@ main {
   .chart-pane + .chart-pane { border-left: 1px solid var(--border); padding-left: var(--space-4); }
 }
 
-/* The two salaries read as a pair either side of the card's centre line, so the
-   fields are centred rather than stretched: an input capped at 200px keeps the
+/* The two people read as a pair either side of the card's centre line, so their
+   fields are centred rather than stretched: inputs capped at 200px keep each
    figure near its label instead of stranding it at the left edge of a wide box. */
 .salary-row {
   display: grid;
@@ -260,9 +260,12 @@ main {
   gap: var(--space-3);
   justify-items: center;
 }
-.salary-field { margin: 0; align-items: center; width: 100%; max-width: 200px; }
-.salary-field label { text-align: center; }
-.salary-field input { width: 100%; text-align: center; font-weight: 600; }
+.joint-person { border: 0; margin: 0; padding: 0; min-width: 0; width: 100%; max-width: 200px; }
+.joint-person legend { width: 100%; padding: 0; margin-bottom: var(--space-2); text-align: center; font-weight: 650; }
+.joint-person .field { align-items: center; }
+.joint-person label { text-align: center; }
+.joint-person input { width: 100%; text-align: center; }
+.joint-person input[type="number"] { font-weight: 600; }
 
 .panel-list { display: flex; flex-direction: column; }
 .panel-list-item {

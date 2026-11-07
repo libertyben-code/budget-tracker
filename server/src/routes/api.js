@@ -9,8 +9,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function accountRow(db, id) {
   const row = db.prepare(`
-    SELECT a.id, a.name, a.salary_person1 AS salaryPerson1, a.salary_person2 AS salaryPerson2,
-           a.joint_target_amount AS jointTargetAmount,
+    SELECT a.id, a.name,
            (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS txCount
     FROM accounts a WHERE a.id = ?
   `).get(id);
@@ -27,6 +26,14 @@ function categoryList(db) {
     ) GROUP BY name ORDER BY name
   `).all();
 }
+
+function jointSettings(db) {
+  return JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value);
+}
+
+const JOINT_AMOUNTS = ['wanted', 'salary1', 'salary2'];
+const JOINT_NAMES = ['name1', 'name2'];
+const MAX_NAME_LENGTH = 40;
 
 function allRules(db) {
   return db.prepare('SELECT pattern, category FROM category_rules ORDER BY id').all();
@@ -172,7 +179,29 @@ export function createApiRouter(db) {
   router.get('/bootstrap', (req, res) => {
     const accounts = db.prepare('SELECT id FROM accounts ORDER BY created_at').all()
       .map(a => accountRow(db, a.id));
-    res.json({ accounts, rules: allRules(db) });
+    res.json({ accounts, rules: allRules(db), joint: jointSettings(db) });
+  });
+
+  // '' or null clears an amount
+  router.patch('/settings/joint', (req, res) => {
+    const joint = jointSettings(db);
+    for (const [key, value] of Object.entries(req.body)) {
+      if (JOINT_AMOUNTS.includes(key)) {
+        const amount = value === '' || value === null ? null : Number(value);
+        const valid = amount === null || ((typeof value === 'number' || typeof value === 'string') && Number.isFinite(amount) && amount >= 0);
+        if (!valid) return res.status(400).json({ error: `${key} must be an amount of 0 or more` });
+        joint[key] = amount;
+      } else if (JOINT_NAMES.includes(key)) {
+        if (typeof value !== 'string' || value.trim().length > MAX_NAME_LENGTH) {
+          return res.status(400).json({ error: `${key} must be text of at most ${MAX_NAME_LENGTH} characters` });
+        }
+        joint[key] = value.trim();
+      } else {
+        return res.status(400).json({ error: `Unknown setting: ${key}` });
+      }
+    }
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'joint'").run(JSON.stringify(joint));
+    res.json(joint);
   });
 
   // --- Accounts ---
@@ -190,22 +219,6 @@ export function createApiRouter(db) {
     const id = `account_${randomUUID()}`;
     db.prepare('INSERT INTO accounts (id, name) VALUES (?, ?)').run(id, name);
     res.status(201).json(accountRow(db, id));
-  });
-
-  router.patch('/accounts/:id/settings', requireAccount, (req, res) => {
-    const { salaryPerson1, salaryPerson2, jointTargetAmount, name } = req.body;
-    const current = accountRow(db, req.params.id);
-    db.prepare(`
-      UPDATE accounts SET salary_person1 = ?, salary_person2 = ?, joint_target_amount = ?, name = ?
-      WHERE id = ?
-    `).run(
-      salaryPerson1 ?? current.salaryPerson1,
-      salaryPerson2 ?? current.salaryPerson2,
-      jointTargetAmount ?? current.jointTargetAmount,
-      req.params.id === 'default' ? current.name : (name ?? current.name),
-      req.params.id
-    );
-    res.json(accountRow(db, req.params.id));
   });
 
   router.delete('/accounts/:id', requireAccount, (req, res) => {
