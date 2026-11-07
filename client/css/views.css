@@ -313,8 +313,10 @@ main {
   gap: var(--space-2);
 }
 .row input, .row select { min-width: 0; }
+.savings-account .field-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
+.savings-account [aria-invalid="true"] { border-color: var(--danger); }
 .history-list { font-size: 0.85rem; }
-.history-list li { display: flex; justify-content: space-between; padding: 3px 0; }
+.history-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: 3px 0; }
 ul.history-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
 
 section.view { display: flex; flex-direction: column; gap: var(--space-4); }
