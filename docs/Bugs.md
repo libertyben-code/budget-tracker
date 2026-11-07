@@ -8,7 +8,6 @@ Format: `- [ ] description` pending, `- [x] description — OK` once fixed.
 
 ## Transactions
 
-- [ ] `PATCH`/`DELETE /transactions/:txId` and the batch routes take ids with no account scope. Harmless with one user; blocking for the auth rollout.
 
 ## Categorization
 

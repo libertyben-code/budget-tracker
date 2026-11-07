@@ -36,8 +36,8 @@ test('a transaction date must be YYYY-MM-DD; an omitted one is today', async (t)
   const tx = await res.json();
   assert.match(tx.date, /^\d{4}-\d{2}-\d{2}$/);
 
-  assert.equal(await status(app.base, 'PATCH', `/api/transactions/${tx.id}`, { date: {} }), 400);
-  assert.equal(await status(app.base, 'PATCH', `/api/transactions/${tx.id}`, { date: '2026-09-02' }), 200);
+  assert.equal(await status(app.base, 'PATCH', `/api/accounts/default/transactions/${tx.id}`, { date: {} }), 400);
+  assert.equal(await status(app.base, 'PATCH', `/api/accounts/default/transactions/${tx.id}`, { date: '2026-09-02' }), 200);
   assert.deepEqual(app.db.prepare('SELECT date FROM transactions').all().map(r => r.date), ['2026-09-02']);
 });
 
@@ -59,4 +59,25 @@ test('a request without a JSON body gets a 400, not a 500', async (t) => {
   const res = await fetch(`${app.base}/api/accounts/default/import`, { method: 'POST' });
   assert.equal(res.status, 200);
   assert.equal((await res.json()).imported, 0);
+});
+
+test('a transaction can only be changed or deleted through its own account', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const other = await (await request(app.base, 'POST', '/api/accounts', { name: 'Joint' })).json();
+  const tx = await (await request(app.base, 'POST', '/api/accounts/default/transactions', { description: 'Rent', amount: -800 })).json();
+  const stored = () => app.db.prepare('SELECT description, category FROM transactions WHERE id = ?').get(tx.id);
+  const json = (...args) => request(app.base, ...args).then(res => res.json());
+
+  assert.equal(await status(app.base, 'PATCH', `/api/accounts/missing/transactions/${tx.id}`, { category: 'Housing' }), 404);
+  assert.equal(await status(app.base, 'PATCH', `/api/accounts/${other.id}/transactions/${tx.id}`, { category: 'Housing' }), 404);
+  assert.deepEqual(await json('POST', `/api/accounts/${other.id}/transactions/batch`, { ids: [tx.id], set: { description: 'X' } }), { updated: 0 });
+  assert.equal(await status(app.base, 'DELETE', `/api/accounts/${other.id}/transactions/${tx.id}`), 204);
+  assert.deepEqual(await json('POST', `/api/accounts/${other.id}/transactions/batch-delete`, { ids: [tx.id] }), { deleted: 0 });
+  assert.deepEqual(stored(), { description: 'Rent', category: 'Uncategorized' });
+
+  assert.deepEqual(await json('POST', '/api/accounts/default/transactions/batch', { ids: [tx.id], set: { category: 'Housing' } }), { updated: 1 });
+  assert.equal(stored().category, 'Housing');
+  assert.deepEqual(await json('POST', '/api/accounts/default/transactions/batch-delete', { ids: [tx.id] }), { deleted: 1 });
+  assert.equal(stored(), undefined);
 });

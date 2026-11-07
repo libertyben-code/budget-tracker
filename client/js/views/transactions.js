@@ -158,7 +158,7 @@ export const actions = {
     const learnRule = Boolean(tx.description && category !== 'Uncategorized');
     set({ transactions: state.transactions.map(t => t.id === id ? { ...t, category } : t) });
     try {
-      const result = await api.patchTransaction(id, { category, learnRule });
+      const result = await api.patchTransaction(state.activeAccountId, id, { category, learnRule });
       if (result.rule) {
         const rules = get().rules.filter(r => r.pattern !== result.rule.pattern);
         set({ rules: [...rules, result.rule] });
@@ -178,7 +178,7 @@ export const actions = {
       transactions: state.transactions.map(tx => tx.id === id ? { ...tx, ...form } : tx),
     });
     try {
-      const result = await api.patchTransaction(id, { ...form, learnRule });
+      const result = await api.patchTransaction(state.activeAccountId, id, { ...form, learnRule });
       if (result.rule) {
         const rules = get().rules.filter(r => r.pattern !== result.rule.pattern);
         set({ rules: [...rules, result.rule] });
@@ -196,7 +196,7 @@ export const actions = {
     selection.delete(id);
     set({ transactions: state.transactions.filter(tx => tx.id !== id), selection });
     try {
-      await api.deleteTransaction(id);
+      await api.deleteTransaction(state.activeAccountId, id);
     } catch (err) {
       toast(err.message);
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
@@ -231,7 +231,7 @@ export const actions = {
     const state = get();
     const ids = [...state.selection];
     if (!(await confirmDialog(t('transactionTable.confirmBatchDelete', { count: ids.length }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
-    await api.batchDelete(ids);
+    await api.batchDelete(state.activeAccountId, ids);
     set({
       transactions: state.transactions.filter(tx => !state.selection.has(tx.id)),
       selection: new Set(),
