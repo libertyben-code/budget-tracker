@@ -64,6 +64,7 @@ export const actions = {
       transactions: state.transactions.map(tx =>
         state.selection.has(tx.id) ? { ...tx, ...setFields } : tx),
       selection: new Set(),
+      selecting: false,
     });
     setUi({ batchEditOpen: false, batchNewCategory: false });
   },

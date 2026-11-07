@@ -241,22 +241,49 @@ main {
 }
 .chip-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
-/* Transactions: cards on mobile, table >= 640px */
-.tx-cards { display: flex; flex-direction: column; gap: var(--space-2); }
-.tx-card {
+/* Transactions: day-grouped rows on mobile, table >= 640px */
+.tx-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.tx-day-title { margin: 0 0 var(--space-1); padding: 0 var(--space-1); font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.tx-day-rows { padding: 0; overflow: hidden; }
+.tx-item {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 8px var(--space-3);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.tx-card.selectable { cursor: pointer; }
-.tx-card.selected { border-color: var(--accent); background: var(--accent-soft); }
-.tx-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
-.tx-card .tx-desc { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
-.tx-card .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tx-row-bottom { display: flex; align-items: center; gap: var(--space-2); }
-.tx-card .tx-date { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-.tx-card .tx-actions { margin-left: auto; display: flex; gap: 4px; }
+.tx-item:first-child { border-top: 0; }
+.tx-item.selected { background: var(--accent-soft); }
+.tx-item.selected .check-box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tx-item.editing { display: block; padding: var(--space-3); cursor: default; }
+.tx-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tx-item .tx-desc, .tx-item .tx-cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-item .tx-desc { font-weight: 550; }
+.tx-item .tx-cat { font-size: 0.8rem; color: var(--muted); }
+.tx-item .tx-cat.uncat { color: var(--warning); font-weight: 600; }
+.tx-item .tx-cat.uncat::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+.tx-item .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tx-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4); text-align: center; }
+.tx-empty p { margin: 0; color: var(--muted); }
 
 .chip-select {
   font-size: 0.85rem;
@@ -270,13 +297,13 @@ main {
   color: var(--text);
   font-weight: 500;
 }
-.tx-card .chip-select { max-width: 60%; }
+.tx-edit-grid .chip-select { width: 100%; min-height: 42px; }
 
 .tx-table { display: none; }
 
 .tx-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); grid-column: 1 / -1; }
 .tx-edit-grid .span2 { grid-column: 1 / -1; }
-.tx-edit-grid input, .tx-edit-grid select { width: 100%; min-width: 0; }
+.tx-edit-grid input { width: 100%; min-width: 0; }
 .tx-field { min-width: 0; }
 .tx-field label { display: flex; flex-direction: column; gap: 4px; }
 .tx-field label > span { font-size: 0.8rem; color: var(--muted); }
@@ -284,7 +311,7 @@ main {
 .tx-edit-grid [aria-invalid="true"] { border-color: var(--danger); }
 
 @media (min-width: 640px) {
-  .tx-cards { display: none; }
+  .tx-list { display: none; }
   .tx-table { display: block; overflow-x: auto; }
   .tx-table th {
     text-align: left;
@@ -304,7 +331,6 @@ main {
   .tx-table td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; white-space: nowrap; }
   .tx-table input, .tx-table select { min-height: 34px; }
   .tx-table input { padding: 4px 8px; }
-  .tx-table .tx-edit-grid select { padding: 4px 34px 4px 10px; }
 }
 
 .selection-bar {
