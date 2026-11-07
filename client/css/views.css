@@ -369,3 +369,48 @@ section.view { display: flex; flex-direction: column; gap: var(--space-4); }
 .chip.ok { color: var(--muted); }
 .chip.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
 .chip.danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+
+/* ---- Desktop: left navigation rail ----
+   At 1280px the phone's bottom bar is four 320px tabs. From 900px it becomes a
+   rail on the left and the content takes the width; everything below 900px is
+   the phone layout and must stay as it is. Last in the file so it out-ranks the
+   equal-specificity rules above. */
+@media (min-width: 900px) {
+  :root { --rail-w: 96px; }
+  #app { padding-left: var(--rail-w); }
+  main { max-width: 1400px; padding: var(--space-5); }
+
+  .tab-bar {
+    top: 0;
+    right: auto;
+    width: var(--rail-w);
+    height: auto;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-2);
+    border-top: none;
+    border-right: 1px solid var(--border);
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+    min-height: 64px;
+    padding: var(--space-2) 2px;
+    gap: 4px;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+  }
+  .tab-btn span { white-space: normal; text-align: center; line-height: 1.2; }
+  .tab-btn:hover { background: var(--surface-2); color: var(--text); }
+  .tab-btn.active { background: var(--accent-soft); color: var(--accent-strong); }
+
+  /* Alone on its row next to nothing, it left half the width empty. */
+  .charts > .card:first-child:has(+ .chart-wide) { grid-column: 1 / -1; }
+
+  .selection-bar { left: calc(50% + var(--rail-w) / 2); bottom: var(--space-4); }
+
+  .tx-table table { font-size: 0.9rem; }
+  .tx-table th { padding: 8px 12px; }
+  .tx-table td { padding: 3px 12px; }
+  .tx-table .chip-select { min-height: 30px; padding-top: 2px; padding-bottom: 2px; }
+  .tx-table .icon-btn { width: 32px; height: 32px; }
+}

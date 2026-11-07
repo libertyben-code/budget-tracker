@@ -380,3 +380,8 @@ button.chip-select {
   color: inherit;
   font-weight: 650;
 }
+
+/* Beside the desktop rail (views.css), not above a bottom bar that is not there. */
+@media (min-width: 900px) {
+  .toast { bottom: var(--space-4); left: calc(var(--rail-w) + 16px); }
+}
