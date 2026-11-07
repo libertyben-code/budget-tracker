@@ -30,12 +30,50 @@ export function debounce(fn, ms) {
   };
 }
 
-export function toast(message) {
+function liveRegion(attrs) {
   const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = message;
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  return el;
+}
+
+// A live region is only announced when its content changes after it is in the page, so both
+// exist from load, outside the re-rendered roots, and each toast goes into the one for its type.
+const toastRegions = {
+  polite: liveRegion({ role: 'status', 'aria-live': 'polite' }),
+  alert: liveRegion({ role: 'alert' }),
+};
+let dismissCurrentToast = () => {};
+
+// type: 'error' (default) | 'success' | 'info'. action: { label, onClick } adds a button.
+export function toast(message, { type = 'error', action } = {}) {
+  dismissCurrentToast();
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  if (type === 'success') el.insertAdjacentHTML('beforeend', icons.check);
+  const text = document.createElement('span');
+  text.textContent = message;
+  el.appendChild(text);
+
+  let timer;
+  const dismiss = () => { clearTimeout(timer); el.remove(); };
+  const arm = () => { timer = setTimeout(dismiss, action ? 6000 : 3500); };
+  if (action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      dismiss();
+      Promise.resolve().then(action.onClick).catch(err => toast(err.message || 'Error'));
+    });
+    el.appendChild(button);
+    el.addEventListener('focusin', () => clearTimeout(timer));
+    el.addEventListener('focusout', arm);
+  }
+  (type === 'error' ? toastRegions.alert : toastRegions.polite).appendChild(el);
+  dismissCurrentToast = dismiss;
+  arm();
 }
 
 // styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop

@@ -182,7 +182,7 @@ export const actions = {
     set({ accounts: state.accounts.filter(a => a.id !== el.dataset.id) });
     await loadAccount('default');
   },
-  'import-csv': async (el) => {
+  'import-csv': async (el, ev, t) => {
     const file = el.files[0];
     if (!file) return;
     const text = await file.text();
@@ -193,7 +193,9 @@ export const actions = {
       settingsOpen: false,
       importErrors: result.failedLines.length > 0 ? { count: result.failedLines.length, lines: result.failedLines } : null,
     });
-    toast(createImportMessage(result));
+    toast(t('header.importResult', { imported: result.imported, skipped: result.skippedDuplicates }), {
+      type: result.failedLines.length > 0 ? 'info' : 'success',
+    });
     await loadAccount(state.activeAccountId);
     await refreshBootstrap();
   },
@@ -210,7 +212,7 @@ export const actions = {
     const { updated } = await api.autocategorize(state.activeAccountId);
     setUi({ settingsOpen: false });
     await loadAccount(state.activeAccountId);
-    toast(t('header.applyRulesResult', { count: updated }));
+    toast(t('header.applyRulesResult', { count: updated }), { type: 'success' });
   },
   'open-rules': () => setUi({ settingsOpen: false, panel: 'rules', ruleSelection: new Set(), rulesFilter: '' }),
   // counts span every account, so they are re-read rather than derived from this one's transactions
@@ -220,7 +222,3 @@ export const actions = {
   },
   'dismiss-import-errors': () => setUi({ importErrors: null }),
 };
-
-function createImportMessage(result) {
-  return `Imported ${result.imported}, skipped ${result.skippedDuplicates} duplicate(s)`;
-}
