@@ -9,7 +9,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function accountRow(db, id) {
   const row = db.prepare(`
-    SELECT a.id, a.name,
+    SELECT a.id, a.name, a.currency,
            (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS txCount
     FROM accounts a WHERE a.id = ?
   `).get(id);
@@ -216,8 +216,10 @@ export function createApiRouter(db) {
   router.post('/accounts', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Name required' });
+    const currency = req.body.currency === undefined ? 'EUR' : String(req.body.currency).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({ error: 'currency must be a three-letter code' });
     const id = `account_${randomUUID()}`;
-    db.prepare('INSERT INTO accounts (id, name) VALUES (?, ?)').run(id, name);
+    db.prepare('INSERT INTO accounts (id, name, currency) VALUES (?, ?, ?)').run(id, name, currency);
     res.status(201).json(accountRow(db, id));
   });
 

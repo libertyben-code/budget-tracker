@@ -7,6 +7,24 @@ import { isoToDisplay } from '/shared/dates.js';
 const COUNTRIES = ['FR', 'BE', 'DE', 'ES', 'IT', 'NL', 'LU', 'PT', 'IE', 'AT', 'LT', 'GB'];
 const EXPIRY_WARNING_DAYS = 14;
 
+function plural(t, key, count) {
+  const one = new Intl.PluralRules(get().ui.lang).select(count) === 'one';
+  return t(one ? `${key}One` : key, { count });
+}
+
+// Mirrors the server: a bank account with no real currency fits any budget account.
+function fitsCurrency(acc, budgetAccount) {
+  return !acc.currency || acc.currency === 'XXX' || acc.currency === budgetAccount.currency;
+}
+
+// "Revolut GBP" already says GBP; only a name without its currency gets it as a tag.
+function accountLabel(acc) {
+  const name = acc.name || acc.iban || acc.id;
+  const words = name.toUpperCase().split(/[^A-Z]+/);
+  const tag = !acc.currency || acc.currency === 'XXX' || words.includes(acc.currency) ? '' : ` <span class="muted">${esc(acc.currency)}</span>`;
+  return `<strong>${esc(name)}</strong>${tag}`;
+}
+
 function daysLeft(validUntil) {
   const ms = Date.parse(validUntil);
   return Number.isFinite(ms) ? Math.ceil((ms - Date.now()) / 86400000) : null;
@@ -43,7 +61,7 @@ function consentChip(conn, t) {
   if (days === null) return '';
   if (days <= 0) return `<span class="chip danger">${esc(t('bank.consentExpired'))}</span>`;
   const cls = days <= EXPIRY_WARNING_DAYS ? 'warning' : 'ok';
-  return `<span class="chip ${cls}" title="${esc(t('bank.consentUntil', { date: isoToDisplay(conn.validUntil.slice(0, 10)) }))}">${esc(t('bank.consentDays', { days }))}</span>`;
+  return `<span class="chip ${cls}" title="${esc(t('bank.consentUntil', { date: isoToDisplay(conn.validUntil.slice(0, 10)) }))}">${esc(plural(t, 'bank.consentDays', days))}</span>`;
 }
 
 function targetSelect(acc, state, t) {
@@ -54,7 +72,10 @@ function targetSelect(acc, state, t) {
       <select data-action-change="bank-map-target" data-id="${esc(acc.id)}">
         ${opt('', t('bank.notSynced'))}
         <optgroup label="${esc(t('bank.accountsGroup'))}">
-          ${state.accounts.map(a => opt(`account:${a.id}`, a.name)).join('')}
+          ${state.accounts.map(a => {
+            if (fitsCurrency(acc, a) || a.id === acc.accountId) return opt(`account:${a.id}`, a.name);
+            return `<option disabled>${esc(`${a.name} (${a.currency})`)}</option>`;
+          }).join('')}
           <option value="__new__">${esc(t('bank.newAccount'))}</option>
         </optgroup>
         <optgroup label="${esc(t('bank.savingsGroup'))}">
@@ -79,12 +100,17 @@ function accountRow(acc, state, t) {
     : t('bank.never');
   const failed = acc.lastSyncStatus && acc.lastSyncStatus !== 'ok';
   const kind = acc.kind === 'SVGS' ? ` <span class="chip">${esc(t('bank.kindSavings'))}</span>` : '';
+  const budget = state.accounts.find(a => a.id === acc.accountId);
+  const mismatch = budget && !fitsCurrency(acc, budget)
+    ? `<div class="small danger-text">${esc(t('bank.currencyMismatch', { currency: acc.currency, account: budget.name, accountCurrency: budget.currency }))}</div>`
+    : '';
   return `
   <div class="bank-acct ${acc.enabled ? '' : 'off'}">
     <div class="grow">
-      <div><strong>${esc(acc.name || acc.iban || acc.id)}</strong> <span class="muted">${esc(acc.currency === 'XXX' ? '' : acc.currency)}</span>${kind}</div>
+      <div>${accountLabel(acc)}${kind}</div>
       ${acc.iban && acc.name ? `<div class="muted small">${esc(acc.iban)}</div>` : ''}
       <div class="muted small">${esc(last)}${failed ? ` · <span class="danger-text">${esc(acc.lastSyncStatus)}</span>` : ''}</div>
+      ${mismatch}
     </div>
     <button class="check-box-btn ${acc.enabled ? 'on' : ''}" data-action="bank-toggle-enabled" data-id="${esc(acc.id)}"
             role="checkbox" aria-checked="${acc.enabled}" title="${esc(t('bank.enabled'))}" aria-label="${esc(t('bank.enabled'))}">
@@ -129,6 +155,7 @@ function linkForm(state, t) {
   const aspsps = ui.bankAspsps;
   const selected = aspsps?.find(a => a.name === ui.bankLinkAspsp);
   const psuChoice = selected && selected.psuTypes.length > 1;
+  const chosen = state.accounts.find(a => a.id === ui.bankLinkAccountId);
   return `
   <div class="card bank-link">
     <h3>${esc(t('bank.linkBank'))}</h3>
@@ -158,6 +185,17 @@ function linkForm(state, t) {
         ${state.accounts.map(a => `<option value="${esc(a.id)}" ${a.id === ui.bankLinkAccountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
     </div>
+    <div class="field" role="radiogroup" aria-labelledby="bank-other-label">
+      <label id="bank-other-label">${esc(t('bank.otherCurrencies'))}</label>
+      <div class="delete-choices">
+        ${['import', 'skip'].map(value => `
+        <div class="delete-choice">
+          <input type="radio" id="bank-other-${value}" name="bank-other" value="${value}" data-action-change="bank-link-other-currencies" ${ui.bankLinkOtherCurrencies === value ? 'checked' : ''}>
+          <label for="bank-other-${value}">${esc(t(value === 'import' ? 'bank.otherCurrenciesImport' : 'bank.otherCurrenciesSkip'))}</label>
+        </div>`).join('')}
+      </div>
+      <div class="muted small">${esc(t('bank.otherCurrenciesHint', { currency: chosen?.currency || 'EUR', account: chosen?.name || '' }))}</div>
+    </div>
     <div class="field">
       <label>${esc(t('bank.syncFrom'))}</label>
       <input type="date" value="${esc(ui.bankLinkSyncFrom)}" data-action-change="bank-link-sync-from">
@@ -167,6 +205,48 @@ function linkForm(state, t) {
       <button class="btn primary" data-action="bank-connect" ${ui.bankLinkAspsp && !ui.bankBusy ? '' : 'disabled'}>${esc(t(ui.bankBusy ? 'bank.redirecting' : 'bank.connect'))}</button>
       <button class="btn" data-action="bank-toggle-link">${esc(t('common.cancel'))}</button>
     </div>
+  </div>`;
+}
+
+// What the callback did with each bank account of the connection just linked: where its rows
+// went and how many came in. A savings-type account is never mapped automatically, so it gets
+// the shortcut while the bank still serves its full history.
+function summaryCard(summary, status, state, t) {
+  const conn = status.connections.find(c => c.id === summary.connection);
+  if (!conn) return '';
+  const results = new Map(summary.accounts.map(r => [r.id, r]));
+  const rows = conn.accounts.map(acc => {
+    const result = results.get(acc.id);
+    const budget = state.accounts.find(a => a.id === acc.accountId);
+    const savings = status.savingsAccounts.find(s => s.id === acc.savingsAccountId);
+    let where = t('bank.summaryNotImported');
+    if (budget) where = summary.created.includes(budget.id) ? t('bank.summaryNewAccount', { name: budget.name }) : budget.name;
+    else if (savings) where = t('bank.summarySavings', { name: savings.name });
+    let outcome = '';
+    if (result?.error) outcome = ` · <span class="danger-text">${esc(t('bank.summaryFailed', { message: result.error }))}</span>`;
+    else if (result) {
+      outcome = ` · ${esc(plural(t, 'bank.summaryImported', result.imported))}`;
+      if (result.skipped) outcome += `, ${esc(plural(t, 'bank.summarySkipped', result.skipped))}`;
+    }
+    const shortcut = acc.kind === 'SVGS' && !acc.accountId && !acc.savingsAccountId
+      ? `<button class="btn small" data-action="bank-add-to-savings" data-id="${esc(acc.id)}" ${state.ui.bankBusy ? 'disabled' : ''}>${esc(t('bank.addToSavings'))}</button>`
+      : '';
+    return `
+    <div class="bank-acct">
+      <div class="grow">
+        <div>${accountLabel(acc)}${acc.kind === 'SVGS' ? ` <span class="chip">${esc(t('bank.kindSavings'))}</span>` : ''}</div>
+        <div class="small">→ ${esc(where)}${outcome}</div>
+      </div>
+      ${shortcut}
+    </div>`;
+  }).join('');
+  return `
+  <div class="card bank-summary" role="status">
+    <div class="row">
+      <h3 class="grow">${esc(t('bank.summaryTitle', { bank: conn.aspspName }))}</h3>
+      <button class="btn small" data-action="bank-summary-close">${esc(t('common.close'))}</button>
+    </div>
+    ${rows}
   </div>`;
 }
 
@@ -180,11 +260,15 @@ export function render(state, t) {
     body = `<div class="banner warning"><div class="grow">${esc(t('bank.notConfigured'))}</div></div>`;
   } else {
     body = `
+      ${state.ui.bankSummary ? summaryCard(state.ui.bankSummary, status, state, t) : ''}
       ${status.connections.map(c => connectionCard(c, state, t)).join('') || `<p class="muted">${esc(t('bank.noConnections'))}</p>`}
       ${state.ui.bankLinkOpen
         ? linkForm(state, t)
         : `<button class="btn primary" data-action="bank-toggle-link">＋ ${esc(t('bank.linkBank'))}</button>`}
-      <p class="muted small" style="margin-top:12px">${esc(t('bank.redirectHint', { url: status.redirectUrl }))}</p>`;
+      <details class="bank-setup muted small">
+        <summary>${esc(t('bank.setupInfo'))}</summary>
+        <p>${esc(t('bank.redirectHint', { url: status.redirectUrl }))}</p>
+      </details>`;
   }
 
   return `
@@ -236,7 +320,7 @@ async function startLink(payload) {
 
 export const actions = {
   'open-bank-sync': () => {
-    setUi({ settingsOpen: false, panel: 'bank', bankLinkOpen: false, bankBusy: false });
+    setUi({ settingsOpen: false, panel: 'bank', bankLinkOpen: false, bankBusy: false, bankSummary: null });
     loadStatus();
   },
   'bank-toggle-link': () => {
@@ -249,6 +333,7 @@ export const actions = {
       bankLinkPsuType: 'personal',
       bankLinkAccountId: accountId,
       bankLinkSyncFrom: latestTxDate(state, accountId),
+      bankLinkOtherCurrencies: 'import',
     });
     if (open && state.ui.bankAspspsCountry !== state.ui.bankCountry) loadAspsps(state.ui.bankCountry);
   },
@@ -260,6 +345,7 @@ export const actions = {
   'bank-link-psu-type': (el) => setUi({ bankLinkPsuType: el.value }),
   'bank-link-account': (el) => setUi({ bankLinkAccountId: el.value, bankLinkSyncFrom: latestTxDate(get(), el.value) }),
   'bank-link-sync-from': (el) => setUi({ bankLinkSyncFrom: el.value }),
+  'bank-link-other-currencies': (el) => setUi({ bankLinkOtherCurrencies: el.value }),
   'bank-connect': async () => {
     const ui = get().ui;
     if (!ui.bankLinkAspsp || ui.bankBusy) return;
@@ -269,6 +355,7 @@ export const actions = {
       psuType: ui.bankLinkPsuType,
       accountId: ui.bankLinkAccountId,
       syncFrom: ui.bankLinkSyncFrom,
+      otherCurrencies: ui.bankLinkOtherCurrencies,
       language: ui.lang,
     });
   },
@@ -321,7 +408,8 @@ export const actions = {
   'bank-create-account': async (el, ev, t) => {
     const name = document.getElementById('bank-new-account-name')?.value.trim();
     if (!name) return;
-    const account = await api.createAccount(name);
+    const acc = bankAccount(el.dataset.id);
+    const account = await api.createAccount(name, acc?.currency && acc.currency !== 'XXX' ? acc.currency : undefined);
     set({ accounts: [...get().accounts, account] });
     await remap(el.dataset.id, { accountId: account.id }, t);
   },
@@ -331,6 +419,32 @@ export const actions = {
     const created = await api.createSavings(name, 0);
     await remap(el.dataset.id, { savingsAccountId: created.id }, t);
   },
+  // Right after the link the bank still serves the full history, so this syncs at once.
+  'bank-add-to-savings': async (el, ev, t) => {
+    const acc = bankAccount(el.dataset.id);
+    if (!acc || get().ui.bankBusy) return;
+    setUi({ bankBusy: true });
+    try {
+      const name = acc.name || acc.iban || acc.id;
+      const created = await api.createSavings(name, 0);
+      await api.bankPatchAccount(acc.id, { savingsAccountId: created.id });
+      const { results, status } = await api.bankSyncAccount(acc.id);
+      const result = results[0] || {};
+      const summary = get().ui.bankSummary;
+      setUi({
+        bankStatus: status,
+        bankSummary: summary && {
+          ...summary,
+          accounts: [...summary.accounts, { id: acc.id, imported: result.historyAdded || 0, ...(result.error ? { error: result.error } : {}) }],
+        },
+      });
+      toast(t('bank.addedToSavings', { name }), { type: result.error ? 'error' : 'success' });
+      await loadAccount(get().activeAccountId);
+    } finally {
+      setUi({ bankBusy: false });
+    }
+  },
+  'bank-summary-close': () => setUi({ bankSummary: null }),
   'bank-cancel-new-account': () => setUi({ bankNewAccountFor: null, bankNewSavingsFor: null }),
   'bank-toggle-enabled': async (el) => {
     const acc = bankAccount(el.dataset.id);

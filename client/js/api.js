@@ -17,7 +17,7 @@ async function request(method, path, body, type = 'application/json') {
 export const api = {
   bootstrap: () => request('GET', '/bootstrap'),
   accountData: (id) => request('GET', `/accounts/${id}/data`),
-  createAccount: (name) => request('POST', '/accounts', { name }),
+  createAccount: (name, currency) => request('POST', '/accounts', { name, currency }),
   patchJointSettings: (patch) => request('PATCH', '/settings/joint', patch),
   deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
 
@@ -53,6 +53,7 @@ export const api = {
   bankAspsps: (country) => request('GET', `/bank/aspsps?country=${encodeURIComponent(country)}`),
   bankLink: (payload) => request('POST', '/bank/link', payload),
   bankSync: (connectionId) => request('POST', '/bank/sync', connectionId ? { connectionId } : {}),
+  bankSyncAccount: (bankAccountId) => request('POST', '/bank/sync', { bankAccountId }),
   bankPatchAccount: (id, patch) => request('PATCH', `/bank/accounts/${encodeURIComponent(id)}`, patch),
   bankUnlink: (id) => request('DELETE', `/bank/connections/${encodeURIComponent(id)}`),
 };
