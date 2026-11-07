@@ -521,32 +521,40 @@ export function createApiRouter(db) {
     if (!['deposit', 'withdrawal'].includes(type) || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: 'type deposit|withdrawal and positive amount required' });
     }
-    if (db.prepare('SELECT category FROM savings_accounts WHERE id = ?').get(req.params.sid)?.category) {
-      return res.status(400).json({ error: 'This savings account is fed by a category' });
+    const account = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    if (!account) return res.status(404).json({ error: 'Savings account not found' });
+    if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
+    // refused rather than clamped at 0, so removing the entry later puts back exactly what it took
+    if (type === 'withdrawal' && value > account.balance) {
+      return res.status(400).json({ error: 'Withdrawal is larger than the balance' });
     }
-    let result = null;
+    const balance = round2(account.balance + (type === 'deposit' ? value : -value));
+    const entry = { id: `tx_${randomUUID()}`, date: todayIso(), type, amount: value, timestamp: Date.now() };
     db.transaction(() => {
-      const account = db.prepare('SELECT id, name, balance FROM savings_accounts WHERE id = ?').get(req.params.sid);
-      if (!account) return;
-      const newBalance = type === 'deposit'
-        ? account.balance + value
-        : Math.max(0, account.balance - value);
-      db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?')
-        .run(Number(newBalance.toFixed(2)), account.id);
-      const entry = {
-        id: `tx_${randomUUID()}`,
-        date: todayIso(),
-        type,
-        amount: value,
-        timestamp: Date.now(),
-      };
+      db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?').run(balance, account.id);
       db.prepare(
         'INSERT INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
       ).run(entry.id, account.id, entry.date, entry.type, entry.amount, entry.timestamp);
-      result = { account: { ...account, balance: Number(newBalance.toFixed(2)) }, entry };
     })();
-    if (!result) return res.status(404).json({ error: 'Savings account not found' });
-    res.json(result);
+    res.json({ account: { ...account, balance }, entry });
+  });
+
+  // Manual entries only: a fed account's history is derived from transactions, and a bank entry
+  // would be fetched again on the next sync, which also resets the balance.
+  router.delete('/savings/:sid/history/:hid', (req, res) => {
+    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    if (!account) return res.status(404).json({ error: 'Savings account not found' });
+    if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
+    const entry = db.prepare('SELECT id, type, amount FROM savings_history WHERE id = ? AND savings_account_id = ?')
+      .get(req.params.hid, account.id);
+    if (!entry) return res.status(404).json({ error: 'History entry not found' });
+    if (entry.id.startsWith('bank_')) return res.status(400).json({ error: 'This entry comes from the bank' });
+    db.transaction(() => {
+      db.prepare('DELETE FROM savings_history WHERE id = ?').run(entry.id);
+      db.prepare('UPDATE savings_accounts SET balance = MAX(0, ROUND(balance + ?, 2)) WHERE id = ?')
+        .run(entry.type === 'deposit' ? -entry.amount : entry.amount, account.id);
+    })();
+    res.json({ account: savingsRow(db, account.id) });
   });
 
   return router;

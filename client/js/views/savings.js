@@ -30,7 +30,7 @@ export function render(state, t) {
       <button class="btn small primary" data-action="toggle-add-savings" title="${esc(t('savings.addAccount'))}" aria-label="${esc(t('savings.addAccount'))}">${state.ui.addingSavings ? '✕' : '＋'}</button>
     </div>
     ${state.ui.addingSavings ? `
-    <div class="card">
+    <div class="card savings-account">
       <div class="row">
         <input id="new-savings-name" class="grow" placeholder="${esc(t('savings.savingsAccountName'))}" data-action-key="add-savings">
         <input id="new-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('savings.initialBalance'))}" style="width:130px" data-action-key="add-savings">
@@ -125,8 +125,10 @@ function renderAccount(a, state, t, total) {
     <ul class="history-list">
       ${history.map(h => `
       <li>
-        <span class="muted">${esc(isoToDisplay(h.date))} · ${esc(t(h.type === 'deposit' ? 'savings.deposit' : 'savings.withdraw'))}${h.id.startsWith('rec_') ? ' ↻' : ''}</span>
+        <span class="muted grow">${esc(isoToDisplay(h.date))} · ${esc(t(h.type === 'deposit' ? 'savings.deposit' : 'savings.withdraw'))}${h.id.startsWith('rec_') ? ' ↻' : ''}</span>
         <span class="${h.type === 'deposit' ? 'pos' : 'neg'}">${h.type === 'deposit' ? '+' : '-'}${eur(h.amount)}</span>
+        ${a.category || h.id.startsWith('bank_') ? '' : `
+        <button class="icon-btn danger" data-action="remove-savings-entry" data-id="${esc(h.id)}" data-sid="${esc(a.id)}" title="${esc(t('savings.removeEntry'))}" aria-label="${esc(t('savings.removeEntry'))}">${icons.trash}</button>`}
       </li>`).join('')}
     </ul>` : ''}
   </div>`;
@@ -206,13 +208,54 @@ export function afterRender(state) {
   kept = { key, box: el.parentElement, chart };
 }
 
+function clearFieldError(input) {
+  document.getElementById(`${input.id}-error`)?.remove();
+  input.removeAttribute('aria-invalid');
+  input.removeAttribute('aria-describedby');
+}
+
+// Messages are written straight into the DOM, under the input's row: a set() would re-render
+// and drop what was typed. False when there were problems to show.
+function validate(inputs, problems) {
+  inputs.forEach(clearFieldError);
+  for (const [input, message] of problems) {
+    let anchor = input.closest('.row');
+    while (anchor.nextElementSibling?.classList.contains('field-error')) anchor = anchor.nextElementSibling;
+    const error = document.createElement('p');
+    error.className = 'field-error';
+    error.id = `${input.id}-error`;
+    error.setAttribute('role', 'alert');
+    error.textContent = message;
+    anchor.after(error);
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', error.id);
+    input.addEventListener('input', () => clearFieldError(input), { once: true });
+  }
+  problems[0]?.[0].focus();
+  return problems.length === 0;
+}
+
+async function removeEntry(sid, hid) {
+  const { account } = await api.deleteSavingsEntry(sid, hid);
+  const state = get();
+  set({
+    savingsAccounts: state.savingsAccounts.map(a => a.id === sid ? account : a),
+    savingsHistory: { ...state.savingsHistory, [sid]: (state.savingsHistory[sid] || []).filter(h => h.id !== hid) },
+  });
+}
+
 export const actions = {
   'toggle-add-savings': () => setUi({ addingSavings: !get().ui.addingSavings }),
-  'add-savings': async () => {
-    const name = document.getElementById('new-savings-name')?.value.trim();
-    const balance = parseFloat(document.getElementById('new-savings-balance')?.value) || 0;
-    const category = document.getElementById('new-savings-category')?.value || null;
-    if (!name || balance < 0) return;
+  'add-savings': async (el, ev, t) => {
+    const nameInput = document.getElementById('new-savings-name');
+    const balanceInput = document.getElementById('new-savings-balance');
+    const name = nameInput.value.trim();
+    const balance = Number(balanceInput.value);
+    const problems = [];
+    if (!name) problems.push([nameInput, t('savings.nameRequired')]);
+    if (balanceInput.validity.badInput || balance < 0) problems.push([balanceInput, t('savings.balanceInvalid')]);
+    if (!validate([nameInput, balanceInput], problems)) return;
+    const category = document.getElementById('new-savings-category').value || null;
     // a fed account's history comes from the server, so reload rather than append
     await api.createSavings(name, balance, category);
     get().ui.addingSavings = false;
@@ -220,11 +263,16 @@ export const actions = {
   },
   'edit-savings': (el) => setUi({ editingSavingsId: el.dataset.id }),
   'cancel-edit-savings': () => setUi({ editingSavingsId: null }),
-  'save-savings': async (el) => {
-    const name = document.getElementById('edit-savings-name')?.value.trim();
-    const balance = parseFloat(document.getElementById('edit-savings-balance')?.value);
-    const category = document.getElementById('edit-savings-category')?.value || null;
-    if (!name || Number.isNaN(balance) || balance < 0) return;
+  'save-savings': async (el, ev, t) => {
+    const nameInput = document.getElementById('edit-savings-name');
+    const balanceInput = document.getElementById('edit-savings-balance');
+    const name = nameInput.value.trim();
+    const balance = Number(balanceInput.value);
+    const problems = [];
+    if (!name) problems.push([nameInput, t('savings.nameRequired')]);
+    if (balanceInput.value === '' || balance < 0) problems.push([balanceInput, t('savings.balanceInvalid')]);
+    if (!validate([nameInput, balanceInput], problems)) return;
+    const category = document.getElementById('edit-savings-category').value || null;
     await api.patchSavings(el.dataset.id, { name, balance, category });
     get().ui.editingSavingsId = null;
     await refreshSavings();
@@ -247,29 +295,50 @@ export const actions = {
     else open.add(el.dataset.id);
     setUi({ openRecurringIds: open });
   },
-  'savings-op': async (el) => {
-    const id = el.dataset.id;
-    const amount = parseFloat(document.getElementById(`sav-amount-${id}`)?.value);
-    if (Number.isNaN(amount) || amount <= 0) return;
-    try {
-      const result = await api.savingsTransaction(id, el.dataset.type, amount);
-      const state = get();
-      set({
-        savingsAccounts: state.savingsAccounts.map(a => a.id === id ? result.account : a),
-        savingsHistory: {
-          ...state.savingsHistory,
-          [id]: [result.entry, ...(state.savingsHistory[id] || [])],
-        },
-      });
-    } catch (err) {
-      toast(err.message);
+  'savings-op': async (el, ev, t) => {
+    const { id, type } = el.dataset;
+    const input = document.getElementById(`sav-amount-${id}`);
+    const amount = Number(input.value);
+    const account = get().savingsAccounts.find(a => a.id === id);
+    const problems = [];
+    if (input.value === '' || amount <= 0) problems.push([input, t('savings.amountInvalid')]);
+    else if (type === 'withdrawal' && amount > account.balance) {
+      problems.push([input, t('savings.moreThanBalance', { balance: eur(account.balance) })]);
     }
+    if (!validate([input], problems)) return;
+    const result = await api.savingsTransaction(id, type, amount);
+    const state = get();
+    set({
+      savingsAccounts: state.savingsAccounts.map(a => a.id === id ? result.account : a),
+      savingsHistory: {
+        ...state.savingsHistory,
+        [id]: [result.entry, ...(state.savingsHistory[id] || [])],
+      },
+    });
+    toast(t(type === 'deposit' ? 'savings.deposited' : 'savings.withdrawn', { amount: eur(amount), name: account.name }), {
+      type: 'success',
+      action: { label: t('savings.undo'), onClick: () => removeEntry(id, result.entry.id) },
+    });
   },
-  'add-recurring': async (el) => {
+  'remove-savings-entry': async (el, ev, t) => {
+    const { id, sid } = el.dataset;
+    const state = get();
+    const account = state.savingsAccounts.find(a => a.id === sid);
+    const entry = state.savingsHistory[sid].find(h => h.id === id);
+    const balance = Math.max(0, account.balance + (entry.type === 'deposit' ? -entry.amount : entry.amount));
+    const message = t(entry.type === 'deposit' ? 'savings.confirmRemoveDeposit' : 'savings.confirmRemoveWithdrawal', {
+      amount: eur(entry.amount),
+      balance: eur(balance),
+    });
+    if (!(await confirmDialog(message, { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
+    await removeEntry(sid, id);
+  },
+  'add-recurring': async (el, ev, t) => {
     const id = el.dataset.id;
-    const amount = parseFloat(document.getElementById(`rec-amount-${id}`)?.value);
-    const day = Number(document.getElementById(`rec-day-${id}`)?.value);
-    if (Number.isNaN(amount) || amount <= 0) return;
+    const input = document.getElementById(`rec-amount-${id}`);
+    const amount = Number(input.value);
+    const day = Number(document.getElementById(`rec-day-${id}`).value);
+    if (!validate([input], input.value === '' || amount <= 0 ? [[input, t('savings.amountInvalid')]] : [])) return;
     try {
       const rule = await api.createSavingsRecurring(id, amount, day);
       const state = get();
