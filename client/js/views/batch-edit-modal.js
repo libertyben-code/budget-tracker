@@ -26,10 +26,11 @@ export function render(state, t) {
           <option value="__new__" ${state.ui.batchNewCategory ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
         </select>
       </div>
-      ${state.ui.batchNewCategory ? `
-      <div class="field">
-        <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}">
-      </div>` : ''}
+      <div id="batch-new-cat-wrap" ${state.ui.batchNewCategory ? '' : 'hidden'}>
+        <div class="field">
+          <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}">
+        </div>
+      </div>
       <div class="row" style="justify-content:flex-end">
         <button class="btn" data-action="close-batch-edit">${esc(t('common.cancel'))}</button>
         <button class="btn primary" data-action="apply-batch-edit">${esc(t('app.applyChanges'))}</button>
@@ -42,7 +43,9 @@ export const actions = {
   'close-batch-edit': () => setUi({ batchEditOpen: false, batchNewCategory: false }),
   'batch-cat-select': (el) => {
     const isNew = el.value === '__new__';
-    if (isNew !== get().ui.batchNewCategory) setUi({ batchNewCategory: isNew });
+    // No setUi: it re-renders #modals from a string and empties the fields already typed
+    get().ui.batchNewCategory = isNew;
+    document.getElementById('batch-new-cat-wrap').hidden = !isNew;
   },
   'apply-batch-edit': async () => {
     const state = get();
