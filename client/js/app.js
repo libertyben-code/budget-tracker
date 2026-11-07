@@ -38,6 +38,8 @@ function render() {
   const state = get();
   if (!state.loaded) return;
   const t = translator();
+  // Theme actions call setUi() before applyTheme(); charts read their colours from CSS.
+  header.applyTheme(state);
 
   const active = document.activeElement;
   const focusId = active?.id;
