@@ -160,6 +160,31 @@ function readEditForm(button, t) {
   };
 }
 
+function showLearnedRule({ rule, applied }, description, t) {
+  const ids = new Set(applied.ids);
+  const withCategory = (category, from) => get().transactions.map(tx =>
+    ids.has(tx.id) && (!from || tx.category === from) ? { ...tx, category } : tx);
+  set({
+    rules: [...get().rules.filter(r => r.pattern !== rule.pattern), rule],
+    transactions: withCategory(rule.category),
+  });
+  const vars = { count: applied.count, category: rule.category, description };
+  if (!applied.count) {
+    toast(t('transactionTable.ruleSaved', vars), { type: 'success' });
+    return;
+  }
+  toast(t(applied.count === 1 ? 'transactionTable.appliedOne' : 'transactionTable.appliedMany', vars), {
+    type: 'success',
+    action: {
+      label: t('transactionTable.undo'),
+      onClick: async () => {
+        await api.uncategorize(applied.ids, rule.category);
+        set({ transactions: withCategory('Uncategorized', rule.category) });
+      },
+    },
+  });
+}
+
 export const actions = {
   'add-tx': () => set({ creatingTx: true, editingId: null }),
   'cancel-create': () => set({ creatingTx: false }),
@@ -181,20 +206,17 @@ export const actions = {
   'edit-tx': (el) => set({ editingId: Number(el.dataset.id), creatingTx: false }),
   'cancel-edit': () => set({ editingId: null }),
   'noop': () => {},
-  'set-category': async (el) => {
+  'set-category': async (el, ev, t) => {
     const id = Number(el.dataset.id);
     const category = el.value;
     const state = get();
-    const tx = state.transactions.find(t => t.id === id);
+    const tx = state.transactions.find(row => row.id === id);
     if (!tx || tx.category === category) return;
     const learnRule = Boolean(tx.description && category !== 'Uncategorized');
-    set({ transactions: state.transactions.map(t => t.id === id ? { ...t, category } : t) });
+    set({ transactions: state.transactions.map(row => row.id === id ? { ...row, category } : row) });
     try {
       const result = await api.patchTransaction(state.activeAccountId, id, { category, learnRule });
-      if (result.rule) {
-        const rules = get().rules.filter(r => r.pattern !== result.rule.pattern);
-        set({ rules: [...rules, result.rule] });
-      }
+      if (result.rule) showLearnedRule(result, tx.description, t);
     } catch (err) {
       toast(err.message);
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
@@ -212,10 +234,7 @@ export const actions = {
     });
     try {
       const result = await api.patchTransaction(state.activeAccountId, id, { ...form, learnRule });
-      if (result.rule) {
-        const rules = get().rules.filter(r => r.pattern !== result.rule.pattern);
-        set({ rules: [...rules, result.rule] });
-      }
+      if (result.rule) showLearnedRule(result, form.description, t);
     } catch (err) {
       toast(err.message);
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));

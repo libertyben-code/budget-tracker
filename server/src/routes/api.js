@@ -274,6 +274,7 @@ export function createApiRouter(db) {
     `).run(next.date, next.description, next.category, next.amount, req.params.txId, req.params.id);
 
     let rule = null;
+    let applied = null;
     if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
       const pattern = next.description.toLowerCase().trim();
       db.prepare(`
@@ -281,10 +282,35 @@ export function createApiRouter(db) {
         ON CONFLICT(pattern) DO UPDATE SET category = excluded.category
       `).run(pattern, next.category);
       rule = { pattern, category: next.category };
+
+      const matches = db.prepare("SELECT id, description FROM transactions WHERE category = 'Uncategorized'").all()
+        .filter(t => autoCategorize(t.description, [rule]) === rule.category);
+      const update = db.prepare("UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE id = ?");
+      db.transaction(() => {
+        for (const t of matches) update.run(rule.category, t.id);
+      })();
+      applied = { count: matches.length, ids: matches.map(t => t.id) };
     }
 
     const tx = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
-    res.json({ transaction: tx, rule });
+    res.json({ transaction: tx, rule, applied });
+  });
+
+  // undoes the rows a learned rule just applied to, unless they were changed since
+  router.post('/transactions/uncategorize', (req, res) => {
+    const { ids, category } = req.body;
+    if (!Array.isArray(ids) || !ids.every(Number.isInteger) || typeof category !== 'string') {
+      return res.status(400).json({ error: 'ids and category required' });
+    }
+    const revert = db.prepare(`
+      UPDATE transactions SET category = 'Uncategorized', updated_at = datetime('now')
+      WHERE id = ? AND category = ?
+    `);
+    let reverted = 0;
+    db.transaction(() => {
+      for (const id of ids) reverted += revert.run(id, category).changes;
+    })();
+    res.json({ reverted });
   });
 
   router.delete('/accounts/:id/transactions/:txId', requireAccount, (req, res) => {
