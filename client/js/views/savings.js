@@ -5,7 +5,7 @@ import { refreshSavings } from '../app.js';
 import { categories } from '../derive.js';
 import { isoToDisplay } from '/shared/dates.js';
 
-let chart = null;
+let kept = null;
 
 export function render(state, t) {
   const accounts = state.savingsAccounts;
@@ -22,7 +22,7 @@ export function render(state, t) {
     ${withBalance.length > 0 ? `
     <div class="card">
       <h2>${esc(t('savings.splitByAccount'))}</h2>
-      <div class="chart-box" id="savings-chart-box"><canvas id="chart-savings"></canvas></div>
+      <div class="chart-box"><canvas id="chart-savings"></canvas></div>
     </div>` : ''}
 
     <div class="row" style="margin:0">
@@ -133,10 +133,12 @@ function renderAccount(a, state, t, total) {
 }
 
 export function afterRender(state) {
-  if (chart) { chart.destroy(); chart = null; }
-  if (state.ui.tab !== 'savings' || typeof Chart === 'undefined') return;
-  const el = document.getElementById('chart-savings');
-  if (!el) return;
+  const el = state.ui.tab === 'savings' && typeof Chart !== 'undefined' && document.getElementById('chart-savings');
+  if (!el) {
+    kept?.chart.destroy();
+    kept = null;
+    return;
+  }
   const colors = chartColors();
   // slot by stable account order so filters/deletions elsewhere never repaint survivors
   const slotByName = new Map(state.savingsAccounts.map((a, i) => [a.name, i]));
@@ -145,8 +147,25 @@ export function afterRender(state) {
     .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);
   const total = data.reduce((sum, d) => sum + d.value, 0);
-  const box = document.getElementById('savings-chart-box');
-  if (box) box.style.height = `${Math.max(data.length * 36 + 24, 120)}px`;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? { animation: false } : {};
+  const chartData = {
+    labels: data.map(d => d.name),
+    datasets: [{
+      data: data.map(d => d.value),
+      backgroundColor: data.map(d => colors.palette[slotByName.get(d.name) % colors.palette.length]),
+      borderRadius: 4,
+      borderSkipped: 'start',
+      maxBarThickness: 22,
+    }],
+  };
+  const key = JSON.stringify([chartData, colors, Chart.defaults.font.family, motion]);
+  // Same reuse as the dashboard: move the old box (Chart.js observes the canvas's parent).
+  if (kept?.key === key) {
+    el.parentElement.replaceWith(kept.box);
+    return;
+  }
+  kept?.chart.destroy();
+  el.parentElement.style.height = `${Math.max(data.length * 36 + 24, 120)}px`;
   const valueLabels = {
     id: 'valueLabels',
     afterDatasetsDraw(c) {
@@ -160,20 +179,12 @@ export function afterRender(state) {
       ctx.restore();
     },
   };
-  chart = new Chart(el, {
+  const chart = new Chart(el, {
     type: 'bar',
     plugins: [valueLabels],
-    data: {
-      labels: data.map(d => d.name),
-      datasets: [{
-        data: data.map(d => d.value),
-        backgroundColor: data.map(d => colors.palette[slotByName.get(d.name) % colors.palette.length]),
-        borderRadius: 4,
-        borderSkipped: 'start',
-        maxBarThickness: 22,
-      }],
-    },
+    data: chartData,
     options: {
+      ...motion,
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
@@ -192,6 +203,7 @@ export function afterRender(state) {
       },
     },
   });
+  kept = { key, box: el.parentElement, chart };
 }
 
 export const actions = {

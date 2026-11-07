@@ -4,9 +4,22 @@ import { filteredTransactions, categoryPalette, categoryData, categoryByMonthDat
 import { render as renderFilters } from './filters.js';
 import { renderTiles } from './transactions.js';
 
-let charts = [];
+const kept = new Map();
 
 const RANGE_MONTHS = { '6m': 6, '12m': 12, all: Infinity };
+
+// render() replaces the whole DOM; an unchanged chart moves its old box into the new
+// placeholder. The box, not just the canvas: Chart.js's ResizeObserver watches the canvas's parent.
+function keepOrBuild(id, key, build) {
+  const canvas = document.getElementById(id);
+  const prev = kept.get(id);
+  if (prev?.key === key) {
+    canvas.parentElement.replaceWith(prev.box);
+    return;
+  }
+  prev?.chart.destroy();
+  kept.set(id, { key, box: canvas.parentElement, chart: build(canvas) });
+}
 
 export function render(state, t) {
   const rangeBtn = (id, label) => `<button class="${state.ui.chartRange === id ? 'active' : ''}" data-action="chart-range" data-range="${id}">${esc(label)}</button>`;
@@ -18,7 +31,7 @@ export function render(state, t) {
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
-        <div class="chart-box" id="hbar-box"><canvas id="chart-hbar"></canvas></div>
+        <div class="chart-box"><canvas id="chart-hbar"></canvas></div>
       </div>
       <div class="card chart-wide">
         <div class="chart-split">
@@ -53,9 +66,11 @@ export function render(state, t) {
 }
 
 export function afterRender(state, t) {
-  for (const chart of charts) chart.destroy();
-  charts = [];
-  if (state.ui.tab !== 'dashboard' || typeof Chart === 'undefined') return;
+  if (state.ui.tab !== 'dashboard' || typeof Chart === 'undefined') {
+    for (const { chart } of kept.values()) chart.destroy();
+    kept.clear();
+    return;
+  }
 
   const colors = chartColors();
   const palette = categoryPalette(state);
@@ -67,13 +82,23 @@ export function afterRender(state, t) {
   Chart.defaults.color = colors.text;
   Chart.defaults.borderColor = colors.grid;
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? { animation: false } : {};
+  const shared = [colors, Chart.defaults.font.family, state.ui.lang, motion];
 
-  const hbarEl = document.getElementById('chart-hbar');
-  if (hbarEl) {
-    const data = categoryData(filtered, [], palette);
-    const hbarTotal = data.reduce((sum, d) => sum + d.value, 0);
-    const box = document.getElementById('hbar-box');
-    if (box) box.style.height = `${Math.max(data.length * 36 + 24, 120)}px`;
+  const hbar = categoryData(filtered, [], palette);
+  const hbarTotal = hbar.reduce((sum, d) => sum + d.value, 0);
+  const hbarData = {
+    labels: hbar.map(d => labelFor(d.name)),
+    datasets: [{
+      data: hbar.map(d => d.value),
+      backgroundColor: hbar.map(d => colorFor(d.name)),
+      borderRadius: 4,
+      borderSkipped: 'start',
+      maxBarThickness: 22,
+    }],
+  };
+  keepOrBuild('chart-hbar', JSON.stringify([shared, hbarData]), (canvas) => {
+    canvas.parentElement.style.height = `${Math.max(hbar.length * 36 + 24, 120)}px`;
     const valueLabels = {
       id: 'valueLabels',
       afterDatasetsDraw(chart) {
@@ -91,20 +116,12 @@ export function afterRender(state, t) {
         ctx.restore();
       },
     };
-    charts.push(new Chart(hbarEl, {
+    return new Chart(canvas, {
       type: 'bar',
       plugins: [valueLabels],
-      data: {
-        labels: data.map(d => labelFor(d.name)),
-        datasets: [{
-          data: data.map(d => d.value),
-          backgroundColor: data.map(d => colorFor(d.name)),
-          borderRadius: 4,
-          borderSkipped: 'start',
-          maxBarThickness: 22,
-        }],
-      },
+      data: hbarData,
       options: {
+        ...motion,
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
@@ -122,23 +139,24 @@ export function afterRender(state, t) {
           y: { grid: { display: false }, ticks: { autoSkip: false } },
         },
       },
-    }));
-  }
+    });
+  });
 
-  const flowEl = document.getElementById('chart-flow');
-  if (flowEl) {
-    const data = monthlyData(trendTx);
-    const from = Math.max(data.monthKeys.length - monthCount, 0);
-    charts.push(new Chart(flowEl, {
+  const flow = monthlyData(trendTx);
+  const from = Math.max(flow.monthKeys.length - monthCount, 0);
+  const flowData = {
+    labels: flow.monthKeys.slice(from).map(m => monthLabel(m, state.ui.lang)),
+    datasets: [
+      { label: t('dashboard.income'), data: flow.income.slice(from), backgroundColor: colors.palette[1] },
+      { label: t('dashboard.spending'), data: flow.spending.slice(from), backgroundColor: colors.palette[0] },
+    ].map(d => ({ ...d, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22 })),
+  };
+  keepOrBuild('chart-flow', JSON.stringify([shared, flowData]), (canvas) => {
+    return new Chart(canvas, {
       type: 'bar',
-      data: {
-        labels: data.monthKeys.slice(from).map(m => monthLabel(m, state.ui.lang)),
-        datasets: [
-          { label: t('dashboard.income'), data: data.income.slice(from), backgroundColor: colors.palette[1] },
-          { label: t('dashboard.spending'), data: data.spending.slice(from), backgroundColor: colors.palette[0] },
-        ].map(d => ({ ...d, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22 })),
-      },
+      data: flowData,
       options: {
+        ...motion,
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -150,29 +168,30 @@ export function afterRender(state, t) {
           y: { beginAtZero: true },
         },
       },
-    }));
-  }
+    });
+  });
 
-  const barEl = document.getElementById('chart-bar');
-  if (barEl) {
-    const { monthKeys, categories: barCats, byMonth } = categoryByMonthData(trendTx, palette);
-    const shownMonths = monthKeys.slice(Math.max(monthKeys.length - monthCount, 0));
-    const stacked = state.ui.chartMode === 'stacked';
-    charts.push(new Chart(barEl, {
+  const { monthKeys, categories: barCats, byMonth } = categoryByMonthData(trendTx, palette);
+  const shownMonths = monthKeys.slice(Math.max(monthKeys.length - monthCount, 0));
+  const stacked = state.ui.chartMode === 'stacked';
+  const barData = {
+    labels: shownMonths.map(m => monthLabel(m, state.ui.lang)),
+    datasets: barCats.map(cat => ({
+      label: labelFor(cat),
+      data: shownMonths.map(m => Number((byMonth[m][cat] || 0).toFixed(2))),
+      backgroundColor: colorFor(cat),
+      borderColor: colors.surface,
+      borderWidth: stacked ? 1 : 0,
+      borderRadius: stacked ? 0 : 2,
+      maxBarThickness: 40,
+    })),
+  };
+  keepOrBuild('chart-bar', JSON.stringify([shared, barData, stacked]), (canvas) => {
+    return new Chart(canvas, {
       type: 'bar',
-      data: {
-        labels: shownMonths.map(m => monthLabel(m, state.ui.lang)),
-        datasets: barCats.map(cat => ({
-          label: labelFor(cat),
-          data: shownMonths.map(m => Number((byMonth[m][cat] || 0).toFixed(2))),
-          backgroundColor: colorFor(cat),
-          borderColor: colors.surface,
-          borderWidth: stacked ? 1 : 0,
-          borderRadius: stacked ? 0 : 2,
-          maxBarThickness: 40,
-        })),
-      },
+      data: barData,
       options: {
+        ...motion,
         responsive: true,
         maintainAspectRatio: false,
         interaction: stacked ? { mode: 'index' } : undefined,
@@ -190,8 +209,8 @@ export function afterRender(state, t) {
           y: { stacked, beginAtZero: true },
         },
       },
-    }));
-  }
+    });
+  });
 }
 
 export const actions = {
