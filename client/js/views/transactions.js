@@ -29,14 +29,13 @@ export function render(state, t) {
   const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
 
   const editCats = cats.includes('Uncategorized') ? cats : ['Uncategorized', ...cats];
+  const editField = (label, control, span2 = false) => `<div class="tx-field${span2 ? ' span2' : ''}"><label><span>${esc(label)}</span>${control}</label></div>`;
   const editRow = (tx, isNew = false) => `
     <div class="tx-edit-grid" data-editing="${isNew ? 'new' : tx.id}">
-      <input name="date" type="date" value="${esc(tx.date)}">
-      <input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">
-      <input name="description" class="span2" placeholder="${esc(t('common.description'))}" value="${esc(tx.description)}">
-      <select name="category" class="span2">
-        ${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-      </select>
+      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(tx.date)}">`)}
+      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(tx.amount)}">`)}
+      ${editField(t('common.description'), `<input name="description" value="${esc(tx.description)}">`, true)}
+      ${editField(t('common.category'), `<select name="category">${editCats.map(c => `<option value="${esc(c)}" ${tx.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, true)}
       <button class="btn primary" data-action="${isNew ? 'save-new-tx' : 'save-tx'}" ${isNew ? '' : `data-id="${tx.id}"`}>${esc(t('common.save'))}</button>
       <button class="btn" data-action="${isNew ? 'cancel-create' : 'cancel-edit'}">${esc(t('common.cancel'))}</button>
     </div>`;
@@ -117,23 +116,56 @@ export function render(state, t) {
   </section>`;
 }
 
+function clearFieldError(input) {
+  input.closest('.tx-field').querySelector('.field-error')?.remove();
+  input.removeAttribute('aria-invalid');
+  input.removeAttribute('aria-describedby');
+}
+
+let fieldErrorCount = 0;
+// Errors are written straight into the DOM: a set() would re-render and drop what was typed.
+function showFieldError(input, message) {
+  const error = document.createElement('p');
+  error.className = 'field-error';
+  error.id = `tx-field-error-${++fieldErrorCount}`;
+  error.setAttribute('role', 'alert');
+  error.textContent = message;
+  input.closest('.tx-field').append(error);
+  input.setAttribute('aria-invalid', 'true');
+  input.setAttribute('aria-describedby', error.id);
+  input.addEventListener('input', () => clearFieldError(input), { once: true });
+}
+
 // The form is rendered twice (cards + table, one hidden by CSS), so read the copy the clicked button sits in.
-function readEditForm(button) {
+// Returns null, with the problems shown next to their fields, when it can't be saved.
+function readEditForm(button, t) {
   const grid = button.closest('.tx-edit-grid');
-  const field = (name) => grid.querySelector(`[name="${name}"]`).value;
+  const input = (name) => grid.querySelector(`[name="${name}"]`);
+  const amount = Number(input('amount').value);
+  const description = input('description').value.trim();
+  const problems = [];
+  if (!Number.isFinite(amount) || amount === 0) problems.push([input('amount'), t('transactionTable.amountInvalid')]);
+  if (!description) problems.push([input('description'), t('transactionTable.descriptionRequired')]);
+  for (const name of ['amount', 'description']) clearFieldError(input(name));
+  if (problems.length) {
+    for (const [field, message] of problems) showFieldError(field, message);
+    problems[0][0].focus();
+    return null;
+  }
   return {
-    date: field('date') || todayIso(),
-    amount: parseFloat(field('amount')) || 0,
-    description: field('description').trim(),
-    category: field('category') || 'Uncategorized',
+    date: input('date').value || todayIso(),
+    amount,
+    description,
+    category: input('category').value || 'Uncategorized',
   };
 }
 
 export const actions = {
   'add-tx': () => set({ creatingTx: true, editingId: null }),
   'cancel-create': () => set({ creatingTx: false }),
-  'save-new-tx': async (el) => {
-    const form = readEditForm(el);
+  'save-new-tx': async (el, ev, t) => {
+    const form = readEditForm(el, t);
+    if (!form) return;
     const state = get();
     const tx = await api.createTransaction(state.activeAccountId, {
       ...form,
@@ -168,9 +200,10 @@ export const actions = {
       await import('../app.js').then(m => m.loadAccount(get().activeAccountId));
     }
   },
-  'save-tx': async (el) => {
+  'save-tx': async (el, ev, t) => {
     const id = Number(el.dataset.id);
-    const form = readEditForm(el);
+    const form = readEditForm(el, t);
+    if (!form) return;
     const state = get();
     const learnRule = Boolean(form.description && form.category && form.category !== 'Uncategorized');
     set({

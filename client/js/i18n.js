@@ -98,6 +98,8 @@ const translations = {
       showing: 'Showing {visible} of {total} transactions',
       confirmDelete: 'Delete this transaction?',
       confirmBatchDelete: 'Delete {count} selected transaction(s)?',
+      amountInvalid: 'Enter an amount other than 0',
+      descriptionRequired: 'Enter a description',
     },
     joint: {
       title: 'Joint Account Split',
@@ -336,6 +338,8 @@ const translations = {
       showing: '{visible} transactions affichées sur {total}',
       confirmDelete: 'Supprimer cette transaction ?',
       confirmBatchDelete: 'Supprimer les {count} transaction(s) sélectionnée(s) ?',
+      amountInvalid: 'Saisissez un montant différent de 0',
+      descriptionRequired: 'Saisissez une description',
     },
     joint: {
       title: 'Répartition du compte joint',

@@ -29,9 +29,9 @@ test('a transaction date must be YYYY-MM-DD; an omitted one is today', async (t)
   const app = await startApp();
   t.after(app.close);
   for (const date of [{}, [], 20260901, '01/09/2026', '2026-09-01T00:00']) {
-    assert.equal(await status(app.base, 'POST', '/api/accounts/default/transactions', { date, amount: -5 }), 400, JSON.stringify(date));
+    assert.equal(await status(app.base, 'POST', '/api/accounts/default/transactions', { date, description: 'Coffee', amount: -5 }), 400, JSON.stringify(date));
   }
-  const res = await request(app.base, 'POST', '/api/accounts/default/transactions', { amount: -5 });
+  const res = await request(app.base, 'POST', '/api/accounts/default/transactions', { description: 'Coffee', amount: -5 });
   assert.equal(res.status, 201);
   const tx = await res.json();
   assert.match(tx.date, /^\d{4}-\d{2}-\d{2}$/);
@@ -39,6 +39,51 @@ test('a transaction date must be YYYY-MM-DD; an omitted one is today', async (t)
   assert.equal(await status(app.base, 'PATCH', `/api/accounts/default/transactions/${tx.id}`, { date: {} }), 400);
   assert.equal(await status(app.base, 'PATCH', `/api/accounts/default/transactions/${tx.id}`, { date: '2026-09-02' }), 200);
   assert.deepEqual(app.db.prepare('SELECT date FROM transactions').all().map(r => r.date), ['2026-09-02']);
+});
+
+test('a new transaction needs a non-zero amount and a description', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const post = (body) => request(app.base, 'POST', '/api/accounts/default/transactions', body);
+  const count = () => app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n;
+
+  for (const amount of [undefined, null, '', 0, '0', 'abc', '1e400', {}]) {
+    const res = await post({ description: 'Coffee', amount });
+    assert.equal(res.status, 400, JSON.stringify(amount));
+    assert.match((await res.json()).error, /amount/);
+  }
+  for (const description of [undefined, null, '', '   ', 5, {}]) {
+    const res = await post({ description, amount: -5 });
+    assert.equal(res.status, 400, JSON.stringify(description));
+    assert.match((await res.json()).error, /description/);
+  }
+  assert.equal((await post({})).status, 400);
+  assert.equal(count(), 0);
+
+  const res = await post({ description: '  Coffee  ', amount: '-3.5' });
+  assert.equal(res.status, 201);
+  const created = await res.json();
+  assert.equal(created.description, 'Coffee');
+  assert.equal(created.amount, -3.5);
+  assert.equal(count(), 1);
+});
+
+test('an edited transaction keeps a non-zero amount and a description; a category-only change is fine', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const tx = await (await request(app.base, 'POST', '/api/accounts/default/transactions', { description: 'Rent', amount: -800 })).json();
+  const patch = (body) => request(app.base, 'PATCH', `/api/accounts/default/transactions/${tx.id}`, body);
+  const stored = () => app.db.prepare('SELECT description, category, amount FROM transactions WHERE id = ?').get(tx.id);
+
+  for (const body of [{ amount: 0 }, { amount: '' }, { amount: 'abc' }, { amount: '1e400' }, { description: '' }, { description: '   ' }, { description: 5 }]) {
+    assert.equal((await patch(body)).status, 400, JSON.stringify(body));
+  }
+  assert.deepEqual(stored(), { description: 'Rent', category: 'Uncategorized', amount: -800 });
+
+  assert.equal((await patch({ category: 'Housing', learnRule: true })).status, 200);
+  assert.deepEqual(stored(), { description: 'Rent', category: 'Housing', amount: -800 });
+  assert.equal((await patch({ description: ' Flat rent ', amount: '-750.5', category: 'Housing' })).status, 200);
+  assert.deepEqual(stored(), { description: 'Flat rent', category: 'Housing', amount: -750.5 });
 });
 
 test('an amount or balance that is not finite is refused', async (t) => {
