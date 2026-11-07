@@ -154,18 +154,21 @@ export async function loadAccount(accountId) {
   await refreshBootstrap();
 }
 
-// The bank's redirect lands on `/?bank=linked|error&...` (see server routes/bank.js): turn
-// it into a toast, open the panel, and scrub the query so a reload does not repeat it.
+// The bank's redirect lands on `/?bank=linked|error&...` (see server routes/bank.js): open
+// the panel on the link's summary (or an error toast), and scrub the query so a reload does
+// not repeat it.
 function handleBankReturn() {
   const params = new URLSearchParams(location.search);
   if (!params.has('bank')) return;
   history.replaceState(null, '', location.pathname + location.hash);
   const t = translator();
+  let bankSummary = null;
   if (params.get('bank') === 'linked') {
-    const failed = Number(params.get('errors')) > 0;
-    let message = t('bank.linkedToast', { imported: params.get('imported') || 0, skipped: params.get('skipped') || 0 });
-    if (failed) message += ` ${t('bank.linkedWithErrors')}`;
-    toast(message, { type: failed ? 'error' : 'success' });
+    try {
+      bankSummary = JSON.parse(params.get('summary'));
+    } catch {
+      bankSummary = null; // a hand-edited URL: the panel still opens on the connection list
+    }
   } else {
     toast(t('bank.linkError', { reason: params.get('reason') || '' }));
   }
@@ -174,7 +177,7 @@ function handleBankReturn() {
   if ('ontouchstart' in window && !window.matchMedia('(display-mode: standalone)').matches) {
     setTimeout(() => toast(t('bank.openInApp'), { type: 'info' }), 3600);
   }
-  setUi({ panel: 'bank' });
+  setUi({ panel: 'bank', bankSummary });
   bankSync.loadStatus();
 }
 

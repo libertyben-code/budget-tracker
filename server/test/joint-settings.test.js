@@ -50,7 +50,7 @@ test('the joint split is one setting, saved field by field', async (t) => {
   const boot = await bootstrap(app);
   assert.deepEqual(boot.joint, { wanted: null, salary1: 3000, salary2: 2000, name1: 'Alex', name2: '' });
   assert.equal(boot.accounts.length, 2);
-  for (const account of boot.accounts) assert.deepEqual(Object.keys(account), ['id', 'name', 'txCount']);
+  for (const account of boot.accounts) assert.deepEqual(Object.keys(account), ['id', 'name', 'currency', 'txCount']);
 });
 
 test('a joint split patch with a bad value changes nothing', async (t) => {
@@ -98,7 +98,7 @@ test('v5 migration takes the joint split from the account whose salaries were se
   t.after(() => db.close());
   assert.deepEqual(JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value),
     { wanted: 1800, salary1: 3000, salary2: 2000.5, name1: '', name2: '' });
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '5');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '6');
   assert.equal(db.prepare("SELECT salary_person1 FROM accounts WHERE id = 'joint'").get().salary_person1, '3000', 'old columns stay');
 });
 

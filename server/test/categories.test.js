@@ -116,7 +116,7 @@ test('v4 migration merges the per-account custom categories into one list', (t) 
     { name: 'Gifts', created_at: '2026-09-01 00:00:00' },
     { name: 'Pets', created_at: '2026-09-03 00:00:00' },
   ]);
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '5');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '6');
 
   db.prepare("DELETE FROM accounts WHERE id = 'joint'").run();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_categories').get().n, 2, 'no longer owned by an account');

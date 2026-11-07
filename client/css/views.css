@@ -335,6 +335,11 @@ section.view { display: flex; flex-direction: column; gap: var(--space-4); }
 .bank-acct .controls input:not([type="date"]) { flex: 1 1 160px; min-width: 0; }
 .bank-acct .small, .bank-link .small, .modal .small { font-size: 0.8rem; }
 .bank-link .field { margin-bottom: var(--space-2); }
+.bank-link .delete-choice label { color: var(--text); font-size: 1rem; }
+.bank-summary { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.bank-summary h3 { margin: 0; }
+.bank-setup { margin-top: var(--space-3); }
+.bank-setup summary { cursor: pointer; }
 .danger-text { color: var(--danger); }
 .chip.ok { color: var(--muted); }
 .chip.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }

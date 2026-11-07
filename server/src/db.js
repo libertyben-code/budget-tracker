@@ -38,7 +38,9 @@ function migrate(db) {
   if (db.pragma('table_info(custom_categories)').some(c => c.name === 'account_id')) dropCategoryOwner(db);
   // v5: the joint split is one global setting; the per-account columns stay, unused
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'").get()) createSettings(db);
-  db.prepare("UPDATE meta SET value = '5' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 5").run();
+  // v6: a budget account has one currency, so a bank account in another one gets its own
+  ensureColumn(db, 'accounts', 'currency', "TEXT NOT NULL DEFAULT 'EUR'");
+  db.prepare("UPDATE meta SET value = '6' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 6").run();
 }
 
 // The joint split starts from the budget account whose salaries were filled in, else the default.

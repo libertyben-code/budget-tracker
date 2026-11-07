@@ -158,15 +158,16 @@ export async function syncBankAccount(db, client, bankAccount, { psu, today = to
   }
 }
 
-// Every enabled account with a target (optionally one connection's). One failing account is
-// reported in its result rather than aborting the rest.
-export async function syncAll(db, client, { connectionId, psu, today } = {}) {
+// Every enabled account with a target (optionally one connection's, or one account). One
+// failing account is reported in its result rather than aborting the rest.
+export async function syncAll(db, client, { connectionId, bankAccountId, psu, today } = {}) {
   const rows = db.prepare(`
     SELECT id, uid, account_id, savings_account_id, sync_from, synced_to FROM bank_accounts
     WHERE enabled = 1 AND (account_id IS NOT NULL OR savings_account_id IS NOT NULL)
       ${connectionId ? 'AND connection_id = ?' : ''}
+      ${bankAccountId ? 'AND id = ?' : ''}
     ORDER BY rowid
-  `).all(...(connectionId ? [connectionId] : []));
+  `).all(...[connectionId, bankAccountId].filter(Boolean));
   const results = [];
   for (const row of rows) results.push(await syncBankAccount(db, client, row, { psu, today }));
   return results;
