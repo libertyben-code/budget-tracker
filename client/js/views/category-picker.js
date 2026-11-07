@@ -2,6 +2,7 @@ import { esc, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
+import { renderStarterOffer } from './category-manager.js';
 
 const RECENT_KEY = 'recentCategories';
 const SEARCH_ID = 'category-picker-search';
@@ -87,6 +88,7 @@ export function render(state, t) {
         placeholder="${esc(t(picker.creating ? 'categoryPicker.newPlaceholder' : 'categoryPicker.search'))}"
         aria-label="${esc(t('categoryPicker.search'))}" data-action-input="category-picker-search" data-action-key="category-picker-enter">
       <div class="picker-body">
+        ${query ? '' : renderStarterOffer(state, t)}
         ${recent.length ? `
         <h3 class="picker-label">${esc(t('categoryPicker.recent'))}</h3>
         <div class="picker-recent">${recent.map(chip).join('')}</div>` : ''}

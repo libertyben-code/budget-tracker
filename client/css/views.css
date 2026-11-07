@@ -226,6 +226,19 @@ main {
 .glance-flows > div { display: flex; flex-direction: column; }
 .glance-todo { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); background: var(--accent-soft); border-color: transparent; }
 
+.welcome-card h2 { margin: 0 0 var(--space-1); }
+.welcome-card > p { margin: 0 0 var(--space-4); }
+.welcome-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.welcome-actions .btn { justify-content: flex-start; }
+@media (min-width: 640px) {
+  .welcome-actions { flex-direction: row; flex-wrap: wrap; }
+}
+.starter-offer { margin: var(--space-3) 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.welcome-card .starter-offer { margin-bottom: 0; margin-top: var(--space-4); }
+.starter-offer p { margin: 0 0 var(--space-2); }
+.starter-title { font-weight: 600; }
+.starter-names { font-size: 0.85rem; }
+
 .chip-btn {
   display: inline-flex;
   align-items: center;
