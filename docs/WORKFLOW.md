@@ -220,7 +220,7 @@ Two wrong fixes were ruled out on a device (verified on CaTetonne, then applied 
 
 ### 2026-09-30 — Banks hand out history on their own terms
 
-Revolut returns the full transaction history only in the first minutes after a consent is granted; afterwards every request is clipped to a rolling 90 days. Most other banks follow a similar pattern (roughly an hour, then 90 days), and PSD2 lets a bank refuse more than **four unattended fetches per account per day**. **Rules:** the first sync runs inside the OAuth callback (`routes/bank.js`), never on a later button press; syncs a user triggers forward `Psu-Ip-Address`/`Psu-User-Agent` so the bank counts them as user-present and exempt from the cap; any future scheduler stays under four runs a day and treats `ASPSP_RATE_LIMIT_EXCEEDED` as "come back in six hours", not as a retry.
+Revolut returns the full transaction history only in the first minutes after a consent is granted; afterwards every request is clipped to a rolling 90 days. Most other banks follow a similar pattern (roughly an hour, then 90 days), and PSD2 lets a bank refuse more than **four unattended fetches per account per day**. **Rules:** the first sync runs inside the OAuth callback (`routes/bank.js`), never on a later button press; syncs a user triggers forward `Psu-Ip-Address`/`Psu-User-Agent` so the bank counts them as user-present and exempt from the cap; any future scheduler stays under four runs a day and treats `ASPSP_RATE_LIMIT_EXCEEDED` as "come back in six hours", not as a retry. The auto-sync on open (`autoSync()` in `client/js/views/bank-sync.js`) counts as user-triggered, because the user has just opened the app; it still waits an hour per account, or six after a failure, and skips an expired consent.
 
 ### 2026-09-30 — `schema.sql` cannot change a table that already exists
 
@@ -241,6 +241,15 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-11-08 — Auto-sync on open, account picker, slimmer balance card (branch: fix/center-dashboard-figures)
+
+- **Auto-sync:** the client syncs each linked account due for it when the app starts or resumes, one request per account. It runs from the client, not a server timer, so the server forwards the user's PSU headers. The one-hour gap is a judgement call: shorter means fresher figures and more bank calls.
+- `last_sync_at` also moves on a failed sync, so the balance card shows "Couldn't update from your bank" instead of a last-sync time that would be the failure's. The last successful sync time is not stored.
+- **Account picker:** rows show an icon and the balance, or the transaction count when no balance is known. Delete moved from a trash icon on every row to one item for the active account, because the icon sat beside the row tapped to switch. `deleteAccountTitle` went with it.
+- **Balance card:** centered and down to two lines, 73px at phone width. The Net card is centered too.
+- **Fixed in passing:** a manual sync that imported nothing left the balance stale until the next reload; both paths now share `applySyncResults()`.
+- Verified on `dev-harness` with the fake bank by ageing `last_sync_at` in its throwaway database: fresh, one due, failed under and over six hours, expired consent, resume from background, and a re-imported transaction. Not run against a real bank or on an installed phone. The French strings were not viewed on screen.
 
 ### 2026-11-08 — Docker build survives a failed binary download (branch: fix/docker-native-build)
 
