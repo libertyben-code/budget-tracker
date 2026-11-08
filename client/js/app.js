@@ -1,7 +1,7 @@
 import { get, set, setUi, subscribe } from './store.js';
 import { api, net } from './api.js';
 import { createTranslator } from './i18n.js';
-import { debounce, esc, icons, toast } from './dom.js';
+import { debounce, esc, finder, icons, syncLayers, toast } from './dom.js';
 import * as header from './views/header.js';
 import * as filters from './views/filters.js';
 import * as transactions from './views/transactions.js';
@@ -71,6 +71,38 @@ function fieldsByKey() {
   return fields;
 }
 
+const DIALOG = '[role="dialog"], [role="alertdialog"]';
+const TABBABLE = 'a[href], button, input, select, textarea, summary, [tabindex]';
+// Where focus goes back to when a dialog closes, by dialog id.
+const openers = new Map();
+
+const openDialogs = () => [...modalsEl.querySelectorAll(DIALOG)];
+const topLayer = () => [...document.querySelectorAll('.modal-backdrop')].at(-1);
+const focusLost = () => !document.activeElement || document.activeElement === document.body;
+
+// A dialog opened from a menu item that has closed returns focus to the menu's button.
+function openerOf(el) {
+  const toggle = el?.closest('.dropdown-menu') && el.closest('.dropdown').querySelector(':scope > [aria-expanded]');
+  const [self, fallback] = [finder(el), finder(toggle)];
+  return () => self() || fallback();
+}
+
+function syncDialogFocus(before, opener) {
+  const open = openDialogs().map(d => d.id);
+  for (const id of [...before].reverse()) {
+    if (open.includes(id)) continue;
+    const back = openers.get(id);
+    openers.delete(id);
+    if (focusLost()) back?.()?.focus();
+  }
+  for (const id of open) if (!before.has(id)) openers.set(id, opener);
+  // While a dialog is open, focus stays in the topmost one (or on the toast's Undo).
+  const layer = topLayer();
+  if (layer && !layer.contains(document.activeElement) && !document.activeElement?.closest('.toast')) {
+    (layer.querySelector(DIALOG) || layer).focus();
+  }
+}
+
 function render() {
   const state = get();
   if (!state.loaded) return;
@@ -85,13 +117,16 @@ function render() {
     .filter(([, el]) => el && !committed.has(el) && currentValue(el) !== renderedValue(el))
     .map(([key, el]) => [key, currentValue(el), renderedValue(el)]);
   const active = document.activeElement;
-  const focusKey = active?.matches(FIELDS) ? fieldKey(active) : null;
-  const focusId = active?.id;
+  const isField = active?.matches(FIELDS);
+  const focusKey = isField ? fieldKey(active) : null;
+  const refind = finder(active);
+  const opener = openerOf(active);
+  const dialogsBefore = new Set(openDialogs().map(d => d.id));
   const { selectionStart, selectionEnd } = active || {};
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
+  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
 
   const fields = fieldsByKey();
   for (const [key, value, rendered] of edited) {
@@ -103,14 +138,17 @@ function render() {
 
   dashboard.afterRender(state, t);
   savings.afterRender(state);
+  syncLayers();
 
-  const target = (focusKey && fields.get(focusKey)) || (focusId && document.getElementById(focusId));
+  // A button keeps focus too, without scrolling to it ("Load more" has moved down by then).
+  const target = (focusKey && fields.get(focusKey)) || refind();
   if (target) {
-    target.focus();
+    target.focus(isField ? undefined : { preventScroll: true });
     if (selectionStart !== undefined && selectionStart !== null && typeof target.setSelectionRange === 'function') {
       try { target.setSelectionRange(selectionStart, selectionEnd); } catch {}
     }
   }
+  syncDialogFocus(dialogsBefore, opener);
 }
 
 function connectionBanner(connection, t, lang) {
@@ -157,16 +195,17 @@ async function runAction(name, el, ev) {
   }
 }
 
+function closeMenus() {
+  const state = get();
+  if (state.ui.settingsOpen) setUi({ settingsOpen: false });
+  if (state.ui.categoryDropdownOpen) setUi({ categoryDropdownOpen: null });
+  if (state.ui.accountMenuOpen) setUi({ accountMenuOpen: false });
+  if (state.addingAccount) set({ addingAccount: false });
+}
+
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-action]');
-  const state = get();
-
-  if (!ev.target.closest('.dropdown') && !ev.target.closest('[data-keep-open]')) {
-    if (state.ui.settingsOpen) setUi({ settingsOpen: false });
-    if (state.ui.categoryDropdownOpen) setUi({ categoryDropdownOpen: null });
-    if (state.ui.accountMenuOpen) setUi({ accountMenuOpen: false });
-    if (state.addingAccount) set({ addingAccount: false });
-  }
+  if (!ev.target.closest('.dropdown') && !ev.target.closest('[data-keep-open]')) closeMenus();
 
   if (!el) return;
   if (el.dataset.selfOnly !== undefined && ev.target !== el) return;
@@ -187,7 +226,43 @@ document.addEventListener('input', (ev) => {
   if (el) debouncedInput(el.dataset.actionInput, el, ev);
 });
 
+// Escape does what a tap outside does, to the topmost thing open: the picker over a sheet, a
+// sheet or panel over the page, a confirm dialog over everything; with no dialog, an open menu.
+function closeTopmost(ev) {
+  const layer = topLayer();
+  if (layer) {
+    ev.preventDefault();
+    layer.click();
+    return;
+  }
+  const { settingsOpen, accountMenuOpen } = get().ui;
+  if (!settingsOpen && !accountMenuOpen) return;
+  ev.preventDefault();
+  closeMenus();
+  document.getElementById(settingsOpen ? 'settings-toggle' : 'account-toggle')?.focus();
+}
+
+// Tab past either end of the topmost dialog comes back round. Inside it the browser's own order
+// stands (a date field's parts, a radio group). A toast's Undo after #modals is part of the round.
+function trapFocus(ev) {
+  const layer = topLayer();
+  if (!layer) return;
+  const dialog = layer.querySelector(DIALOG) || layer;
+  const toasts = layer.parentElement === modalsEl ? [...document.querySelectorAll('.toast-action')] : [];
+  const items = [...dialog.querySelectorAll(TABBABLE), ...toasts].filter(el =>
+    !el.disabled && el.tabIndex >= 0 && el.getClientRects().length
+    && (el.type !== 'radio' || el.checked || !dialog.querySelector(`input[type="radio"][name="${CSS.escape(el.name)}"]:checked`)));
+  const at = items.indexOf(document.activeElement);
+  const wrapTo = ev.shiftKey ? (at <= 0 && items.at(-1)) : ((at === -1 || at === items.length - 1) && items[0]);
+  if (!items.length || wrapTo) {
+    ev.preventDefault();
+    (wrapTo || dialog).focus();
+  }
+}
+
 document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && !ev.isComposing) return closeTopmost(ev);
+  if (ev.key === 'Tab') return trapFocus(ev);
   if (ev.key !== 'Enter') return;
   const el = ev.target.closest('[data-action-key]');
   if (el) {

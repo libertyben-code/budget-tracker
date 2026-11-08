@@ -94,7 +94,11 @@ export function render(state, t) {
   const selection = state.selection;
   const selecting = Boolean(state.selecting) || selection.size > 0;
   const allVisibleSelected = filtered.length > 0 && filtered.every(tx => selection.has(tx.id));
-  const sortIndicator = (key) => state.sort.key === key ? (state.sort.direction === 'asc' ? ' ▲' : ' ▼') : '';
+  const sortHeader = (key, label, attrs = '') => {
+    const on = state.sort.key === key;
+    const asc = state.sort.direction === 'asc';
+    return `<th class="sortable"${on ? ` aria-sort="${asc ? 'ascending' : 'descending'}"` : ''}${attrs}><button class="th-sort" data-action="sort" data-key="${key}">${esc(label)}${on ? `<span aria-hidden="true">${asc ? ' ▲' : ' ▼'}</span>` : ''}</button></th>`;
+  };
   const rowAction = selecting ? 'toggle-select' : 'open-tx';
   const opensSheet = selecting ? '' : ' aria-haspopup="dialog"';
 
@@ -182,10 +186,10 @@ export function render(state, t) {
         <thead>
           <tr>
             <th class="check-cell">${checkButton(allVisibleSelected, 'select-all', t('transactionTable.selectAll'))}</th>
-            <th class="sortable" data-action="sort" data-key="date">${esc(t('common.date'))}${sortIndicator('date')}</th>
+            ${sortHeader('date', t('common.date'))}
             <th>${esc(t('common.description'))}</th>
-            <th class="sortable" data-action="sort" data-key="category">${esc(t('common.category'))}${sortIndicator('category')}</th>
-            <th class="sortable" data-action="sort" data-key="amount" style="text-align:right">${esc(t('common.amount'))}${sortIndicator('amount')}</th>
+            ${sortHeader('category', t('common.category'))}
+            ${sortHeader('amount', t('common.amount'), ' style="text-align:right"')}
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
@@ -446,18 +450,6 @@ function closeSheet() {
   setUi({ txSheet: null });
   if (sheet) focusRow(sheet.id);
 }
-
-document.addEventListener('keydown', (ev) => {
-  // The category picker above the sheet takes the Escape first and marks it handled.
-  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
-  if (get().ui.txSheet) {
-    ev.preventDefault();
-    closeSheet();
-  } else if (get().creatingTx) {
-    ev.preventDefault();
-    closeAddSheet();
-  }
-});
 
 // What is typed goes into the draft without a re-render, so the next render (the picker opening,
 // a toast's Undo) rebuilds the form with it instead of dropping it.

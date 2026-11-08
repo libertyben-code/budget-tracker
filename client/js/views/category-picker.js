@@ -57,12 +57,6 @@ async function pickOrCreate(name, t) {
   await pick(name, t);
 }
 
-document.addEventListener('keydown', (ev) => {
-  if (ev.key !== 'Escape' || !get().ui.categoryPicker) return;
-  ev.preventDefault();
-  close();
-});
-
 export function render(state, t) {
   const picker = state.ui.categoryPicker;
   if (!picker) return '';
@@ -79,7 +73,7 @@ export function render(state, t) {
 
   return `
   <div class="modal-backdrop" data-action="category-picker-close" data-self-only>
-    <div class="modal category-picker" role="dialog" aria-modal="true" aria-labelledby="category-picker-title">
+    <div class="modal category-picker" id="category-picker" role="dialog" aria-modal="true" aria-labelledby="category-picker-title" tabindex="-1">
       <div class="modal-head">
         <h2 id="category-picker-title">${esc(picker.title || t('common.category'))}</h2>
         <button class="icon-btn" data-action="category-picker-close" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>

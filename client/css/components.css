@@ -11,7 +11,9 @@
   font-weight: 500;
   white-space: nowrap;
 }
-.btn:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active { transform: translateY(1px); }
+}
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-strong); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
@@ -197,7 +199,8 @@ button.chip-select {
 .picker-option.current { color: var(--accent-strong); font-weight: 600; }
 .picker-option.action { color: var(--accent-strong); font-weight: 550; }
 
-.tx-sheet:focus { outline: none; }
+/* Focused on open so the title is read first; the ring would frame the whole sheet. */
+.modal:focus { outline: none; }
 @media (min-width: 640px) {
   .tx-sheet { max-width: 440px; }
 }
@@ -248,7 +251,7 @@ button.chip-select {
 #tx-add-save { width: 100%; margin-top: var(--space-1); }
 
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3); }
-.field label { font-size: 0.85rem; color: var(--muted); }
+.field label, .field .field-label { font-size: 0.85rem; color: var(--muted); }
 
 .row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }

@@ -65,17 +65,19 @@ export function render(state, t) {
       </div>
       <div class="account-switcher">
         <div class="dropdown">
-          <button class="btn select-btn account-btn" data-action="toggle-account-menu">
+          <button class="btn select-btn account-btn" id="account-toggle" data-action="toggle-account-menu" aria-expanded="${state.ui.accountMenuOpen}">
             <span class="account-label">${esc(t('header.account'))}</span>
             <span class="account-name">${esc(activeAccount.name)}</span>
           </button>
           ${state.ui.accountMenuOpen ? `
           <div class="dropdown-menu left" data-keep-open>
             ${state.accounts.map(a => `
-            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
-              <span class="grow">${esc(a.name)}</span>
-              ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
-              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
+            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}">
+              <button class="account-switch" data-action="switch-account" data-id="${esc(a.id)}"${a.id === state.activeAccountId ? ' aria-current="true"' : ''}>
+                <span class="grow">${esc(a.name)}</span>
+                ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
+              </button>
+              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}" aria-label="${esc(t('header.deleteAccountNamed', { name: a.name }))}">${icons.trash}</button>` : ''}
             </div>`).join('')}
             <div class="menu-sep"></div>
             ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
@@ -102,7 +104,7 @@ export function render(state, t) {
             <button class="menu-item" data-action="open-balance-form">${esc(t('header.setBalance'))}</button>`}
             ${state.addingAccount ? `
             <div class="account-add">
-              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
+              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" aria-label="${esc(t('header.accountName'))}" data-action-key="create-account">
               <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
             </div>` : `
             <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
@@ -110,7 +112,7 @@ export function render(state, t) {
         </div>
       </div>
       <div class="dropdown">
-        <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
+        <button class="icon-btn" id="settings-toggle" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}" aria-expanded="${state.ui.settingsOpen}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>
           <div role="group" aria-labelledby="menu-group-data">
@@ -164,7 +166,7 @@ export function render(state, t) {
       <div>${esc(t('header.importWarningDesc'))}</div>
       <div>${esc(t('header.lines', { lines: shownLines }))}${importErrors.lines.length > 20 ? esc(t('header.andMore', { count: importErrors.lines.length - 20 })) : ''}</div>
     </div>
-    <button class="icon-btn" data-action="dismiss-import-errors">✕</button>
+    <button class="icon-btn" data-action="dismiss-import-errors" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
   </div>` : ''}`;
 }
 

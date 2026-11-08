@@ -27,13 +27,13 @@ export function render(state, t) {
 
     <div class="row" style="margin:0">
       <h2 class="grow" style="margin:0">${esc(t('savings.accountsTitle'))}</h2>
-      <button class="btn small primary" data-action="toggle-add-savings" title="${esc(t('savings.addAccount'))}" aria-label="${esc(t('savings.addAccount'))}">${state.ui.addingSavings ? '✕' : '＋'}</button>
+      <button class="btn small primary" id="savings-add-toggle" data-action="toggle-add-savings" title="${esc(t('savings.addAccount'))}" aria-label="${esc(t('savings.addAccount'))}" aria-expanded="${state.ui.addingSavings}">${state.ui.addingSavings ? '✕' : '＋'}</button>
     </div>
     ${state.ui.addingSavings ? `
     <div class="card savings-account">
       <div class="row">
-        <input id="new-savings-name" class="grow" placeholder="${esc(t('savings.savingsAccountName'))}" data-action-key="add-savings">
-        <input id="new-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('savings.initialBalance'))}" style="width:130px" data-action-key="add-savings">
+        <input id="new-savings-name" class="grow" placeholder="${esc(t('savings.savingsAccountName'))}" aria-label="${esc(t('savings.savingsAccountName'))}" data-action-key="add-savings">
+        <input id="new-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('savings.initialBalance'))}" aria-label="${esc(t('savings.initialBalance'))}" style="width:130px" data-action-key="add-savings">
       </div>
       <div class="row">
         ${categorySelect('new-savings-category', '', state, t)}
@@ -65,8 +65,8 @@ function renderAccount(a, state, t, total) {
     return `
     <div class="card savings-account" data-id="${esc(a.id)}">
       <div class="row">
-        <input id="edit-savings-name" class="grow" value="${esc(a.name)}" placeholder="${esc(t('savings.name'))}">
-        <input id="edit-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(a.balance)}" style="width:130px">
+        <input id="edit-savings-name" class="grow" value="${esc(a.name)}" placeholder="${esc(t('savings.name'))}" aria-label="${esc(t('savings.name'))}">
+        <input id="edit-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(a.balance)}" aria-label="${esc(t('savings.balance'))}" style="width:130px">
       </div>
       <div class="row">
         ${categorySelect('edit-savings-category', a.category || '', state, t)}
@@ -84,23 +84,23 @@ function renderAccount(a, state, t, total) {
         <div class="muted" style="font-size:0.8rem">${esc(t('savings.percentOfTotal', { percent: pct }))}${a.category ? ` · ${esc(t('savings.fedByCategory', { category: a.category }))}` : ''}</div>
       </div>
       <span class="num" style="font-weight:650">${eur(a.balance)}</span>
-      <button class="icon-btn accent" data-action="edit-savings" data-id="${esc(a.id)}" title="${esc(t('common.edit'))}">${icons.edit}</button>
-      <button class="icon-btn danger" data-action="delete-savings" data-id="${esc(a.id)}" title="${esc(t('common.delete'))}">${icons.trash}</button>
+      <button class="icon-btn accent" data-action="edit-savings" data-id="${esc(a.id)}" title="${esc(t('common.edit'))}" aria-label="${esc(t('savings.editNamed', { name: a.name }))}">${icons.edit}</button>
+      <button class="icon-btn danger" data-action="delete-savings" data-id="${esc(a.id)}" title="${esc(t('common.delete'))}" aria-label="${esc(t('savings.deleteNamed', { name: a.name }))}">${icons.trash}</button>
     </div>
     ${a.category ? '' : `
     <div class="row">
-      <input id="sav-amount-${esc(a.id)}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('common.amount'))}" class="grow" style="max-width:160px">
+      <input id="sav-amount-${esc(a.id)}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('common.amount'))}" aria-label="${esc(t('savings.amountFor', { name: a.name }))}" class="grow" style="max-width:160px">
       <button class="btn small" data-action="savings-op" data-id="${esc(a.id)}" data-type="deposit">＋ ${esc(t('savings.deposit'))}</button>
       <button class="btn small" data-action="savings-op" data-id="${esc(a.id)}" data-type="withdrawal">− ${esc(t('savings.withdraw'))}</button>
     </div>`}
     <div class="row" style="gap:12px">
       ${a.category ? '' : `
-      <button class="btn small ghost" data-action="toggle-recurring" data-id="${esc(a.id)}">
-        ${recurringOpen ? '▾' : '▸'} ${icons.repeat} ${esc(t('savings.recurring'))}${recurring.length ? ` (${recurring.length})` : ''}
+      <button class="btn small ghost" data-action="toggle-recurring" data-id="${esc(a.id)}" aria-expanded="${recurringOpen}">
+        <span aria-hidden="true">${recurringOpen ? '▾' : '▸'}</span> ${icons.repeat} ${esc(t('savings.recurring'))}${recurring.length ? ` (${recurring.length})` : ''}
       </button>`}
       ${history.length > 0 ? `
-      <button class="btn small ghost" data-action="toggle-history" data-id="${esc(a.id)}">
-        ${historyOpen ? '▾' : '▸'} ${esc(t('savings.transactionHistory', { count: history.length }))}
+      <button class="btn small ghost" data-action="toggle-history" data-id="${esc(a.id)}" aria-expanded="${historyOpen}">
+        <span aria-hidden="true">${historyOpen ? '▾' : '▸'}</span> ${esc(t('savings.transactionHistory', { count: history.length }))}
       </button>` : ''}
     </div>
     ${recurringOpen ? `
@@ -109,16 +109,16 @@ function renderAccount(a, state, t, total) {
       <div class="panel-list-item">
         <span class="grow">${eur(r.amount)} · ${esc(t('savings.monthlyOnDay', { day: r.day }))}</span>
         <span class="muted" style="font-size:0.8rem">${esc(t('savings.nextOn', { date: isoToDisplay(r.nextDate) }))}</span>
-        <button class="icon-btn danger" data-action="delete-recurring" data-id="${esc(r.id)}" data-sid="${esc(a.id)}" title="${esc(t('common.delete'))}">${icons.trash}</button>
+        <button class="icon-btn danger" data-action="delete-recurring" data-id="${esc(r.id)}" data-sid="${esc(a.id)}" title="${esc(t('common.delete'))}" aria-label="${esc(t('savings.deleteRecurring'))}">${icons.trash}</button>
       </div>`).join('')}
       <div class="row">
-        <input id="rec-amount-${esc(a.id)}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('common.amount'))}" class="grow" style="max-width:140px">
+        <input id="rec-amount-${esc(a.id)}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${esc(t('common.amount'))}" aria-label="${esc(t('savings.recurringAmount'))}" class="grow" style="max-width:140px">
         <label class="row" style="gap:6px">${esc(t('savings.day'))}
           <select id="rec-day-${esc(a.id)}">
             ${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}" ${i === 0 ? 'selected' : ''}>${i + 1}</option>`).join('')}
           </select>
         </label>
-        <button class="btn small primary" data-action="add-recurring" data-id="${esc(a.id)}">＋</button>
+        <button class="btn small primary" data-action="add-recurring" data-id="${esc(a.id)}" title="${esc(t('savings.addRecurring'))}" aria-label="${esc(t('savings.addRecurring'))}">＋</button>
       </div>
     </div>` : ''}
     ${historyOpen && history.length > 0 ? `
