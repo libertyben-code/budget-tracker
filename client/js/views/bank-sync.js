@@ -69,7 +69,7 @@ function targetSelect(acc, state, t) {
   const target = acc.savingsAccountId ? `savings:${acc.savingsAccountId}` : acc.accountId ? `account:${acc.accountId}` : '';
   const opt = (value, label) => `<option value="${esc(value)}" ${value === target ? 'selected' : ''}>${esc(label)}</option>`;
   return `
-      <select data-action-change="bank-map-target" data-id="${esc(acc.id)}">
+      <select id="bank-target-${esc(acc.id)}" data-action-change="bank-map-target" data-id="${esc(acc.id)}">
         ${opt('', t('bank.notSynced'))}
         <optgroup label="${esc(t('bank.accountsGroup'))}">
           ${state.accounts.map(a => {
@@ -88,7 +88,7 @@ function targetSelect(acc, state, t) {
 function inlineCreate(acc, t, { inputId, placeholder, action }) {
   return `
     <div class="controls">
-      <input id="${inputId}" class="grow" placeholder="${esc(placeholder)}" data-action-key="${action}" data-id="${esc(acc.id)}">
+      <input id="${inputId}" class="grow" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}" data-action-key="${action}" data-id="${esc(acc.id)}">
       <button class="btn small primary" data-action="${action}" data-id="${esc(acc.id)}">${esc(t('common.save'))}</button>
       <button class="btn small" data-action="bank-cancel-new-account">${esc(t('common.cancel'))}</button>
     </div>`;
@@ -122,10 +122,10 @@ function accountRow(acc, state, t) {
         ? inlineCreate(acc, t, { inputId: 'bank-new-savings-name', placeholder: t('bank.savingsName'), action: 'bank-create-savings' })
         : `
     <div class="controls">
-      <label class="muted small">${esc(t('bank.target'))}</label>
+      <label class="muted small" for="bank-target-${esc(acc.id)}">${esc(t('bank.target'))}</label>
       ${targetSelect(acc, state, t)}
-      <label class="muted small">${esc(t('bank.syncFrom'))}</label>
-      <input type="date" value="${esc(acc.syncFrom || '')}" data-action-change="bank-sync-from" data-id="${esc(acc.id)}">
+      <label class="muted small" for="bank-sync-from-${esc(acc.id)}">${esc(t('bank.syncFrom'))}</label>
+      <input type="date" id="bank-sync-from-${esc(acc.id)}" value="${esc(acc.syncFrom || '')}" data-action-change="bank-sync-from" data-id="${esc(acc.id)}">
     </div>`}
   </div>`;
 }
@@ -160,33 +160,33 @@ function linkForm(state, t) {
   <div class="card bank-link">
     <h3>${esc(t('bank.linkBank'))}</h3>
     <div class="field">
-      <label>${esc(t('bank.country'))}</label>
-      <select data-action-change="bank-country">
+      <label for="bank-link-country">${esc(t('bank.country'))}</label>
+      <select id="bank-link-country" data-action-change="bank-country">
         ${COUNTRIES.map(c => `<option value="${c}" ${c === ui.bankCountry ? 'selected' : ''}>${c}</option>`).join('')}
       </select>
     </div>
     <div class="field">
-      <label>${esc(t('bank.bank'))}</label>
-      <select data-action-change="bank-link-aspsp" ${aspsps ? '' : 'disabled'}>
+      <label for="bank-link-aspsp">${esc(t('bank.bank'))}</label>
+      <select id="bank-link-aspsp" data-action-change="bank-link-aspsp" ${aspsps ? '' : 'disabled'}>
         <option value="">${esc(t(aspsps ? 'bank.chooseBank' : 'bank.loadingBanks'))}</option>
         ${(aspsps || []).map(a => `<option value="${esc(a.name)}" ${a.name === ui.bankLinkAspsp ? 'selected' : ''}>${esc(a.name)}${a.maxConsentDays ? ` (${esc(t('bank.maxConsent', { days: a.maxConsentDays }))})` : ''}</option>`).join('')}
       </select>
     </div>
     ${psuChoice ? `
     <div class="field">
-      <label>${esc(t('bank.accountType'))}</label>
-      <select data-action-change="bank-link-psu-type">
+      <label for="bank-link-psu-type">${esc(t('bank.accountType'))}</label>
+      <select id="bank-link-psu-type" data-action-change="bank-link-psu-type">
         ${selected.psuTypes.map(p => `<option value="${esc(p)}" ${p === ui.bankLinkPsuType ? 'selected' : ''}>${esc(t(`bank.${p === 'business' ? 'business' : 'personal'}`))}</option>`).join('')}
       </select>
     </div>` : ''}
     <div class="field">
-      <label>${esc(t('bank.budgetAccount'))}</label>
-      <select data-action-change="bank-link-account">
+      <label for="bank-link-account">${esc(t('bank.budgetAccount'))}</label>
+      <select id="bank-link-account" data-action-change="bank-link-account">
         ${state.accounts.map(a => `<option value="${esc(a.id)}" ${a.id === ui.bankLinkAccountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
     </div>
     <div class="field" role="radiogroup" aria-labelledby="bank-other-label">
-      <label id="bank-other-label">${esc(t('bank.otherCurrencies'))}</label>
+      <span class="field-label" id="bank-other-label">${esc(t('bank.otherCurrencies'))}</span>
       <div class="delete-choices">
         ${['import', 'skip'].map(value => `
         <div class="delete-choice">
@@ -197,8 +197,8 @@ function linkForm(state, t) {
       <div class="muted small">${esc(t('bank.otherCurrenciesHint', { currency: chosen?.currency || 'EUR', account: chosen?.name || '' }))}</div>
     </div>
     <div class="field">
-      <label>${esc(t('bank.syncFrom'))}</label>
-      <input type="date" value="${esc(ui.bankLinkSyncFrom)}" data-action-change="bank-link-sync-from">
+      <label for="bank-link-sync-from">${esc(t('bank.syncFrom'))}</label>
+      <input type="date" id="bank-link-sync-from" value="${esc(ui.bankLinkSyncFrom)}" data-action-change="bank-link-sync-from">
       <div class="muted small">${esc(t('bank.syncFromHint'))}</div>
     </div>
     <div class="row">
@@ -273,10 +273,10 @@ export function render(state, t) {
 
   return `
   <div class="modal-backdrop" data-action="close-panel" data-self-only>
-    <div class="modal">
+    <div class="modal" id="bank-panel" role="dialog" aria-modal="true" aria-labelledby="bank-title" tabindex="-1">
       <div class="modal-head">
-        <h2 style="margin:0">${esc(t('bank.title'))}</h2>
-        <button class="icon-btn" data-action="close-panel">✕</button>
+        <h2 id="bank-title" style="margin:0">${esc(t('bank.title'))}</h2>
+        <button class="icon-btn" data-action="close-panel" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
       </div>
       <p class="muted">${esc(t('bank.subtitle'))}</p>
       ${body}

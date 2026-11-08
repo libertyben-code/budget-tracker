@@ -84,11 +84,12 @@ export function render(state, t) {
       </button>
       ${filtered ? `<button class="filter-clear" data-action="filter-clear" title="${esc(t('filters.clear'))}" aria-label="${esc(t('filters.clear'))}">✕</button>` : ''}
     </div>
-  </div>
-  ${state.ui.filterSheet ? renderSheet(state, t) : ''}`;
+  </div>`;
 }
 
-function renderSheet(state, t) {
+// Drawn in #modals with the other dialogs, for the Transactions tab's filter bar.
+export function renderSheet(state, t) {
+  if (!state.ui.filterSheet || state.ui.tab !== 'transactions') return '';
   const f = state.filter;
   const lang = state.ui.lang;
   const active = activePeriod(f);
@@ -97,7 +98,7 @@ function renderSheet(state, t) {
 
   return `
   <div class="modal-backdrop" data-action="filter-sheet-close" data-self-only>
-    <div class="modal filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-sheet-title">
+    <div class="modal filter-sheet" id="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-sheet-title" tabindex="-1">
       <div class="modal-head">
         <h2 id="filter-sheet-title">${esc(t('filters.title'))}</h2>
         <button class="icon-btn" data-action="filter-sheet-close" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
@@ -148,12 +149,6 @@ function closeSheet() {
   setUi({ filterSheet: false });
   document.getElementById('filter-open')?.focus();
 }
-
-document.addEventListener('keydown', (ev) => {
-  if (ev.key !== 'Escape' || !get().ui.filterSheet) return;
-  ev.preventDefault();
-  closeSheet();
-});
 
 export const actions = {
   'filter-sheet-open': () => {

@@ -40,6 +40,29 @@ export function resetFields(...ids) {
   }
 }
 
+// A way back to an element after render() has replaced it: by id, else by its tag and data-*
+// attributes (the same match by position, as rows can be drawn twice).
+export function finder(el) {
+  if (!(el instanceof HTMLElement) || el === document.body) return () => null;
+  const id = el.id;
+  if (id) return () => (el.isConnected ? el : document.getElementById(id));
+  const attrs = [...el.attributes].filter(a => a.name.startsWith('data-'));
+  if (!attrs.length) return () => (el.isConnected ? el : null);
+  const selector = el.tagName + attrs.map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join('');
+  const index = [...document.querySelectorAll(selector)].indexOf(el);
+  return () => (el.isConnected ? el : document.querySelectorAll(selector)[index] || null);
+}
+
+// Dialogs stack in document order (#modals, then a confirm dialog on <body>). Only the topmost
+// can be reached: the page and every dialog under it are inert.
+export function syncLayers() {
+  const layers = [...document.querySelectorAll('.modal-backdrop')];
+  const top = layers.at(-1) || null;
+  for (const layer of layers) layer.inert = layer !== top;
+  document.getElementById('app').inert = Boolean(top);
+  return top;
+}
+
 function liveRegion(attrs) {
   const el = document.createElement('div');
   for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
@@ -97,18 +120,26 @@ export function toast(message, { type = 'error', action, onExpire } = {}) {
   return dismiss;
 }
 
-// styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop
+// styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop.
+// Escape and the focus trap are app.js's: it treats this like any other dialog.
 export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, title } = {}) {
   return new Promise((resolve) => {
+    const opener = finder(document.activeElement);
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
+    // Not a tap outside the menu it was opened from: that menu stays open behind it.
+    backdrop.dataset.keepOpen = '';
     const modal = document.createElement('div');
     modal.className = 'modal confirm-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.tabIndex = -1;
 
     if (title) {
       const head = document.createElement('div');
       head.className = 'modal-head';
       const h = document.createElement('h2');
+      h.id = 'confirm-title';
       h.style.margin = '0';
       h.textContent = title;
       head.appendChild(h);
@@ -116,9 +147,12 @@ export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Can
     }
 
     const body = document.createElement('p');
+    body.id = 'confirm-message';
     body.className = 'confirm-message';
     body.textContent = message;
     modal.appendChild(body);
+    modal.setAttribute('aria-labelledby', title ? 'confirm-title' : 'confirm-message');
+    if (title) modal.setAttribute('aria-describedby', 'confirm-message');
 
     const row = document.createElement('div');
     row.className = 'row';
@@ -134,18 +168,15 @@ export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Can
 
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
+    syncLayers();
     confirmBtn.focus();
 
     const close = (result) => {
-      document.removeEventListener('keydown', onKey, true);
       backdrop.remove();
+      syncLayers();
+      opener()?.focus();
       resolve(result);
     };
-    const onKey = (ev) => {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(false); }
-      else if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); close(true); }
-    };
-    document.addEventListener('keydown', onKey, true);
     cancelBtn.addEventListener('click', () => close(false));
     confirmBtn.addEventListener('click', () => close(true));
     backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) close(false); });

@@ -9,18 +9,18 @@ export function render(state, t) {
   const picked = state.ui.batchCategory;
   return `
   <div class="modal-backdrop" data-action="close-batch-edit" data-self-only>
-    <div class="modal">
+    <div class="modal" id="batch-edit" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title" tabindex="-1">
       <div class="modal-head">
-        <h2 style="margin:0">${esc(t('app.batchEditTransactions'))}</h2>
-        <button class="icon-btn" data-action="close-batch-edit">✕</button>
+        <h2 id="batch-edit-title" style="margin:0">${esc(t('app.batchEditTransactions'))}</h2>
+        <button class="icon-btn" data-action="close-batch-edit" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
       </div>
       <p class="muted">${esc(t('app.editingTransactions', { count: state.selection.size }))} — ${esc(t('app.leaveEmpty'))}</p>
       <div class="field">
-        <label>${esc(t('app.descriptionOptional'))}</label>
+        <label for="batch-desc">${esc(t('app.descriptionOptional'))}</label>
         <input id="batch-desc" placeholder="${esc(t('app.newDescriptionAll'))}">
       </div>
       <div class="field">
-        <label>${esc(t('app.categoryOptional'))}</label>
+        <label for="batch-cat">${esc(t('app.categoryOptional'))}</label>
         <select id="batch-cat" data-action-change="batch-cat-select">
           <option value="">${esc(t('app.keepExistingCategories'))}</option>
           ${cats.map(c => `<option value="${esc(c)}" ${c === picked ? 'selected' : ''}>${esc(c)}</option>`).join('')}
@@ -29,7 +29,7 @@ export function render(state, t) {
       </div>
       <div id="batch-new-cat-wrap" ${picked === '__new__' ? '' : 'hidden'}>
         <div class="field">
-          <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}">
+          <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}" aria-label="${esc(t('app.enterNewCategoryName'))}">
         </div>
       </div>
       <div class="row" style="justify-content:flex-end">

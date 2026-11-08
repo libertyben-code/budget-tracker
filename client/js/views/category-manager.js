@@ -37,6 +37,10 @@ export function renderStarterOffer(state, t) {
   </div>`;
 }
 
+function focusRowButton(action, category) {
+  [...document.querySelectorAll(`#category-manager [data-action="${action}"]`)].find(button => button.dataset.cat === category)?.focus();
+}
+
 function deleteRow(category, count, t) {
   return `
         <div class="panel-list-item delete-confirm" id="delete-cat-row" role="group" aria-labelledby="delete-cat-title" tabindex="-1">
@@ -70,29 +74,29 @@ export function render(state, t) {
 
   return `
   <div class="modal-backdrop" data-action="close-panel" data-self-only>
-    <div class="modal">
+    <div class="modal" id="category-manager" role="dialog" aria-modal="true" aria-labelledby="category-manager-title" tabindex="-1">
       <div class="modal-head">
-        <h2 style="margin:0">${esc(t('categoryManager.title'))}</h2>
-        <button class="icon-btn" data-action="close-panel">✕</button>
+        <h2 id="category-manager-title" style="margin:0">${esc(t('categoryManager.title'))}</h2>
+        <button class="icon-btn" data-action="close-panel" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
       </div>
       <p class="muted">${esc(t('categoryManager.subtitle'))}</p>
       <div class="row" style="margin-bottom:12px">
-        <input id="new-cat-input" class="grow" placeholder="${esc(t('categoryManager.newCategoryName'))}" data-action-key="add-category">
+        <input id="new-cat-input" class="grow" placeholder="${esc(t('categoryManager.newCategoryName'))}" aria-label="${esc(t('categoryManager.newCategoryName'))}" data-action-key="add-category">
         <button class="btn primary" data-action="add-category">${esc(t('categoryManager.addCategory'))}</button>
       </div>
       ${renderStarterOffer(state, t)}
       <div class="panel-list">
         ${cats.map(c => state.ui.editingCategory === c ? `
         <div class="panel-list-item">
-          <input id="rename-cat-input" class="grow" value="${esc(c)}" data-action-key="apply-rename-category" data-cat="${esc(c)}">
+          <input id="rename-cat-input" class="grow" value="${esc(c)}" aria-label="${esc(t('categoryManager.renameNamed', { category: c }))}" data-action-key="apply-rename-category" data-cat="${esc(c)}">
           <button class="btn small primary" data-action="apply-rename-category" data-cat="${esc(c)}">${esc(t('common.save'))}</button>
           <button class="btn small" data-action="cancel-rename-category">${esc(t('common.cancel'))}</button>
         </div>` : deleting === c ? deleteRow(c, counts[c] || 0, t) : `
         <div class="panel-list-item">
           <span class="grow">${esc(c)}</span>
           <span class="badge">${esc(t(counts[c] === 1 ? 'categoryManager.transactionCountOne' : 'categoryManager.transactionCount', { count: counts[c] || 0 }))}</span>
-          <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}">${icons.edit}</button>
-          <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}">${icons.trash}</button>
+          <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}" aria-label="${esc(t('categoryManager.renameNamed', { category: c }))}">${icons.edit}</button>
+          <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}" aria-label="${esc(t('categoryManager.deleteNamed', { category: c }))}">${icons.trash}</button>
         </div>`).join('')}
       </div>
     </div>
@@ -131,8 +135,15 @@ export const actions = {
     resetFields('new-cat-input');
     set({ categories: [...state.categories, { name, count: 0 }] });
   },
-  'start-rename-category': (el) => setUi({ editingCategory: el.dataset.cat, deletingCategory: null }),
-  'cancel-rename-category': () => setUi({ editingCategory: null }),
+  'start-rename-category': (el) => {
+    setUi({ editingCategory: el.dataset.cat, deletingCategory: null });
+    document.getElementById('rename-cat-input')?.focus();
+  },
+  'cancel-rename-category': () => {
+    const category = get().ui.editingCategory;
+    setUi({ editingCategory: null });
+    focusRowButton('start-rename-category', category);
+  },
   'apply-rename-category': async (el) => {
     const from = el.dataset.cat;
     const to = document.getElementById('rename-cat-input')?.value.trim();
@@ -151,7 +162,11 @@ export const actions = {
     row?.scrollIntoView({ block: 'nearest' });
     row?.focus({ preventScroll: true });
   },
-  'cancel-delete-category': () => setUi({ deletingCategory: null }),
+  'cancel-delete-category': () => {
+    const category = get().ui.deletingCategory;
+    setUi({ deletingCategory: null });
+    focusRowButton('start-delete-category', category);
+  },
   'pick-new-replacement': () => {
     document.getElementById('del-mode-new').checked = true;
   },
