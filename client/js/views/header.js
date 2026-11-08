@@ -6,7 +6,7 @@ import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
 import { loadStatus as loadBankStatus, plural } from './bank-sync.js';
 import { todayIso } from '/shared/dates.js';
 
-const VERSION = 'v2.2.1';
+const VERSION = 'v2.3.0';
 
 const ACCENTS = ['indigo', 'violet', 'blue', 'green', 'amber', 'coral'];
 
