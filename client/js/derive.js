@@ -48,9 +48,11 @@ export function filteredTransactions(state) {
   return filtered;
 }
 
-// "32" finds 32.00 to 32.99 either sign; "32.5" finds 32.50 to 32.59. "32,50" and "€32" read the same.
+// "32" finds 32.00 to 32.99 either sign; "32.5" finds 32.50 to 32.59. "32,50", "€32" and "-£32" read
+// the same, and so do amounts copied as shown: a comma before three last digits groups thousands
+// ("1,950.00"), any space does too ("1 950,00").
 function amountMatcher(text) {
-  const q = text.trim().replace(/^[-+]/, '').replace(/[\s€]/g, '').replace(',', '.');
+  const q = text.replace(/[\s€£$]/g, '').replace(/^[-+]/, '').replace(/,(?=\d{3}(?!\d))/g, '').replace(',', '.');
   if (!/^\d+(\.\d{0,2})?$/.test(q)) return null;
   if (!q.includes('.')) return (amount) => Math.trunc(Math.abs(amount)) === Number(q);
   return (amount) => Math.abs(amount).toFixed(2).startsWith(q);
@@ -89,6 +91,11 @@ export function accountBalance(state) {
     if (t.date > asOf) asOf = t.date;
   }
   return { amount: Math.round(total * 100) / 100, asOf, source: 'manual' };
+}
+
+// A bootstrap cached by the service worker before accounts had a currency has none.
+export function accountCurrency(state) {
+  return state.accounts.find(a => a.id === state.activeAccountId)?.currency || 'EUR';
 }
 
 export function lastBankSync(state) {

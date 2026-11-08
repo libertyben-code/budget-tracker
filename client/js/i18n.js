@@ -22,6 +22,7 @@ const translations = {
       english: 'English',
       french: 'French',
       offline: 'Offline — showing last synced data',
+      uncategorized: 'Uncategorized',
     },
     connection: {
       unreachable: "Can't reach your server.",
@@ -184,6 +185,7 @@ const translations = {
       addExpense: 'Add expense',
       addIncome: 'Add income',
       amountPositive: 'Enter an amount above 0',
+      amountPlaceholder: '0.00',
       dateRequired: 'Pick a date',
       addedExpense: 'Expense added',
       addedIncome: 'Income added',
@@ -429,6 +431,7 @@ const translations = {
       english: 'Anglais',
       french: 'Français',
       offline: 'Hors ligne — dernières données synchronisées',
+      uncategorized: 'Non catégorisé',
     },
     connection: {
       unreachable: 'Impossible de joindre votre serveur.',
@@ -591,6 +594,7 @@ const translations = {
       addExpense: 'Ajouter la dépense',
       addIncome: 'Ajouter le revenu',
       amountPositive: 'Saisissez un montant supérieur à 0',
+      amountPlaceholder: '0,00',
       dateRequired: 'Choisissez une date',
       addedExpense: 'Dépense ajoutée',
       addedIncome: 'Revenu ajouté',

@@ -1,11 +1,11 @@
-import { esc, eur, eurSigned, chartColors, icons } from '../dom.js';
+import { esc, money, categoryName, chartColors, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { renderStarterOffer } from './category-manager.js';
 import { openInbox } from './categorise.js';
 import {
   categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
-  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, lastBankSync,
+  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, accountCurrency, lastBankSync,
 } from '../derive.js';
 import { monthKey, todayIso } from '/shared/dates.js';
 
@@ -35,7 +35,7 @@ function renderBalance(state, t) {
     const when = asOf === todayIso() ? t('app.asOfToday') : t('app.asOf', { date: dayTitle(asOf, lang) });
     const sync = source === 'bank' ? lastBankSync(state) : null;
     body = `
-      <div class="glance-value ${amount < 0 ? 'neg' : ''}">${amount < 0 ? eurSigned(amount) : eur(amount)}</div>
+      <div class="glance-value ${amount < 0 ? 'neg' : ''}">${money(amount, { currency: accountCurrency(state) })}</div>
       <div class="glance-meta">${esc(t(source === 'bank' ? 'app.fromBank' : 'app.fromOpening'))} · ${esc(when)}</div>
       ${sync ? `<div class="glance-meta">${esc(t('bank.lastSync', { date: new Date(sync).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) }))}</div>` : ''}`;
   } else if (source === 'bank') {
@@ -52,16 +52,16 @@ function renderBalance(state, t) {
   </div>`;
 }
 
-function renderMonth(rows, t) {
+function renderMonth(rows, t, currency) {
   const s = stats(rows);
   const uncategorized = rows.filter(r => r.category === 'Uncategorized').length;
   return `
   <div class="card glance-card">
     <div class="glance-label">${esc(t('app.net'))}</div>
-    <div class="glance-value ${s.total >= 0 ? 'pos' : 'neg'}">${eurSigned(s.total)}</div>
+    <div class="glance-value ${s.total >= 0 ? 'pos' : 'neg'}">${money(s.total, { currency, signed: true })}</div>
     <div class="glance-flows">
-      <div><span class="glance-label">${esc(t('app.moneyIn'))}</span><span class="pos">${eur(s.income)}</span></div>
-      <div><span class="glance-label">${esc(t('app.moneyOut'))}</span><span class="neg">${eur(s.spending)}</span></div>
+      <div><span class="glance-label">${esc(t('app.moneyIn'))}</span><span class="pos">${money(s.income, { currency })}</span></div>
+      <div><span class="glance-label">${esc(t('app.moneyOut'))}</span><span class="neg">${money(s.spending, { currency })}</span></div>
     </div>
   </div>
   ${uncategorized ? `
@@ -116,7 +116,7 @@ export function render(state, t) {
   <section class="view">
     ${renderBalance(state, t)}
     ${renderMonthStepper(state, t, month)}
-    ${renderMonth(monthTransactions(state, month), t)}
+    ${renderMonth(monthTransactions(state, month), t, accountCurrency(state))}
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
@@ -169,7 +169,9 @@ export function afterRender(state, t) {
   const colors = chartColors();
   const palette = categoryPalette(state);
   const colorFor = (name) => name === OTHER ? colors.other : colors.palette[palette.slotIndex.get(name) % colors.palette.length];
-  const labelFor = (name) => name === OTHER ? t('dashboard.other') : name;
+  const labelFor = (name) => name === OTHER ? t('dashboard.other') : categoryName(name, t);
+  const currency = accountCurrency(state);
+  const axisTick = (value) => money(value, { currency, compact: true });
   const monthCount = RANGE_MONTHS[state.ui.chartRange] || 6;
   const month = dashboardMonth(state);
   const trendTx = transactionsUpTo(state, month);
@@ -177,7 +179,7 @@ export function afterRender(state, t) {
   Chart.defaults.borderColor = colors.grid;
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? { animation: false } : {};
-  const shared = [colors, Chart.defaults.font.family, state.ui.lang, motion];
+  const shared = [colors, Chart.defaults.font.family, state.ui.lang, currency, motion];
 
   const hbar = categoryData(monthTransactions(state, month), [], palette);
   const hbarTotal = hbar.reduce((sum, d) => sum + d.value, 0);
@@ -205,7 +207,7 @@ export function afterRender(state, t) {
         meta.data.forEach((bar, i) => {
           const value = chart.data.datasets[0].data[i];
           const pct = hbarTotal > 0 ? Math.round((value / hbarTotal) * 100) : 0;
-          ctx.fillText(`${eur(value)} · ${pct}%`, bar.x + 6, bar.y);
+          ctx.fillText(`${money(value, { currency })} · ${pct}%`, bar.x + 6, bar.y);
         });
         ctx.restore();
       },
@@ -224,7 +226,7 @@ export function afterRender(state, t) {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx) => `${eur(ctx.parsed.x)} (${hbarTotal > 0 ? ((ctx.parsed.x / hbarTotal) * 100).toFixed(1) : 0}%)`,
+              label: (ctx) => `${money(ctx.parsed.x, { currency })} (${hbarTotal > 0 ? ((ctx.parsed.x / hbarTotal) * 100).toFixed(1) : 0}%)`,
             },
           },
         },
@@ -255,11 +257,11 @@ export function afterRender(state, t) {
         maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 } },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${eur(ctx.parsed.y)}` } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${money(ctx.parsed.y, { currency })}` } },
         },
         scales: {
           x: { grid: { display: false } },
-          y: { beginAtZero: true },
+          y: { beginAtZero: true, ticks: { callback: axisTick } },
         },
       },
     });
@@ -293,14 +295,14 @@ export function afterRender(state, t) {
           legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 } },
           tooltip: {
             callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${eur(ctx.parsed.y)}`,
-              footer: stacked ? (items) => t('dashboard.total', { amount: eur(items.reduce((sum, i) => sum + i.parsed.y, 0)) }) : undefined,
+              label: (ctx) => `${ctx.dataset.label}: ${money(ctx.parsed.y, { currency })}`,
+              footer: stacked ? (items) => t('dashboard.total', { amount: money(items.reduce((sum, i) => sum + i.parsed.y, 0), { currency }) }) : undefined,
             },
           },
         },
         scales: {
           x: { stacked, grid: { display: false }, ticks: { maxRotation: 45 } },
-          y: { stacked, beginAtZero: true },
+          y: { stacked, beginAtZero: true, ticks: { callback: axisTick } },
         },
       },
     });

@@ -1,4 +1,4 @@
-import { esc, icons, resetFields, toast } from '../dom.js';
+import { esc, icons, resetFields, toast, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -93,7 +93,7 @@ export function render(state, t) {
           <button class="btn small" data-action="cancel-rename-category">${esc(t('common.cancel'))}</button>
         </div>` : deleting === c ? deleteRow(c, counts[c] || 0, t) : `
         <div class="panel-list-item">
-          <span class="grow">${esc(c)}</span>
+          <span class="grow">${esc(categoryName(c, t))}</span>
           <span class="badge">${esc(t(counts[c] === 1 ? 'categoryManager.transactionCountOne' : 'categoryManager.transactionCount', { count: counts[c] || 0 }))}</span>
           <button class="icon-btn accent" data-action="start-rename-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.renameCategory'))}" aria-label="${esc(t('categoryManager.renameNamed', { category: c }))}">${icons.edit}</button>
           <button class="icon-btn danger" data-action="start-delete-category" data-cat="${esc(c)}" title="${esc(t('categoryManager.deleteCategoryTitle'))}" aria-label="${esc(t('categoryManager.deleteNamed', { category: c }))}">${icons.trash}</button>

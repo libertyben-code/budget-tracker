@@ -1,4 +1,4 @@
-import { esc, eur, toast } from '../dom.js';
+import { esc, money, toast } from '../dom.js';
 import { get, set } from '../store.js';
 import { api } from '../api.js';
 import { jointData } from '../derive.js';
@@ -20,11 +20,12 @@ function person(n, joint, t) {
         </fieldset>`;
 }
 
+// One split for every budget account, so in euros rather than the shown account's currency.
 function payTile(name, amount, t) {
   return `
         <div class="tile card total-tile" style="box-shadow:none">
           <div class="label">${esc(t('joint.pays', { name }))}</div>
-          <div class="value pos">${eur(amount)}</div>
+          <div class="value pos">${money(amount, { currency: 'EUR' })}</div>
         </div>`;
 }
 

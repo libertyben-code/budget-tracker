@@ -1,7 +1,7 @@
-import { esc, eur, eurSigned, icons, checkPill, toast } from '../dom.js';
+import { esc, money, currencySymbol, categoryName, icons, checkPill, toast } from '../dom.js';
 import { get, set, setUi, setFilter, subscribe } from '../store.js';
 import { api } from '../api.js';
-import { filteredTransactions, stats, accountBalance, dayTitle, monthTitle, categories } from '../derive.js';
+import { filteredTransactions, stats, accountBalance, accountCurrency, dayTitle, monthTitle, categories } from '../derive.js';
 import { isoToDisplay, todayIso, toIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
 import { openCategoryPicker, readRecent } from './category-picker.js';
@@ -59,10 +59,11 @@ function emptyMessage(f, lang, t) {
 export function renderTiles(state, rows, t) {
   const s = stats(rows);
   const balance = accountBalance(state);
+  const currency = accountCurrency(state);
   let balanceBody;
   if (balance.amount !== null) {
     balanceBody = `
-      <div class="value ${balance.amount < 0 ? 'neg' : ''}">${balance.amount < 0 ? eurSigned(balance.amount) : eur(balance.amount)}</div>
+      <div class="value ${balance.amount < 0 ? 'neg' : ''}">${money(balance.amount, { currency })}</div>
       <div class="tile-meta">${esc(balance.asOf === todayIso() ? t('app.asOfToday') : t('app.asOf', { date: dayTitle(balance.asOf, state.ui.lang) }))}</div>`;
   } else if (balance.source === 'bank') {
     balanceBody = `<div class="value muted">—</div><div class="tile-meta">${esc(t('app.balancePending'))}</div>`;
@@ -77,10 +78,10 @@ export function renderTiles(state, rows, t) {
     </div>
     <div class="card tile total-tile">
       <div class="label">${esc(t('app.netPeriod', { period: periodLabel(state, t) }))}</div>
-      <div class="value ${s.total >= 0 ? 'pos' : 'neg'}">${eurSigned(s.total)}</div>
+      <div class="value ${s.total >= 0 ? 'pos' : 'neg'}">${money(s.total, { currency, signed: true })}</div>
       <div class="tile-meta">
-        <span>${esc(t('app.moneyIn'))} <span class="pos">${eur(s.income)}</span></span>
-        <span>${esc(t('app.moneyOut'))} <span class="neg">${eur(s.spending)}</span></span>
+        <span>${esc(t('app.moneyIn'))} <span class="pos">${money(s.income, { currency })}</span></span>
+        <span>${esc(t('app.moneyOut'))} <span class="neg">${money(s.spending, { currency })}</span></span>
       </div>
     </div>
   </div>`;
@@ -90,6 +91,7 @@ const editField = (label, control, span2 = false) => `<div class="tx-field${span
 
 export function render(state, t) {
   const filtered = filteredTransactions(state);
+  const currency = accountCurrency(state);
   const visible = filtered.slice(0, state.visibleCount);
   const selection = state.selection;
   const selecting = Boolean(state.selecting) || selection.size > 0;
@@ -102,7 +104,7 @@ export function render(state, t) {
   const rowAction = selecting ? 'toggle-select' : 'open-tx';
   const opensSheet = selecting ? '' : ' aria-haspopup="dialog"';
 
-  const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button>`;
+  const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: categoryName(tx.category, t) }))}">${esc(categoryName(tx.category, t))}</button>`;
 
   const item = (tx) => {
     const on = selection.has(tx.id);
@@ -111,9 +113,9 @@ export function render(state, t) {
         ${selecting ? `<span class="check-box" aria-hidden="true">${icons.check}</span>` : ''}
         <span class="tx-item-main">
           <span class="tx-desc">${esc(tx.description) || '—'}</span>
-          <span class="tx-cat${tx.category === 'Uncategorized' ? ' uncat' : ''}">${esc(tx.category)}</span>
+          <span class="tx-cat${tx.category === 'Uncategorized' ? ' uncat' : ''}">${esc(categoryName(tx.category, t))}</span>
         </span>
-        <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eurSigned(tx.amount)}</span>
+        <span class="tx-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${money(tx.amount, { currency, signed: true })}</span>
       </button>`;
   };
   const days = [];
@@ -160,7 +162,7 @@ export function render(state, t) {
       <td class="num">${esc(isoToDisplay(tx.date))}</td>
       <td><button class="tx-open" data-action="${rowAction}" data-id="${tx.id}"${opensSheet}>${esc(tx.description) || '—'}</button></td>
       <td>${catSelect(tx)}</td>
-      <td class="amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eur(tx.amount)}</td>
+      <td class="amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${money(tx.amount, { currency, signed: true })}</td>
     </tr>`;
   }).join('');
 
@@ -243,7 +245,7 @@ function renderAddSheet(state, t) {
   const known = categories(state);
   const recent = readRecent().filter(c => c !== 'Uncategorized' && known.includes(c)).slice(0, 4);
   const chipCategories = [...new Set(['Uncategorized', ...recent, draft.category])];
-  const categoryChips = chipCategories.map((c, i) => chip(`tx-add-category-${i}`, `data-action="tx-add-category" data-category="${esc(c)}"`, c, c === draft.category)).join('');
+  const categoryChips = chipCategories.map((c, i) => chip(`tx-add-category-${i}`, `data-action="tx-add-category" data-category="${esc(c)}"`, categoryName(c, t), c === draft.category)).join('');
   const dateChip = (mode, label) => chip(`tx-add-${mode}`, `data-action="tx-add-date-mode" data-mode="${mode}"`, label, draft.dateMode === mode);
 
   return `
@@ -260,8 +262,8 @@ function renderAddSheet(state, t) {
       <div class="tx-add-field">
         <label class="tx-add-label" for="tx-add-amount">${esc(t('common.amount'))}</label>
         <div class="tx-add-amount">
-          <span class="tx-add-sign ${income ? 'pos' : 'neg'}" aria-hidden="true">${income ? '+' : '−'}€</span>
-          <input id="tx-add-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="0.00"
+          <span class="tx-add-sign ${income ? 'pos' : 'neg'}" aria-hidden="true">${income ? '+' : '−'}${esc(currencySymbol(accountCurrency(state)))}</span>
+          <input id="tx-add-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="${esc(t('transactionAdd.amountPlaceholder'))}"
             value="${esc(draft.amount)}" data-action-key="tx-add-next"${invalid('amount')}>
         </div>
         ${error('amount')}
@@ -404,7 +406,7 @@ export function renderSheet(state, t) {
         ${editField(t('common.description'), `<input id="tx-sheet-description" name="description" value="${esc(v.description)}" data-action-key="save-tx">`, true)}
         ${editField(t('common.amount'), `<input id="tx-sheet-amount" name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(v.amount)}" data-action-key="save-tx">`)}
         ${editField(t('common.date'), `<input id="tx-sheet-date" name="date" type="date" value="${esc(v.date)}" data-action-key="save-tx">`)}
-        ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(v.category)}"><button type="button" id="tx-sheet-category" class="chip-select" data-action="tx-sheet-pick-category" aria-haspopup="dialog">${esc(v.category)}</button>`, true)}
+        ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(v.category)}"><button type="button" id="tx-sheet-category" class="chip-select" data-action="tx-sheet-pick-category" aria-haspopup="dialog">${esc(categoryName(v.category, t))}</button>`, true)}
         <button class="btn" id="tx-sheet-cancel" data-action="tx-sheet-cancel">${esc(t('common.cancel'))}</button>
         <button class="btn primary" id="tx-sheet-save" data-action="save-tx">${esc(t('common.save'))}</button>
       </div>`;
@@ -412,12 +414,12 @@ export function renderSheet(state, t) {
     const account = state.accounts.find(a => a.id === state.activeAccountId);
     body = `
       ${head(tx.description || t('transactionDetail.title'))}
-      <p class="tx-sheet-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${eurSigned(tx.amount)}</p>
+      <p class="tx-sheet-amount ${tx.amount >= 0 ? 'pos' : 'neg'}">${money(tx.amount, { currency: accountCurrency(state), signed: true })}</p>
       <dl class="tx-sheet-facts">
         <div><dt>${esc(t('common.date'))}</dt><dd>${esc(longDate(tx.date, state.ui.lang))}</dd></div>
         <div>
           <dt>${esc(t('common.category'))}</dt>
-          <dd><button id="tx-sheet-category" class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button></dd>
+          <dd><button id="tx-sheet-category" class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: categoryName(tx.category, t) }))}">${esc(categoryName(tx.category, t))}</button></dd>
         </div>
         <div><dt>${esc(t('transactionDetail.account'))}</dt><dd>${esc(account?.name)}</dd></div>
       </dl>
