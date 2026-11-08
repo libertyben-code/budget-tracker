@@ -64,3 +64,36 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 ## Savings
 
 - [x] Savings global instead of per budget account — one Savings tab whatever account is active, savings outlive a deleted budget account, a category-fed account sums the category across every budget account; a rename carries the link, a delete drops it only once no account has the category — OK
+
+## UX overhaul — branch `feature/ux-plan` (2026-11-08, awaiting the phone test before merge)
+
+From the 2026-11-07 UX audit; one session per item. Flip these to `— OK` once tested on the phone.
+
+- [x] Toasts match the outcome: neutral confirmations, red errors, live region, Undo actions (Q1)
+- [x] Batch edit keeps the typed description when choosing "Create new category" (Q2)
+- [x] Category delete choices appear in place of the row, not below the list (Q3)
+- [x] New/edited transactions refuse a zero amount or empty description, client and server (Q4)
+- [x] Text on accent and status colours reaches 4.5:1 in all 12 theme × accent pairs (Q6)
+- [x] Copy fixes: page language follows the app, real plurals, neutral boot text, "Main Account" fits the pill (Q8)
+- [x] Apply a new category to similar uncategorised rows in every account, with Undo (M1)
+- [x] Category picker sheet with search, recent picks and "New category" (M2)
+- [x] First-run welcome card and starter categories in EN/FR (M3)
+- [x] "Can't reach your server" banner; writes paused; 401/403 told apart from unreachable (M4)
+- [x] Other-currency bank accounts get their own budget account (or are left out) at link time; link summary; bank panel copy (M5)
+- [x] Settings menu grouped (Data / Organise / Preferences); Import reachable by keyboard; appearance follows the phone (M6)
+- [x] Dialog and form accessibility: roles, labels, Escape, focus trap and return, inert background, reduced motion (M7)
+- [x] Charts rebuilt only when their data changes; no animation under reduced motion (M8)
+- [x] Joint split from the two salaries and the wanted amount, one setting for every account (M9)
+- [x] Savings: inline errors, receipts with Undo, removable history entries (M10)
+- [x] Real account balance: bank balance for synced accounts, opening balance for manual ones (M11)
+- [x] Dashboard month stepper; Dashboard and Transactions filters independent (L1a)
+- [x] Dashboard month at a glance: balance, net/in/out, "need a category" card; honest Transactions tiles (L1b)
+- [x] Compact day-grouped transaction rows, Select mode, empty states (L2a)
+- [x] Transaction detail sheet; delete and batch delete with Undo (L2b)
+- [x] Compact filter bar with a Filters sheet; search matches amounts (L2c)
+- [x] Add-transaction sheet with Expense/Income, labelled fields and Undo (L3)
+- [x] "To categorise" inbox grouped by merchant (L4)
+- [x] Typed form values and focus survive re-renders (L5)
+- [x] Desktop navigation rail from 900px (L6)
+- [x] One money formatter per language and account currency; "Uncategorized" translated (Q5)
+- [x] Boot failures no longer all read as "offline": `api.js` errors carry their status (from docs/Bugs.md, closed by M4)

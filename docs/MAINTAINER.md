@@ -161,17 +161,29 @@ The SVG is also the browser-tab favicon (declared before the PNG, so browsers th
 
 See the dated entries in `docs/WORKFLOW.md` under "Known technical constraints" (service worker cache masking a down server; container non-root uid and volume permissions; relative bind mounts in a Portainer git stack; WAL mode and `cp`-based backups; bank history windows and unattended-fetch caps; column migrations living outside `schema.sql`).
 
+UX overhaul (2026-11) additions:
+
+- **Render carry-over.** `render()` in `client/js/app.js` still rebuilds `#app` and `#modals` from strings, but carries user-edited field values and focus (by id, else `name` + `data-*`) across the rebuild unless the state rendered the field differently. A form that **stays open after a submit** must clear itself with `resetFields()` (`client/js/dom.js`), or it keeps the submitted text.
+- **Dialog layers.** One keydown handler in `app.js` owns Escape and Tab for the topmost layer (picker over sheet over page, confirm over everything); `syncLayers()` in `dom.js` makes `#app` and lower dialogs `inert`. Every new panel needs `role="dialog"`, `aria-modal` and `aria-labelledby`, and must render in `#modals`.
+- **Toasts.** `toast(message, { type, action, onExpire })` returns a dismiss function. `error` is the default type; confirmations pass `success`/`info`. Deferred deletes (Undo) send the request on expiry or on `pagehide`.
+- **Money.** Format every amount with `money(value, { currency, signed, compact })` from `dom.js`; transaction figures use the active budget account's `currency` (`accountCurrency(state)` in `derive.js`). Display the stored `Uncategorized` through `t('common.uncategorized')`.
+- **Server unreachable.** The service worker marks API responses it serves from cache (`X-BT-Cached-At`); the client shows the banner and pauses writes. HTTP error statuses (401/403) do not count as unreachable.
+- **Data added by migrations** (`db.js` `migrate()`): global joint-split settings, `currency` on budget accounts, stored bank balances and opening balances for the real balance.
+
 ## Smoke test checklist
 
-1. Add a manual transaction on an account; confirm it saves and appears in the transaction list. Press ＋ then Cancel and confirm **no** empty transaction is left behind.
+1. Press ＋ on Transactions: the add sheet's button stays disabled until amount and description are valid; add an expense and an income, then Undo one. Tap a row to open its details, edit it, delete it and Undo.
    - Create a category in Manage Categories and confirm it shows in a transaction's category picker; change one transaction's category, then run **Apply Rules to All** and confirm matching transactions follow.
 2. Import a CSV; confirm rows parse, dedupe against existing transactions, and auto-categorize via rules.
 3. Create/rename/delete a category rule; confirm it applies to matching transactions.
 4. Check dashboard charts (spending by category, monthly overview, category-by-month) update correctly when filters/date range change.
 5. Add a savings account, record a deposit and a withdrawal; confirm balance and chart update. Add a recurring deposit rule and confirm catch-up applies correctly.
-6. Toggle **Appearance** and the EN/FR language switch in the Settings menu; pick an accent from the colour swatches. Confirm all three persist across reload, and that the menu stays open while trying several colours.
+6. Switch **Appearance** (Match phone / Light / Dark) and the EN/FR language in the Settings menu; pick an accent from the colour swatches. Confirm all three persist across reload, and that the menu stays open while trying several colours.
 7. Switch between accounts via the account switcher; confirm data is isolated per account.
    - At a phone width, confirm the wallet and the full app name are both visible, the switcher sits between them and the gear without touching either, and opening it drops a menu that stays inside the screen. Narrow the window to ~320px: the account name shortens, the app name does not.
 8. Tap each of the four tabs in the bottom bar; confirm the active one takes the accent colour and that no card, selection bar or toast is hidden behind the bar at the end of a long list.
-9. Tick several categories in the filter dropdown and the **All** pill above the list; confirm the dropdown stays open while ticking, and that untapping returns to the previous state.
+9. Open the **Filters** sheet on Transactions: pick a period and several categories; the summary next to the search field shows them, and the clear button resets. Search finds amounts too.
 10. Install as a PWA on a phone over Tailscale; confirm offline reads still render (writes should fail gracefully when offline). A fresh install shows the wallet icon on the home screen — an existing one keeps the icon it was installed with until it is removed and re-added.
+11. Link the fake bank in the dev harness with "import other currencies": the GBP account gets its own budget account and the link summary lists where each account went. The Dashboard shows the bank balance.
+12. Set one row's category: the matching uncategorised rows in every account follow, with Undo. Open the "To categorise" inbox from the Dashboard card and categorise a group.
+13. Stop the server and reload with the service worker registered: the "Can't reach your server" banner shows the data's age and edits are paused; Retry clears it once the server is back.

@@ -238,6 +238,13 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-11-08 — UX overhaul from the audit (branch: feature/ux-plan)
+
+- **Audit.** 2026-11-07 UI/UX audit at phone size (33 findings, storyboards, plan): https://claude.ai/artifact/PKPMst79qTSgDRx9ws59nr (private). Decisions: real balance; offer other-currency accounts at link time; starter categories; tap opens details; joint split from salaries + wanted amount, global; appearance follows the phone; apply-to-similar across every account.
+- **Delivery.** 27 one-item sessions/sub-agents in 11 waves, each on its own branch cut from `feature/ux-plan` and merged back (`--no-ff`) after `npm test`, an EN=FR i18n key check and a dev-harness smoke test. Conflicts were small (CSS, i18n sections, `app.js` registration lines). Nothing merged to `master`; no version bump yet (bump and CHANGELOG at the merge, per the rules above).
+- **Checked** at the end: `npm test` 47/47, 373 i18n keys in EN and FR, end-to-end smoke in the harness (fake Revolut link with a GBP account, dashboard balance, inbox, add sheet, detail sheet with Undo, server-down banner, dark mode). Not checked on a real phone yet.
+- **Gotchas added to MAINTAINER.md:** render carry-over and `resetFields()`, dialog layers, toast API, `money()`.
+
 ### 2026-11-07 — Transaction routes scoped to an account (branch: fix/scope-tx-routes)
 
 - **Bug.** `PATCH`/`DELETE /transactions/:txId`, `/transactions/batch` and `/transactions/batch-delete` took bare ids, so any caller could change any account's rows. Harmless with one user, blocking for the auth rollout.
