@@ -1,10 +1,10 @@
 import { esc, eur, eurSigned, icons, checkPill, toast } from '../dom.js';
-import { get, set, setUi, setFilter } from '../store.js';
+import { get, set, setUi, setFilter, subscribe } from '../store.js';
 import { api } from '../api.js';
-import { filteredTransactions, stats, accountBalance, dayTitle, monthTitle } from '../derive.js';
+import { filteredTransactions, stats, accountBalance, dayTitle, monthTitle, categories } from '../derive.js';
 import { isoToDisplay, todayIso, toIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
-import { openCategoryPicker } from './category-picker.js';
+import { openCategoryPicker, readRecent } from './category-picker.js';
 
 function periodLabel(state, t) {
   const f = state.filter;
@@ -98,19 +98,6 @@ export function render(state, t) {
   const rowAction = selecting ? 'toggle-select' : 'open-tx';
   const opensSheet = selecting ? '' : ' aria-haspopup="dialog"';
 
-  const draft = state.txDraft || { date: todayIso(), amount: '', description: '', category: 'Uncategorized' };
-  const createForm = `
-    <div class="tx-edit-grid">
-      ${editField(t('common.date'), `<input name="date" type="date" value="${esc(draft.date)}">`)}
-      ${editField(t('common.amount'), `<input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(draft.amount)}">`)}
-      ${editField(t('common.description'), `<input name="description" value="${esc(draft.description)}">`, true)}
-      ${editField(t('common.category'), `<input type="hidden" name="category" value="${esc(draft.category)}"><button type="button" class="chip-select" data-action="pick-form-category" aria-haspopup="dialog">${esc(draft.category)}</button>`, true)}
-      <button class="btn primary" data-action="save-new-tx">${esc(t('common.save'))}</button>
-      <button class="btn" data-action="cancel-create">${esc(t('common.cancel'))}</button>
-    </div>`;
-  const draftItem = state.creatingTx ? `<div class="card tx-item editing">${createForm}</div>` : '';
-  const draftRow = state.creatingTx ? `<tr><td colspan="5">${createForm}</td></tr>` : '';
-
   const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: tx.category }))}">${esc(tx.category)}</button>`;
 
   const item = (tx) => {
@@ -138,13 +125,13 @@ export function render(state, t) {
     </section>`).join('');
 
   let empty = '';
-  if (!state.creatingTx && state.transactions.length === 0) {
+  if (state.transactions.length === 0) {
     empty = `
     <div class="card tx-empty">
       <p>${esc(t('transactionTable.emptyAll'))}</p>
-      <button class="btn primary" data-action="add-tx">＋ ${esc(t('transactionTable.addTransaction'))}</button>
+      <button class="btn primary" id="tx-add-open-empty" data-action="add-tx" aria-haspopup="dialog">＋ ${esc(t('transactionTable.addTransaction'))}</button>
     </div>`;
-  } else if (!state.creatingTx && filtered.length === 0) {
+  } else if (filtered.length === 0) {
     empty = `
     <div class="card tx-empty">
       <p>${esc(emptyMessage(state.filter, state.ui.lang, t))}</p>
@@ -156,7 +143,7 @@ export function render(state, t) {
     ? `${checkPill({ on: allVisibleSelected, action: 'select-all', label: t('common.all') })}
       <button class="btn" data-action="tx-select-cancel">${esc(t('common.cancel'))}</button>`
     : `${filtered.length ? `<button class="btn" data-action="tx-select-mode">${esc(t('transactionTable.select'))}</button>` : ''}
-      <button class="btn primary" data-action="add-tx" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>`;
+      <button class="btn primary" id="tx-add-open" data-action="add-tx" aria-haspopup="dialog" title="${esc(t('transactionTable.addTransaction'))}" aria-label="${esc(t('transactionTable.addTransaction'))}">＋</button>`;
 
   const checkButton = (on, action, label, data = '') =>
     `<button class="check-box-btn${on ? ' on' : ''}" data-action="${action}" ${data} role="checkbox" aria-checked="${on}" aria-label="${esc(label)}"><span class="check-box">${icons.check}</span></button>`;
@@ -189,7 +176,7 @@ export function render(state, t) {
       ${listActions}
     </div>
     ${empty || `
-    <div class="tx-list">${draftItem}${dayList}</div>
+    <div class="tx-list">${dayList}</div>
     <div class="card tx-table">
       <table>
         <thead>
@@ -201,7 +188,7 @@ export function render(state, t) {
             <th class="sortable" data-action="sort" data-key="amount" style="text-align:right">${esc(t('common.amount'))}${sortIndicator('amount')}</th>
           </tr>
         </thead>
-        <tbody>${draftRow}${tableRows}</tbody>
+        <tbody>${tableRows}</tbody>
       </table>
     </div>`}
     ${filtered.length > state.visibleCount ? `
@@ -212,8 +199,189 @@ export function render(state, t) {
   </section>`;
 }
 
+// The add sheet is open while `creatingTx` is set; what is typed lives in `txDraft`.
+const newAddDraft = () => ({ kind: 'expense', amount: '', description: '', category: 'Uncategorized', dateMode: 'today', date: todayIso(), touched: {} });
+const ADD_ERRORS = { amount: 'transactionAdd.amountPositive', description: 'transactionTable.descriptionRequired', date: 'transactionAdd.dateRequired' };
+let savingAdd = false;
+let addOpenerId = 'tx-add-open';
+
+function parseAmount(value) {
+  const text = value.trim().replace(',', '.');
+  return /^(\d+\.?\d*|\.\d+)$/.test(text) ? Math.round(Number(text) * 100) / 100 : NaN;
+}
+
+function addProblems(draft) {
+  return {
+    amount: !(parseAmount(draft.amount) > 0),
+    description: !draft.description.trim(),
+    date: draft.dateMode === 'pick' && !draft.date,
+  };
+}
+
+function addDate(draft) {
+  if (draft.dateMode === 'pick') return draft.date;
+  const day = new Date();
+  if (draft.dateMode === 'yesterday') day.setDate(day.getDate() - 1);
+  return toIso(day);
+}
+
+function renderAddSheet(state, t) {
+  // The Dashboard's welcome card opens the sheet by setting `creatingTx` alone.
+  const draft = state.txDraft ??= newAddDraft();
+  const problems = addProblems(draft);
+  const income = draft.kind === 'income';
+  const shown = (name) => draft.touched[name] && problems[name];
+  const invalid = (name) => shown(name) ? ` aria-invalid="true" aria-describedby="tx-add-${name}-error"` : '';
+  const error = (name) => `<p class="field-error" id="tx-add-${name}-error" aria-live="polite"${shown(name) ? '' : ' hidden'}>${esc(t(ADD_ERRORS[name]))}</p>`;
+  const chip = (id, attrs, label, on) => `<button type="button" id="${id}" class="picker-chip${on ? ' current' : ''}" ${attrs} aria-pressed="${on}">${esc(label)}</button>`;
+  const kind = (value, label) => `<button type="button" id="tx-add-${value}" class="${draft.kind === value ? 'active' : ''}" data-action="tx-add-kind" data-kind="${value}" aria-pressed="${draft.kind === value}">${esc(label)}</button>`;
+
+  const known = categories(state);
+  const recent = readRecent().filter(c => c !== 'Uncategorized' && known.includes(c)).slice(0, 4);
+  const chipCategories = [...new Set(['Uncategorized', ...recent, draft.category])];
+  const categoryChips = chipCategories.map((c, i) => chip(`tx-add-category-${i}`, `data-action="tx-add-category" data-category="${esc(c)}"`, c, c === draft.category)).join('');
+  const dateChip = (mode, label) => chip(`tx-add-${mode}`, `data-action="tx-add-date-mode" data-mode="${mode}"`, label, draft.dateMode === mode);
+
+  return `
+  <div class="modal-backdrop" data-action="tx-add-close" data-self-only>
+    <div class="modal tx-sheet tx-add" id="tx-add" role="dialog" aria-modal="true" aria-labelledby="tx-add-title" tabindex="-1">
+      <div class="modal-head">
+        <h2 id="tx-add-title">${esc(t('transactionAdd.title'))}</h2>
+        <button class="icon-btn" id="tx-add-close" data-action="tx-add-close" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
+      </div>
+      <div class="seg tx-add-kind" role="group" aria-label="${esc(t('transactionAdd.type'))}">
+        ${kind('expense', t('transactionAdd.expense'))}
+        ${kind('income', t('transactionAdd.income'))}
+      </div>
+      <div class="tx-add-field">
+        <label class="tx-add-label" for="tx-add-amount">${esc(t('common.amount'))}</label>
+        <div class="tx-add-amount">
+          <span class="tx-add-sign ${income ? 'pos' : 'neg'}" aria-hidden="true">${income ? '+' : '−'}€</span>
+          <input id="tx-add-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="0.00"
+            value="${esc(draft.amount)}" data-action-key="tx-add-next"${invalid('amount')}>
+        </div>
+        ${error('amount')}
+      </div>
+      <div class="tx-add-field">
+        <label class="tx-add-label" for="tx-add-description">${esc(t('common.description'))}</label>
+        <input id="tx-add-description" name="description" autocomplete="off" enterkeyhint="done"
+          value="${esc(draft.description)}" data-action-key="tx-add-save"${invalid('description')}>
+        ${error('description')}
+      </div>
+      <div class="tx-add-field" role="group" aria-labelledby="tx-add-category-label">
+        <span class="tx-add-label" id="tx-add-category-label">${esc(t('common.category'))}</span>
+        <div class="tx-add-chips">
+          ${categoryChips}
+          <button type="button" id="tx-add-more" class="picker-chip" data-action="tx-add-more" aria-haspopup="dialog">${esc(t('transactionAdd.more'))}</button>
+        </div>
+      </div>
+      <div class="tx-add-field" role="group" aria-labelledby="tx-add-date-label">
+        <span class="tx-add-label" id="tx-add-date-label">${esc(t('common.date'))}</span>
+        <div class="tx-add-chips">
+          ${dateChip('today', t('transactionTable.today'))}
+          ${dateChip('yesterday', t('transactionTable.yesterday'))}
+          ${dateChip('pick', t('transactionAdd.pickDate'))}
+        </div>
+        ${draft.dateMode === 'pick' ? `
+        <input id="tx-add-date" name="date" type="date" value="${esc(draft.date)}" aria-labelledby="tx-add-date-label"${invalid('date')}>
+        ${error('date')}` : ''}
+      </div>
+      <button class="btn primary" id="tx-add-save" data-action="tx-add-save"${savingAdd || Object.values(problems).some(Boolean) ? ' disabled' : ''}>
+        ${esc(t(income ? 'transactionAdd.addIncome' : 'transactionAdd.addExpense'))}
+      </button>
+    </div>
+  </div>`;
+}
+
+// Typing doesn't re-render (it would drop the caret and the keyboard), so the button and the
+// messages are brought up to date in place.
+function syncAddSheet() {
+  const draft = get().txDraft;
+  if (!draft) return;
+  const problems = addProblems(draft);
+  document.getElementById('tx-add-save').disabled = savingAdd || Object.values(problems).some(Boolean);
+  for (const name of Object.keys(problems)) {
+    const input = document.getElementById(`tx-add-${name}`);
+    if (!input) continue;
+    const shown = Boolean(draft.touched[name] && problems[name]);
+    document.getElementById(`tx-add-${name}-error`).hidden = !shown;
+    if (shown) {
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', `tx-add-${name}-error`);
+    } else {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+    }
+  }
+}
+
+const updateAddDraft = (patch) => set({ txDraft: { ...get().txDraft, ...patch } });
+
+function focusAddOpener() {
+  (document.getElementById(addOpenerId) || document.getElementById('tx-add-open'))?.focus();
+}
+
+function closeAddSheet() {
+  set({ creatingTx: false, txDraft: null });
+  focusAddOpener();
+}
+
+// Both ways in (＋ here, the Dashboard's welcome card) only set `creatingTx`: focus the amount once the sheet is drawn.
+let addSheetWasOpen = false;
+subscribe((state) => {
+  if (state.creatingTx && !addSheetWasOpen) queueMicrotask(() => document.getElementById('tx-add-amount')?.focus());
+  addSheetWasOpen = Boolean(state.creatingTx);
+});
+
+async function saveAddSheet(t) {
+  const state = get();
+  const draft = state.txDraft;
+  const problems = addProblems(draft);
+  const firstProblem = Object.keys(problems).find(name => problems[name]);
+  if (firstProblem) {
+    draft.touched = { amount: true, description: true, date: true };
+    syncAddSheet();
+    document.getElementById(`tx-add-${firstProblem}`).focus();
+    return;
+  }
+  if (savingAdd) return;
+  const accountId = state.activeAccountId;
+  const amount = parseAmount(draft.amount);
+  savingAdd = true;
+  syncAddSheet();
+  let tx;
+  try {
+    tx = await api.createTransaction(accountId, {
+      date: addDate(draft),
+      amount: draft.kind === 'income' ? amount : -amount,
+      description: draft.description.trim(),
+      category: draft.category,
+      type: 'Card Payment',
+      state: 'COMPLETED',
+    });
+  } finally {
+    savingAdd = false;
+    syncAddSheet();
+  }
+  set({ transactions: [tx, ...get().transactions], creatingTx: false, txDraft: null });
+  if (!focusRow(tx.id)) focusAddOpener();
+  toast(t(draft.kind === 'income' ? 'transactionAdd.addedIncome' : 'transactionAdd.addedExpense'), {
+    type: 'success',
+    action: {
+      label: t('transactionTable.undo'),
+      onClick: async () => {
+        await api.deleteTransaction(accountId, tx.id);
+        set({ transactions: get().transactions.filter(row => row.id !== tx.id) });
+        focusAddOpener();
+      },
+    },
+  });
+}
+
 // The detail sheet lives in `#modals`. Its state is `ui.txSheet = { id, draft }`; `draft` is set while editing.
+// The add sheet is drawn by the same hook.
 export function renderSheet(state, t) {
+  if (state.creatingTx) return renderAddSheet(state, t);
   const sheet = state.ui.txSheet;
   const tx = sheet && state.transactions.find(row => row.id === sheet.id);
   if (!tx) return '';
@@ -263,7 +431,9 @@ export function renderSheet(state, t) {
 
 // Rows are rendered twice (phone list and desktop table, one hidden by CSS): focus the visible one.
 function focusRow(id) {
-  [...document.querySelectorAll(`.tx-item[data-id="${id}"], .tx-open[data-id="${id}"]`)].find(el => el.offsetParent)?.focus();
+  const row = [...document.querySelectorAll(`.tx-item[data-id="${id}"], .tx-open[data-id="${id}"]`)].find(el => el.offsetParent);
+  row?.focus();
+  return Boolean(row);
 }
 
 function openSheet(id) {
@@ -279,9 +449,14 @@ function closeSheet() {
 
 document.addEventListener('keydown', (ev) => {
   // The category picker above the sheet takes the Escape first and marks it handled.
-  if (ev.key !== 'Escape' || ev.defaultPrevented || !get().ui.txSheet) return;
-  ev.preventDefault();
-  closeSheet();
+  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (get().ui.txSheet) {
+    ev.preventDefault();
+    closeSheet();
+  } else if (get().creatingTx) {
+    ev.preventDefault();
+    closeAddSheet();
+  }
 });
 
 // What is typed goes into the draft without a re-render, so the next render (the picker opening,
@@ -289,6 +464,19 @@ document.addEventListener('keydown', (ev) => {
 document.addEventListener('input', (ev) => {
   const draft = get().ui.txSheet?.draft;
   if (draft && ev.target.closest('#tx-sheet') && ev.target.name in draft) draft[ev.target.name] = ev.target.value;
+  const addDraft = get().txDraft;
+  if (addDraft && ev.target.closest('#tx-add') && ev.target.name in addDraft) {
+    addDraft[ev.target.name] = ev.target.value;
+    syncAddSheet();
+  }
+});
+
+// A field shows its message once it has been changed and left.
+document.addEventListener('change', (ev) => {
+  const addDraft = get().txDraft;
+  if (!addDraft || !ev.target.closest('#tx-add') || !(ev.target.name in addDraft)) return;
+  addDraft.touched[ev.target.name] = true;
+  syncAddSheet();
 });
 
 function clearFieldError(input) {
@@ -311,8 +499,7 @@ function showFieldError(input, message) {
   input.addEventListener('input', () => clearFieldError(input), { once: true });
 }
 
-// The add form is rendered twice (list + table, one hidden by CSS), so read the copy the clicked button sits in.
-// Returns null, with the problems shown next to their fields, when it can't be saved.
+// Returns null, with the problems shown next to their fields, when the sheet's edit form can't be saved.
 function readEditForm(button, t) {
   const grid = button.closest('.tx-edit-grid');
   const input = (name) => grid.querySelector(`[name="${name}"]`);
@@ -452,35 +639,37 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', sendPendingDeleteNow);
 
 export const actions = {
-  'add-tx': () => set({ creatingTx: true, txDraft: null }),
-  'cancel-create': () => set({ creatingTx: false, txDraft: null }),
-  'save-new-tx': async (el, ev, t) => {
-    const form = readEditForm(el, t);
-    if (!form) return;
-    const state = get();
-    const tx = await api.createTransaction(state.activeAccountId, {
-      ...form,
-      type: 'Card Payment',
-      state: 'COMPLETED',
-    });
-    set({
-      transactions: [tx, ...state.transactions],
-      creatingTx: false,
-      txDraft: null,
-      filter: { ...state.filter },
-    });
+  'add-tx': (el) => {
+    addOpenerId = el.id;
+    set({ creatingTx: true, txDraft: newAddDraft() });
   },
-  // Opening the picker re-renders the app, which would rebuild the add form and drop what was typed: keep it as a draft.
-  'pick-form-category': (el, ev, t) => {
-    const grid = el.closest('.tx-edit-grid');
-    const value = (name) => grid.querySelector(`[name="${name}"]`).value;
-    set({ txDraft: { date: value('date'), amount: value('amount'), description: value('description'), category: value('category') } });
+  'tx-add-close': closeAddSheet,
+  'tx-add-kind': (el) => updateAddDraft({ kind: el.dataset.kind }),
+  'tx-add-category': (el) => updateAddDraft({ category: el.dataset.category }),
+  'tx-add-more': (el, ev, t) => {
+    const draft = get().txDraft;
     openCategoryPicker({
-      title: value('description') || t('common.category'),
-      current: value('category'),
-      onPick: (category) => set({ txDraft: { ...get().txDraft, category } }),
+      title: draft.description.trim() || t('common.category'),
+      current: draft.category,
+      onPick: (category) => {
+        updateAddDraft({ category });
+        [...document.querySelectorAll('[data-action="tx-add-category"]')].find(chip => chip.dataset.category === category)?.focus();
+      },
     });
   },
+  'tx-add-date-mode': (el) => {
+    const draft = get().txDraft;
+    const mode = el.dataset.mode;
+    if (mode !== 'pick') return updateAddDraft({ dateMode: mode });
+    if (draft.dateMode !== 'pick') updateAddDraft({ dateMode: mode, date: addDate(draft) });
+    const input = document.getElementById('tx-add-date');
+    input.focus();
+    try {
+      input.showPicker();
+    } catch {} // not supported, or not allowed outside a tap: the field is there to tap
+  },
+  'tx-add-next': () => document.getElementById('tx-add-description').focus(),
+  'tx-add-save': (el, ev, t) => saveAddSheet(t),
   'pick-tx-category': (el) => {
     const id = Number(el.dataset.id);
     const tx = get().transactions.find(row => row.id === id);
