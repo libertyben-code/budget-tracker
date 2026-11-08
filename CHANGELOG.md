@@ -4,6 +4,36 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.2.0 — 2026-11-08
+
+### What's new
+
+- **Your real balance.** The Dashboard and Transactions show what is actually in the account: the bank's own figure for a linked account, and a balance you set with *Set balance…* for a manual one.
+- **The month at a glance.** The Dashboard opens on the balance, a month stepper and the month's net, money in and money out. The Dashboard and Transactions now keep separate filters.
+- **To categorise.** A new screen lists every uncategorised transaction, by merchant or by date, so one choice settles a whole group. Open it from the Dashboard card or the line on Transactions.
+- **Category picker.** A searchable sheet where you can also create a category. Choosing one updates the matching uncategorised transactions in every account and saves a rule for future imports; Undo takes both back, and the transaction you edited keeps its new category.
+- **Compact transactions.** Rows are grouped by day. Tap one to see and edit its details, use *Select* for batch edits, and undo a delete from the message that follows.
+- **Adding a transaction.** A new sheet with Expense or Income, labelled fields and Undo.
+- **Filters.** A compact bar with a Filters sheet, and search now matches amounts too.
+- **Accounts in another currency.** When you link a bank, choose whether to import accounts in another currency. Each one gets its own budget account and shows its own currency.
+- **One joint split.** It is worked out from the two salaries and the amount wanted in the shared account, and is the same on every account. It starts from the account where you had filled in salaries.
+- **A better first run.** A new install opens on a welcome card (link a bank, import a CSV, add a transaction) and offers starter categories in your language.
+- **Settings and appearance.** The settings menu is grouped, and Appearance can follow the phone with *Match phone*.
+- **Desktop.** A navigation rail on the side from 900px wide.
+
+### Fixes & improvements
+
+- **A server that is down now says so.** A "Can't reach your server" banner shows how old the data is and pauses edits, and Retry clears it once the server is back.
+- **Messages match what happened.** Confirmations and errors look different, savings actions report their result and can be undone, and a new or edited transaction with a zero amount or an empty description is refused.
+- **Easier to read and to use.** Text contrast is raised across the themes, and dialogs work properly with a keyboard and a screen reader.
+- **Typing is no longer lost.** Values you have typed and the focus survive when the screen updates.
+- **Amounts follow your language and currency**, such as €2,310.45 or 2 310,45 €, and "Uncategorized" is translated.
+- **Smaller fixes.** Batch edit keeps the typed description when you create a category, the choices for deleting a category appear on its row, and charts stay steady when the screen updates.
+
+The database upgrades itself on first start. It only adds columns and a settings table, and removes nothing.
+
+---
+
 ## 2.1.4 — 2026-11-07
 
 ### Fixes & improvements
