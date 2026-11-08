@@ -54,6 +54,7 @@ dated section.
 - **A relative bind mount in a Portainer git stack is not on the host** — it resolves inside the
   stack's own checkout, so data written there is not where you think it is.
 - **The container runs as non-root uid 1000** — anything it must write has to be owned accordingly.
+- **The image build downloads a native binary from GitHub** — keep the compiler in the `deps` stage.
 - **Equal specificity makes token order decide the accent** — theme selectors are resolved by source
   order, not by intent.
 - **An installed Android PWA caches its launcher icon**, and **cannot colour its own status bar**

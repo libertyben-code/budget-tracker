@@ -230,6 +230,10 @@ Everything in `schema.sql` is `CREATE … IF NOT EXISTS`, so a column added to a
 
 SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table has to be rebuilt — and `DROP TABLE` on the old copy performs an implicit `DELETE`, which fires `ON DELETE CASCADE` / `SET NULL` in every child table. **Rule:** rebuild with `PRAGMA foreign_keys = OFF` set before the transaction (the pragma is ignored inside one), run `PRAGMA foreign_key_check` before commit, and turn it back on in a `finally`. Create the new table, copy, drop the old, rename the new — never rename the old one away first, since a rename rewrites the children's references to follow it. `db.js` `dropSavingsOwner()` is the worked example.
 
+### 2026-11-08 — The image build downloads a native binary from GitHub
+
+`npm ci` fetches `better-sqlite3`'s prebuilt binary from GitHub releases, not npm, and falls back to compiling when that download fails. Every version bump changes `package.json`, so every release re-runs this step and needs the download. **Rule:** keep `python3`, `make` and `g++` in the `deps` build stage, and keep that install above the `COPY` so version bumps don't re-run it. The final image copies only `node_modules`, so it stays compiler-free. Compiling still needs Node headers from `nodejs.org`, so an outage there and on GitHub together would block a deploy. Portainer shows only `exit code: 1`; to see the real error, run the install in a `docker run` on the server.
+
 ---
 
 ## Dated development log
@@ -237,6 +241,13 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-11-08 — Docker build survives a failed binary download (branch: fix/docker-native-build)
+
+- The first 2.2.0 *Pull and redeploy* failed at `npm ci --omit=dev` with `exit code: 1`. The release changed no dependencies, only the version number.
+- Most likely cause, not confirmed from a server log: GitHub release downloads were returning 504 at the time, from GitHub itself and for other projects too, while its status page showed no problems. Downloads worked again minutes later. The slim image has no compiler, so the compile fallback could not run.
+- `Dockerfile`: a new `deps` stage installs the toolchain and runs `npm ci`; the final stage copies in `node_modules`.
+- Verified: a forced compile of `better-sqlite3` 12.11.1 passed on the server on `node:22-bookworm-slim`. The multi-stage `Dockerfile` itself has not been built yet (no Docker on the dev Mac); its first run is the next deploy that includes it.
 
 ### 2026-11-08 — UX overhaul from the audit (branch: feature/ux-plan)
 
