@@ -5,6 +5,7 @@ import { filteredTransactions, stats, accountBalance, accountCurrency, dayTitle,
 import { isoToDisplay, todayIso, toIso } from '/shared/dates.js';
 import { render as renderFilters } from './filters.js';
 import { openCategoryPicker, readRecent } from './category-picker.js';
+import { openInbox } from './categorise.js';
 
 function periodLabel(state, t) {
   const f = state.filter;
@@ -103,6 +104,7 @@ export function render(state, t) {
   };
   const rowAction = selecting ? 'toggle-select' : 'open-tx';
   const opensSheet = selecting ? '' : ' aria-haspopup="dialog"';
+  const toCategorise = state.transactions.filter(tx => tx.category === 'Uncategorized').length;
 
   const catSelect = (tx) => `<button class="chip-select" data-action="pick-tx-category" data-id="${tx.id}" aria-haspopup="dialog" aria-label="${esc(t('categoryPicker.trigger', { category: categoryName(tx.category, t) }))}">${esc(categoryName(tx.category, t))}</button>`;
 
@@ -170,6 +172,11 @@ export function render(state, t) {
   <section class="view ${selection.size > 0 ? 'has-selection' : ''}">
     ${renderTiles(state, filtered, t)}
     ${renderFilters(state, t)}
+    ${toCategorise && !selecting ? `
+    <button id="tx-categorise" class="btn small tx-todo" data-action="tx-categorise">
+      <span>${esc(t('categorise.title'))} (${toCategorise})</span>
+      <span aria-hidden="true">›</span>
+    </button>` : ''}
     ${selection.size > 0 ? `
     <div class="selection-bar">
       <span class="grow">${esc(t('transactionTable.selectedCount', { count: selection.size }))}</span>
@@ -631,6 +638,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', sendPendingDeleteNow);
 
 export const actions = {
+  'tx-categorise': openInbox,
   'add-tx': (el) => {
     addOpenerId = el.id;
     set({ creatingTx: true, txDraft: newAddDraft() });
