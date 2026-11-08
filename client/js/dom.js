@@ -1,3 +1,5 @@
+import { get } from './store.js';
+
 export function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -7,19 +9,31 @@ export function esc(value) {
     .replaceAll("'", '&#39;');
 }
 
-export function eur(value) {
-  return `€${Number(value || 0).toFixed(2)}`;
+const moneyFormats = new Map();
+
+// narrowSymbol: French otherwise writes the pound "£GB".
+function moneyFormat(currency, options = {}) {
+  const locale = get().ui.lang === 'fr' ? 'fr-FR' : 'en-GB';
+  const key = JSON.stringify([locale, currency, options]);
+  if (!moneyFormats.has(key)) {
+    moneyFormats.set(key, new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', ...options }));
+  }
+  return moneyFormats.get(key);
 }
 
-export function eurSigned(value) {
-  const n = Number(value || 0);
-  return `${n > 0 ? '+' : n < 0 ? '-' : ''}€${Math.abs(n).toFixed(2)}`;
+// Rounded first: a float sum like -0.0000001 would otherwise show as "-€0.00".
+export function money(value, { currency, signed = false, compact = false }) {
+  const format = moneyFormat(currency, { ...(signed && { signDisplay: 'exceptZero' }), ...(compact && { notation: 'compact' }) });
+  return format.format(Math.round(Number(value || 0) * 100) / 100 || 0);
 }
 
-export function eurSpaced(value) {
-  const fixed = Number(value || 0).toFixed(2);
-  const [int, dec] = fixed.split('.');
-  return `€${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${dec}`;
+export function currencySymbol(currency) {
+  return moneyFormat(currency).formatToParts(0).find(part => part.type === 'currency').value;
+}
+
+// The stored name stays 'Uncategorized' whatever the language.
+export function categoryName(name, t) {
+  return name === 'Uncategorized' ? t('common.uncategorized') : name;
 }
 
 export function debounce(fn, ms) {

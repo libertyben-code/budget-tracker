@@ -1,4 +1,4 @@
-import { esc, icons } from '../dom.js';
+import { esc, icons, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -26,9 +26,9 @@ function allCategories(state) {
   return ['Uncategorized', ...categories(state).filter(c => c !== 'Uncategorized')];
 }
 
-function matching(state, query) {
+function matching(state, query, t) {
   const q = query.toLowerCase();
-  return allCategories(state).filter(c => c.toLowerCase().includes(q));
+  return allCategories(state).filter(c => categoryName(c, t).toLowerCase().includes(q));
 }
 
 // `onPick(category, t)` runs after the picker has closed; the picker itself never changes a transaction.
@@ -61,14 +61,14 @@ export function render(state, t) {
   const picker = state.ui.categoryPicker;
   if (!picker) return '';
   const query = picker.search.trim();
-  const list = matching(state, query);
-  const exact = list.some(c => c.toLowerCase() === query.toLowerCase());
+  const list = matching(state, query, t);
+  const exact = list.some(c => categoryName(c, t).toLowerCase() === query.toLowerCase());
   const all = allCategories(state);
   const recent = query ? [] : readRecent().filter(c => all.includes(c));
   const isCurrent = (c) => c === picker.current;
 
-  const chip = (c) => `<button class="picker-chip${isCurrent(c) ? ' current' : ''}" data-action="category-picker-pick" data-category="${esc(c)}"${isCurrent(c) ? ' aria-current="true"' : ''}>${esc(c)}</button>`;
-  const option = (c) => `<button class="picker-option${isCurrent(c) ? ' current' : ''}" data-action="category-picker-pick" data-category="${esc(c)}"${isCurrent(c) ? ' aria-current="true"' : ''}><span>${esc(c)}</span>${isCurrent(c) ? icons.check : ''}</button>`;
+  const chip = (c) => `<button class="picker-chip${isCurrent(c) ? ' current' : ''}" data-action="category-picker-pick" data-category="${esc(c)}"${isCurrent(c) ? ' aria-current="true"' : ''}>${esc(categoryName(c, t))}</button>`;
+  const option = (c) => `<button class="picker-option${isCurrent(c) ? ' current' : ''}" data-action="category-picker-pick" data-category="${esc(c)}"${isCurrent(c) ? ' aria-current="true"' : ''}><span>${esc(categoryName(c, t))}</span>${isCurrent(c) ? icons.check : ''}</button>`;
   const actionRow = (action, label) => `<button class="picker-option action" data-action="${action}"><span>＋ ${esc(label)}</span></button>`;
 
   return `
@@ -113,8 +113,8 @@ export const actions = {
   'category-picker-enter': (el, ev, t) => {
     const query = el.value.trim();
     if (!query) return;
-    const list = matching(get(), query);
-    const choice = list.find(c => c.toLowerCase() === query.toLowerCase()) || list[0];
+    const list = matching(get(), query, t);
+    const choice = list.find(c => categoryName(c, t).toLowerCase() === query.toLowerCase()) || list[0];
     return choice ? pick(choice, t) : pickOrCreate(query, t);
   },
 };

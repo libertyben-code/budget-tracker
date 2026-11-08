@@ -1,4 +1,4 @@
-import { esc, icons, checkPill, confirmDialog, resetFields } from '../dom.js';
+import { esc, icons, checkPill, confirmDialog, resetFields, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -30,7 +30,7 @@ export function render(state, t) {
         <label class="muted" for="rules-filter">${esc(t('categoryRules.filterByCategory'))}</label>
         <select id="rules-filter" data-action-change="rules-filter">
           <option value="">${esc(t('categoryRules.allCategories'))}</option>
-          ${ruleCats.map(c => `<option value="${esc(c)}" ${filter === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          ${ruleCats.map(c => `<option value="${esc(c)}" ${filter === c ? 'selected' : ''}>${esc(categoryName(c, t))}</option>`).join('')}
         </select>
         <span style="margin-left:auto">${checkPill({ on: allSelected, action: 'rules-select-all', label: t('common.all') })}</span>
       </div>
@@ -57,7 +57,7 @@ export function render(state, t) {
             <span class="check-box">${icons.check}</span>
           </button>
           <span class="grow">${esc(r.pattern)}</span>
-          <span class="chip">${esc(r.category)}</span>
+          <span class="chip">${esc(categoryName(r.category, t))}</span>
           <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}" title="${esc(t('categoryRules.deleteRule', { pattern: r.pattern }))}" aria-label="${esc(t('categoryRules.deleteRule', { pattern: r.pattern }))}">${icons.trash}</button>
         </div>`).join('') || `<p class="muted">—</p>`}
       </div>

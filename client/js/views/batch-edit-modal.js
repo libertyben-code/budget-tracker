@@ -1,4 +1,4 @@
-import { esc } from '../dom.js';
+import { esc, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -23,7 +23,7 @@ export function render(state, t) {
         <label for="batch-cat">${esc(t('app.categoryOptional'))}</label>
         <select id="batch-cat" data-action-change="batch-cat-select">
           <option value="">${esc(t('app.keepExistingCategories'))}</option>
-          ${cats.map(c => `<option value="${esc(c)}" ${c === picked ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          ${cats.map(c => `<option value="${esc(c)}" ${c === picked ? 'selected' : ''}>${esc(categoryName(c, t))}</option>`).join('')}
           <option value="__new__" ${picked === '__new__' ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
         </select>
       </div>

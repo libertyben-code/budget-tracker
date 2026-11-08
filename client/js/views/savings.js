@@ -1,10 +1,12 @@
-import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog, resetFields } from '../dom.js';
+import { esc, money, categoryName, chartColors, icons, toast, confirmDialog, resetFields } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { refreshSavings } from '../app.js';
 import { categories } from '../derive.js';
 import { isoToDisplay } from '/shared/dates.js';
 
+// Savings accounts have no currency of their own.
+const currency = 'EUR';
 let kept = null;
 
 export function render(state, t) {
@@ -16,7 +18,7 @@ export function render(state, t) {
   <section class="view">
     <div class="card tile" style="text-align:center">
       <div class="label">${esc(t('savings.totalSaved'))}</div>
-      <div class="value hero pos">${eurSpaced(total)}</div>
+      <div class="value hero pos">${money(total, { currency })}</div>
     </div>
 
     ${withBalance.length > 0 ? `
@@ -49,7 +51,7 @@ function categorySelect(id, selected, state, t) {
         <label class="row grow" style="gap:6px"><span class="muted" style="font-size:0.8rem;white-space:nowrap">${esc(t('savings.fedBy'))}</span>
           <select id="${id}" class="grow">
             <option value="">${esc(t('savings.manual'))}</option>
-            ${categories(state).map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+            ${categories(state).map(c => `<option value="${esc(c)}" ${c === selected ? 'selected' : ''}>${esc(categoryName(c, t))}</option>`).join('')}
           </select>
         </label>`;
 }
@@ -81,9 +83,9 @@ function renderAccount(a, state, t, total) {
     <div class="row">
       <div class="grow">
         <strong>${esc(a.name)}</strong>
-        <div class="muted" style="font-size:0.8rem">${esc(t('savings.percentOfTotal', { percent: pct }))}${a.category ? ` · ${esc(t('savings.fedByCategory', { category: a.category }))}` : ''}</div>
+        <div class="muted" style="font-size:0.8rem">${esc(t('savings.percentOfTotal', { percent: pct }))}${a.category ? ` · ${esc(t('savings.fedByCategory', { category: categoryName(a.category, t) }))}` : ''}</div>
       </div>
-      <span class="num" style="font-weight:650">${eur(a.balance)}</span>
+      <span class="num" style="font-weight:650">${money(a.balance, { currency })}</span>
       <button class="icon-btn accent" data-action="edit-savings" data-id="${esc(a.id)}" title="${esc(t('common.edit'))}" aria-label="${esc(t('savings.editNamed', { name: a.name }))}">${icons.edit}</button>
       <button class="icon-btn danger" data-action="delete-savings" data-id="${esc(a.id)}" title="${esc(t('common.delete'))}" aria-label="${esc(t('savings.deleteNamed', { name: a.name }))}">${icons.trash}</button>
     </div>
@@ -107,7 +109,7 @@ function renderAccount(a, state, t, total) {
     <div class="recurring-box">
       ${recurring.map(r => `
       <div class="panel-list-item">
-        <span class="grow">${eur(r.amount)} · ${esc(t('savings.monthlyOnDay', { day: r.day }))}</span>
+        <span class="grow">${money(r.amount, { currency })} · ${esc(t('savings.monthlyOnDay', { day: r.day }))}</span>
         <span class="muted" style="font-size:0.8rem">${esc(t('savings.nextOn', { date: isoToDisplay(r.nextDate) }))}</span>
         <button class="icon-btn danger" data-action="delete-recurring" data-id="${esc(r.id)}" data-sid="${esc(a.id)}" title="${esc(t('common.delete'))}" aria-label="${esc(t('savings.deleteRecurring'))}">${icons.trash}</button>
       </div>`).join('')}
@@ -126,7 +128,7 @@ function renderAccount(a, state, t, total) {
       ${history.map(h => `
       <li>
         <span class="muted grow">${esc(isoToDisplay(h.date))} · ${esc(t(h.type === 'deposit' ? 'savings.deposit' : 'savings.withdraw'))}${h.id.startsWith('rec_') ? ' ↻' : ''}</span>
-        <span class="${h.type === 'deposit' ? 'pos' : 'neg'}">${h.type === 'deposit' ? '+' : '-'}${eur(h.amount)}</span>
+        <span class="${h.type === 'deposit' ? 'pos' : 'neg'}">${money(h.type === 'deposit' ? h.amount : -h.amount, { currency, signed: true })}</span>
         ${a.category || h.id.startsWith('bank_') ? '' : `
         <button class="icon-btn danger" data-action="remove-savings-entry" data-id="${esc(h.id)}" data-sid="${esc(a.id)}" title="${esc(t('savings.removeEntry'))}" aria-label="${esc(t('savings.removeEntry'))}">${icons.trash}</button>`}
       </li>`).join('')}
@@ -160,7 +162,7 @@ export function afterRender(state) {
       maxBarThickness: 22,
     }],
   };
-  const key = JSON.stringify([chartData, colors, Chart.defaults.font.family, motion]);
+  const key = JSON.stringify([chartData, colors, Chart.defaults.font.family, state.ui.lang, motion]);
   // Same reuse as the dashboard: move the old box (Chart.js observes the canvas's parent).
   if (kept?.key === key) {
     el.parentElement.replaceWith(kept.box);
@@ -177,7 +179,7 @@ export function afterRender(state) {
       ctx.font = `600 11px ${Chart.defaults.font.family}`;
       ctx.fillStyle = colors.text;
       ctx.textBaseline = 'middle';
-      meta.data.forEach((bar, i) => ctx.fillText(eur(c.data.datasets[0].data[i]), bar.x + 6, bar.y));
+      meta.data.forEach((bar, i) => ctx.fillText(money(c.data.datasets[0].data[i], { currency }), bar.x + 6, bar.y));
       ctx.restore();
     },
   };
@@ -190,12 +192,12 @@ export function afterRender(state) {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 64 } },
+      layout: { padding: { right: 80 } },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${eur(ctx.parsed.x)} (${total > 0 ? ((ctx.parsed.x / total) * 100).toFixed(1) : 0}%)`,
+            label: (ctx) => `${money(ctx.parsed.x, { currency })} (${total > 0 ? ((ctx.parsed.x / total) * 100).toFixed(1) : 0}%)`,
           },
         },
       },
@@ -303,7 +305,7 @@ export const actions = {
     const problems = [];
     if (input.value === '' || amount <= 0) problems.push([input, t('savings.amountInvalid')]);
     else if (type === 'withdrawal' && amount > account.balance) {
-      problems.push([input, t('savings.moreThanBalance', { balance: eur(account.balance) })]);
+      problems.push([input, t('savings.moreThanBalance', { balance: money(account.balance, { currency }) })]);
     }
     if (!validate([input], problems)) return;
     const result = await api.savingsTransaction(id, type, amount);
@@ -316,7 +318,7 @@ export const actions = {
         [id]: [result.entry, ...(state.savingsHistory[id] || [])],
       },
     });
-    toast(t(type === 'deposit' ? 'savings.deposited' : 'savings.withdrawn', { amount: eur(amount), name: account.name }), {
+    toast(t(type === 'deposit' ? 'savings.deposited' : 'savings.withdrawn', { amount: money(amount, { currency }), name: account.name }), {
       type: 'success',
       action: { label: t('savings.undo'), onClick: () => removeEntry(id, result.entry.id) },
     });
@@ -328,8 +330,8 @@ export const actions = {
     const entry = state.savingsHistory[sid].find(h => h.id === id);
     const balance = Math.max(0, account.balance + (entry.type === 'deposit' ? -entry.amount : entry.amount));
     const message = t(entry.type === 'deposit' ? 'savings.confirmRemoveDeposit' : 'savings.confirmRemoveWithdrawal', {
-      amount: eur(entry.amount),
-      balance: eur(balance),
+      amount: money(entry.amount, { currency }),
+      balance: money(balance, { currency }),
     });
     if (!(await confirmDialog(message, { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     await removeEntry(sid, id);

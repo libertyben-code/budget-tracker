@@ -1,7 +1,7 @@
-import { esc, eurSigned, toast } from '../dom.js';
+import { esc, money, toast } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { dayTitle } from '../derive.js';
+import { dayTitle, accountCurrency } from '../derive.js';
 import { normalizeDescription } from '/shared/categorize.js';
 import { openCategoryPicker } from './category-picker.js';
 
@@ -90,6 +90,7 @@ async function categorise(rows, title, category, index, t) {
 export function render(state, t) {
   const rows = pending(state);
   const lang = state.ui.lang;
+  const currency = accountCurrency(state);
   const byDate = state.ui.inboxMode === 'date';
   const items = byDate ? rows : groupsOf(rows);
   const limit = state.ui.inboxLimit || PAGE;
@@ -131,7 +132,7 @@ export function render(state, t) {
           <span class="tx-desc">${esc(label || t('categorise.noDescription'))}</span>
           <span class="inbox-meta">${esc(meta)}</span>
         </span>
-        <span class="tx-amount ${amount >= 0 ? 'pos' : 'neg'}">${eurSigned(amount)}</span>
+        <span class="tx-amount ${amount >= 0 ? 'pos' : 'neg'}">${money(amount, { currency, signed: true })}</span>
       </button>`;
   };
 

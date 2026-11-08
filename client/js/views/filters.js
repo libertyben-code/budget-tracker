@@ -1,4 +1,4 @@
-import { esc, checkRow } from '../dom.js';
+import { esc, checkRow, categoryName } from '../dom.js';
 import { get, setFilter, setUi } from '../store.js';
 import { categories, months, years, monthTitle, filteredTransactions } from '../derive.js';
 import { todayIso } from '/shared/dates.js';
@@ -64,7 +64,7 @@ function periodLabel(f, t, lang) {
 
 function categoryLabel(f, t) {
   if (f.categories.length === 0) return '';
-  return f.categories.length === 1 ? f.categories[0] : t('filters.categoryCount', { count: f.categories.length });
+  return f.categories.length === 1 ? categoryName(f.categories[0], t) : t('filters.categoryCount', { count: f.categories.length });
 }
 
 export function render(state, t) {
@@ -127,7 +127,7 @@ export function renderSheet(state, t) {
         </div>` : ''}
         <h3 class="picker-label">${esc(t('filters.categories'))}</h3>
         ${checkRow({ on: f.categories.length === 0, action: 'filter-cat-all', label: t('filters.allCategories'), data: 'id="filter-cat-all"' })}
-        ${categories(state).map((c, i) => checkRow({ on: f.categories.includes(c), action: 'filter-cat', label: c, data: `id="filter-cat-${i}" data-cat="${esc(c)}"` })).join('')}
+        ${categories(state).map((c, i) => checkRow({ on: f.categories.includes(c), action: 'filter-cat', label: categoryName(c, t), data: `id="filter-cat-${i}" data-cat="${esc(c)}"` })).join('')}
       </div>
       <div class="filter-sheet-foot">
         <button id="filter-reset" class="btn ghost" data-action="filter-clear">${esc(t('filters.reset'))}</button>
