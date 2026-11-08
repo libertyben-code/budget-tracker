@@ -531,26 +531,24 @@ async function setCategory(id, category, t) {
   }
 }
 
+// Undo also takes back the rule, or a wrong pick would keep sorting future imports. The row edited
+// by hand keeps its new category: applied.ids never includes it.
 function showLearnedRule({ rule, applied }, description, t) {
   const ids = new Set(applied.ids);
+  const before = get().rules.find(r => r.pattern === rule.pattern);
+  const withRule = (replacement) => [...get().rules.filter(r => r.pattern !== rule.pattern), ...(replacement ? [replacement] : [])];
   const withCategory = (category, from) => get().transactions.map(tx =>
     ids.has(tx.id) && (!from || tx.category === from) ? { ...tx, category } : tx);
-  set({
-    rules: [...get().rules.filter(r => r.pattern !== rule.pattern), rule],
-    transactions: withCategory(rule.category),
-  });
-  const vars = { count: applied.count, category: rule.category, description };
-  if (!applied.count) {
-    toast(t('transactionTable.ruleSaved', vars), { type: 'success' });
-    return;
-  }
-  toast(t(applied.count === 1 ? 'transactionTable.appliedOne' : 'transactionTable.appliedMany', vars), {
+  set({ rules: withRule(rule), transactions: withCategory(rule.category) });
+  const key = !applied.count ? 'ruleSaved' : applied.count === 1 ? 'appliedOne' : 'appliedMany';
+  toast(t(`transactionTable.${key}`, { count: applied.count, category: rule.category, description }), {
     type: 'success',
     action: {
       label: t('transactionTable.undo'),
       onClick: async () => {
         await api.uncategorize(applied.ids, rule.category);
-        set({ transactions: withCategory('Uncategorized', rule.category) });
+        await (before ? api.addRule(before.pattern, before.category) : api.deleteRules([rule.pattern]));
+        set({ rules: withRule(before), transactions: withCategory('Uncategorized', rule.category) });
       },
     },
   });
