@@ -54,7 +54,6 @@ function renderBalance(state, t) {
 
 function renderMonth(rows, t, currency) {
   const s = stats(rows);
-  const uncategorized = rows.filter(r => r.category === 'Uncategorized').length;
   return `
   <div class="card glance-card">
     <div class="glance-label">${esc(t('app.net'))}</div>
@@ -63,12 +62,17 @@ function renderMonth(rows, t, currency) {
       <div><span class="glance-label">${esc(t('app.moneyIn'))}</span><span class="pos">${money(s.income, { currency })}</span></div>
       <div><span class="glance-label">${esc(t('app.moneyOut'))}</span><span class="neg">${money(s.spending, { currency })}</span></div>
     </div>
-  </div>
-  ${uncategorized ? `
+  </div>`;
+}
+
+function renderToCategorise(state, t) {
+  const count = state.transactions.filter(tx => tx.category === 'Uncategorized').length;
+  if (!count) return '';
+  return `
   <div class="card glance-todo">
-    <span class="grow">${esc(uncategorized === 1 ? t('dashboard.toCategoriseOne') : t('dashboard.toCategoriseMany', { count: uncategorized }))}</span>
+    <span class="grow">${esc(count === 1 ? t('dashboard.toCategoriseOne') : t('dashboard.toCategoriseMany', { count }))}</span>
     <button class="btn small primary" data-action="dash-categorise">${esc(t('dashboard.categorise'))}</button>
-  </div>` : ''}`;
+  </div>`;
 }
 
 // render() replaces the whole DOM; an unchanged chart moves its old box into the new
@@ -117,6 +121,7 @@ export function render(state, t) {
     ${renderBalance(state, t)}
     ${renderMonthStepper(state, t, month)}
     ${renderMonth(monthTransactions(state, month), t, accountCurrency(state))}
+    ${renderToCategorise(state, t)}
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
