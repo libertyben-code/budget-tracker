@@ -92,7 +92,8 @@ From the 2026-11-07 UX audit; one session per item. Flip these to `— OK` once 
 - [x] Transaction detail sheet; delete and batch delete with Undo (L2b)
 - [x] Compact filter bar with a Filters sheet; search matches amounts (L2c)
 - [x] Add-transaction sheet with Expense/Income, labelled fields and Undo (L3)
-- [x] "To categorise" inbox grouped by merchant (L4)
+- [x] "To categorise" inbox grouped by merchant, opened from the Dashboard card or a line on Transactions; both count the whole account (L4)
+- [x] Undo after a category change also takes back the learned rule, everywhere
 - [x] Typed form values and focus survive re-renders (L5)
 - [x] Desktop navigation rail from 900px (L6)
 - [x] One money formatter per language and account currency; "Uncategorized" translated (Q5)

@@ -185,5 +185,5 @@ UX overhaul (2026-11) additions:
 9. Open the **Filters** sheet on Transactions: pick a period and several categories; the summary next to the search field shows them, and the clear button resets. Search finds amounts too.
 10. Install as a PWA on a phone over Tailscale; confirm offline reads still render (writes should fail gracefully when offline). A fresh install shows the wallet icon on the home screen — an existing one keeps the icon it was installed with until it is removed and re-added.
 11. Link the fake bank in the dev harness with "import other currencies": the GBP account gets its own budget account and the link summary lists where each account went. The Dashboard shows the bank balance.
-12. Set one row's category: the matching uncategorised rows in every account follow, with Undo. Open the "To categorise" inbox from the Dashboard card and categorise a group.
+12. Set one row's category: the matching uncategorised rows in every account follow. Undo puts them back and takes back the learned rule; the row you edited keeps its category. Open the "To categorise" inbox from the Dashboard card or the line on Transactions, and categorise a group.
 13. Stop the server and reload with the service worker registered: the "Can't reach your server" banner shows the data's age and edits are paused; Retry clears it once the server is back.
