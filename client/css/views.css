@@ -87,12 +87,19 @@
   left: 50%;
   right: auto;
   transform: translateX(-50%);
+  min-width: min(300px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
 }
-.account-item { padding: 0; }
-.account-item.active { background: var(--accent-soft); color: var(--accent-strong); }
-.account-switch { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding: 10px; text-align: left; }
-.account-item .icon-btn { width: 32px; height: 32px; margin-right: 4px; }
+.account-item.active, .account-item.active:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.account-item.active svg { color: var(--accent-strong); }
+.account-avatar { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: var(--surface-2); }
+.account-item.active .account-avatar { background: var(--surface); }
+.account-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.account-text-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-text-sub { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.account-item.active .account-text-sub { color: inherit; }
+.account-text-sub.neg, .account-item.active .account-text-sub.neg { color: var(--danger); }
+.account-delete, .account-delete svg { color: var(--danger); }
 .account-add { display: flex; gap: var(--space-2); padding: 6px 4px; }
 
 main {
@@ -218,12 +225,14 @@ main {
 .tile-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 var(--space-2); margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
 .tile .btn.small { margin-top: var(--space-1); }
 
-.glance-card { margin-bottom: var(--space-3); }
+.glance-card { margin-bottom: var(--space-3); text-align: center; }
 .glance-label { display: block; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .glance-value { margin: 2px 0; font-size: clamp(1.75rem, 8vw, 2.25rem); font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .glance-meta { font-size: 0.85rem; color: var(--muted); }
-.glance-card .btn.small { margin-top: var(--space-1); }
-.glance-flows { display: flex; gap: var(--space-6); margin-top: var(--space-2); font-size: 1.05rem; font-weight: 600; }
+.card.glance-balance { padding-block: var(--space-2); }
+.glance-balance-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 var(--space-3); }
+.glance-balance .glance-value { font-size: clamp(1.5rem, 7vw, 2rem); }
+.glance-flows { display: flex; justify-content: center; gap: var(--space-6); margin-top: var(--space-2); font-size: 1.05rem; font-weight: 600; }
 .glance-flows > div { display: flex; flex-direction: column; }
 .glance-todo { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); background: var(--accent-soft); border-color: transparent; }
 .tx-todo { width: 100%; justify-content: space-between; margin-bottom: var(--space-3); background: var(--accent-soft); border-color: transparent; }

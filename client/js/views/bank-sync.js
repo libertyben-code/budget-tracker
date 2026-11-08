@@ -1,13 +1,15 @@
 import { esc, icons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { loadAccount } from '../app.js';
+import { loadAccount, refreshBootstrap } from '../app.js';
 import { isoToDisplay } from '/shared/dates.js';
 
 const COUNTRIES = ['FR', 'BE', 'DE', 'ES', 'IT', 'NL', 'LU', 'PT', 'IE', 'AT', 'LT', 'GB'];
 const EXPIRY_WARNING_DAYS = 14;
+const AUTO_SYNC_EVERY = 60 * 60 * 1000;
+const AUTO_SYNC_AFTER_FAILURE = 6 * 60 * 60 * 1000;
 
-function plural(t, key, count) {
+export function plural(t, key, count) {
   const one = new Intl.PluralRules(get().ui.lang).select(count) === 'one';
   return t(one ? `${key}One` : key, { count });
 }
@@ -295,6 +297,52 @@ function summarize(results, t) {
   return message;
 }
 
+// The balance on the account row changes with a sync even when no transaction was imported.
+async function applySyncResults(results) {
+  if (results.some(r => r.imported > 0 || r.mode === 'savings')) await loadAccount(get().activeAccountId);
+  else await refreshBootstrap();
+}
+
+function dueForAutoSync(status) {
+  const now = Date.now();
+  return status.connections
+    .filter(c => (daysLeft(c.validUntil) ?? 1) > 0)
+    .flatMap(c => c.accounts)
+    .filter(a => a.enabled && (a.accountId || a.savingsAccountId))
+    .filter(a => !a.lastSyncAt || now - Date.parse(a.lastSyncAt) >= (a.lastSyncStatus === 'ok' ? AUTO_SYNC_EVERY : AUTO_SYNC_AFTER_FAILURE));
+}
+
+// Runs because the user just opened the app, so the server forwards their PSU headers and the bank
+// counts it as user-present, outside the four-a-day cap. A failed account waits six hours: that is
+// what ASPSP_RATE_LIMIT_EXCEEDED asks for, and retrying on every open would only burn fetches.
+export async function autoSync(t) {
+  let status;
+  try {
+    status = await api.bankStatus();
+  } catch {
+    return;
+  }
+  if (get().ui.bankBusy || get().connection) return;
+  setUi({ bankStatus: status });
+  const due = dueForAutoSync(status);
+  if (!due.length) return;
+  setUi({ bankBusy: true });
+  try {
+    const results = [];
+    for (const account of due) {
+      const synced = await api.bankSyncAccount(account.id);
+      results.push(...synced.results);
+      setUi({ bankStatus: synced.status });
+    }
+    await applySyncResults(results);
+    if (results.some(r => r.imported > 0)) toast(summarize(results, t), { type: results.some(r => r.error) ? 'error' : 'success' });
+  } catch {
+    // A background refresh: the connection banner reports a server that has gone away.
+  } finally {
+    setUi({ bankBusy: false });
+  }
+}
+
 // patch: { accountId } or { savingsAccountId } (either may be null to unmap)
 async function remap(bankAccountId, patch, t) {
   const status = await api.bankPatchAccount(bankAccountId, patch);
@@ -381,7 +429,7 @@ export const actions = {
       const { results, status } = await api.bankSync(el.dataset.id || undefined);
       setUi({ bankStatus: status });
       toast(summarize(results, t), { type: results.some(r => r.error) ? 'error' : 'success' });
-      if (results.some(r => r.imported > 0 || r.mode === 'savings')) await loadAccount(get().activeAccountId);
+      await applySyncResults(results);
     } finally {
       setUi({ bankBusy: false });
     }

@@ -1,9 +1,9 @@
-import { esc, icons, navIcons, toast, confirmDialog } from '../dom.js';
+import { esc, icons, money, navIcons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { categories } from '../derive.js';
+import { accountBalance, categories } from '../derive.js';
 import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
-import { loadStatus as loadBankStatus } from './bank-sync.js';
+import { loadStatus as loadBankStatus, plural } from './bank-sync.js';
 import { todayIso } from '/shared/dates.js';
 
 const VERSION = 'v2.2.1';
@@ -47,6 +47,21 @@ darkQuery.addEventListener('change', () => {
   setUi({});
 });
 
+function renderAccountRow(account, state, t) {
+  const active = account.id === state.activeAccountId;
+  // The bootstrap's figure for the active account goes stale as its transactions are edited.
+  const balance = active ? accountBalance(state).amount : account.balance;
+  return `
+  <button class="menu-item account-item ${active ? 'active' : ''}" data-action="switch-account" data-id="${esc(account.id)}"${active ? ' aria-current="true"' : ''}>
+    <span class="account-avatar">${account.balanceSource === 'bank' ? icons.bank : icons.wallet}</span>
+    <span class="account-text">
+      <span class="account-text-name">${esc(account.name)}</span>
+      <span class="account-text-sub ${balance < 0 ? 'neg' : ''}">${balance === null ? esc(plural(t, 'header.accountTx', account.txCount)) : money(balance, { currency: account.currency })}</span>
+    </span>
+    ${active ? icons.check : ''}
+  </button>`;
+}
+
 export function render(state, t) {
   const cats = categories(state);
   const activeAccount = state.accounts.find(a => a.id === state.activeAccountId) || state.accounts[0] || { name: '' };
@@ -71,14 +86,7 @@ export function render(state, t) {
           </button>
           ${state.ui.accountMenuOpen ? `
           <div class="dropdown-menu left" data-keep-open>
-            ${state.accounts.map(a => `
-            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}">
-              <button class="account-switch" data-action="switch-account" data-id="${esc(a.id)}"${a.id === state.activeAccountId ? ' aria-current="true"' : ''}>
-                <span class="grow">${esc(a.name)}</span>
-                ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
-              </button>
-              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}" aria-label="${esc(t('header.deleteAccountNamed', { name: a.name }))}">${icons.trash}</button>` : ''}
-            </div>`).join('')}
+            ${state.accounts.map(a => renderAccountRow(a, state, t)).join('')}
             <div class="menu-sep"></div>
             ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
             <div role="group" aria-labelledby="balance-form-title">
@@ -101,13 +109,15 @@ export function render(state, t) {
                 <button class="btn small primary grow" data-action="save-balance">${esc(t('common.save'))}</button>
               </div>
             </div>` : `
-            <button class="menu-item" data-action="open-balance-form">${esc(t('header.setBalance'))}</button>`}
+            <button class="menu-item" data-action="open-balance-form">${icons.edit} ${esc(t('header.setBalance'))}</button>`}
             ${state.addingAccount ? `
             <div class="account-add">
               <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" aria-label="${esc(t('header.accountName'))}" data-action-key="create-account">
               <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
             </div>` : `
             <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
+            ${activeAccount.id && activeAccount.id !== 'default' ? `
+            <button class="menu-item account-delete" data-action="delete-account" data-id="${esc(activeAccount.id)}">${icons.trash} ${esc(t('header.deleteAccountNamed', { name: activeAccount.name }))}</button>` : ''}
           </div>` : ''}
         </div>
       </div>
