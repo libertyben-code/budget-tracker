@@ -756,5 +756,5 @@ export const actions = {
     });
   },
   'load-more': () => set({ visibleCount: get().visibleCount + 100 }),
-  'open-batch-edit': () => setUi({ batchEditOpen: true, batchNewCategory: false }),
+  'open-batch-edit': () => setUi({ batchEditOpen: true, batchCategory: '' }),
 };
