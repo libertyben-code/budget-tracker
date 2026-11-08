@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { categories } from '../derive.js';
 import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
 import { loadStatus as loadBankStatus } from './bank-sync.js';
+import { todayIso } from '/shared/dates.js';
 
 const VERSION = 'v2.1.4';
 
@@ -16,16 +17,35 @@ const TABS = [
   ['savings', 'header.savings'],
 ];
 
-// Applied to the root rather than held in CSS alone: Android reads the
-// theme-color meta for the status bar and cannot resolve a CSS variable, so the
+const THEMES = [
+  ['system', 'header.matchPhone'],
+  ['light', 'header.light'],
+  ['dark', 'header.dark'],
+];
+
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+function isDark(theme) {
+  return theme === 'dark' || (theme === 'system' && darkQuery.matches);
+}
+
+// Applied to the root rather than held in CSS alone: a browser tab reads the
+// theme-color meta for its address bar and cannot resolve a CSS variable, so the
 // resolved value has to be written back after the attribute changes.
 export function applyTheme(state) {
   const root = document.documentElement;
-  root.dataset.theme = state.ui.dark ? 'dark' : 'light';
+  root.dataset.theme = isDark(state.ui.theme) ? 'dark' : 'light';
   root.dataset.accent = state.ui.accent;
   const resolved = getComputedStyle(root).getPropertyValue('--accent').trim();
   if (resolved) document.querySelector('meta[name="theme-color"]').content = resolved;
 }
+
+// Charts take their colours from CSS when drawn, so a phone switching theme needs a render too.
+darkQuery.addEventListener('change', () => {
+  if (get().ui.theme !== 'system') return;
+  applyTheme(get());
+  setUi({});
+});
 
 export function render(state, t) {
   const cats = categories(state);
@@ -45,22 +65,46 @@ export function render(state, t) {
       </div>
       <div class="account-switcher">
         <div class="dropdown">
-          <button class="btn select-btn account-btn" data-action="toggle-account-menu">
+          <button class="btn select-btn account-btn" id="account-toggle" data-action="toggle-account-menu" aria-expanded="${state.ui.accountMenuOpen}">
             <span class="account-label">${esc(t('header.account'))}</span>
             <span class="account-name">${esc(activeAccount.name)}</span>
           </button>
           ${state.ui.accountMenuOpen ? `
           <div class="dropdown-menu left" data-keep-open>
             ${state.accounts.map(a => `
-            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}" data-action="switch-account" data-id="${esc(a.id)}">
-              <span class="grow">${esc(a.name)}</span>
-              ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
-              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}">${icons.trash}</button>` : ''}
+            <div class="menu-item account-item ${a.id === state.activeAccountId ? 'active' : ''}">
+              <button class="account-switch" data-action="switch-account" data-id="${esc(a.id)}"${a.id === state.activeAccountId ? ' aria-current="true"' : ''}>
+                <span class="grow">${esc(a.name)}</span>
+                ${a.id !== 'default' ? `<span class="badge">${a.txCount}</span>` : ''}
+              </button>
+              ${a.id !== 'default' ? `<button class="icon-btn danger" data-action="delete-account" data-id="${esc(a.id)}" title="${esc(t('header.deleteAccountTitle'))}" aria-label="${esc(t('header.deleteAccountNamed', { name: a.name }))}">${icons.trash}</button>` : ''}
             </div>`).join('')}
             <div class="menu-sep"></div>
+            ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
+            <div role="group" aria-labelledby="balance-form-title">
+              <div class="menu-heading" id="balance-form-title">${esc(t('header.balanceOf', { name: activeAccount.name }))}</div>
+              <div class="account-add">
+                <div class="field grow">
+                  <label for="opening-balance">${esc(t('header.balanceAmount'))}</label>
+                  <input id="opening-balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00"
+                         value="${esc(activeAccount.openingBalance ?? '')}" data-action-key="save-balance">
+                </div>
+              </div>
+              <div class="account-add">
+                <div class="field grow">
+                  <label for="opening-balance-date">${esc(t('header.balanceAsOf'))}</label>
+                  <input id="opening-balance-date" type="date" value="${esc(activeAccount.openingBalanceDate || todayIso())}" data-action-key="save-balance">
+                </div>
+              </div>
+              <div class="account-add">
+                <button class="btn small grow" data-action="cancel-balance">${esc(t('common.cancel'))}</button>
+                <button class="btn small primary grow" data-action="save-balance">${esc(t('common.save'))}</button>
+              </div>
+            </div>` : `
+            <button class="menu-item" data-action="open-balance-form">${esc(t('header.setBalance'))}</button>`}
             ${state.addingAccount ? `
             <div class="account-add">
-              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" data-action-key="create-account">
+              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" aria-label="${esc(t('header.accountName'))}" data-action-key="create-account">
               <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
             </div>` : `
             <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
@@ -68,33 +112,48 @@ export function render(state, t) {
         </div>
       </div>
       <div class="dropdown">
-        <button class="icon-btn" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}">${icons.gear}</button>
+        <button class="icon-btn" id="settings-toggle" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}" aria-expanded="${state.ui.settingsOpen}">${icons.gear}</button>
         ${state.ui.settingsOpen ? `
         <div class="dropdown-menu" data-keep-open>
-          <label class="menu-item" style="cursor:pointer">
-            ${icons.import} ${esc(t('header.importCsv'))}
-            <input type="file" accept=".csv" data-action-change="import-csv" hidden>
-          </label>
-          <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
-          <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
-          <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
-          ${state.ui.bankStatus?.configured && state.ui.bankStatus.connections.length ? `
-          <button class="menu-item" data-action="bank-sync" ${state.ui.bankBusy ? 'disabled' : ''}>${icons.repeat} ${esc(t(state.ui.bankBusy ? 'bank.syncing' : 'header.syncAllAccounts'))}</button>` : ''}
-          <div class="menu-sep"></div>
-          <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
-          <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
-          <div class="menu-sep"></div>
-          <button class="menu-item" data-action="toggle-dark">${state.ui.dark ? icons.sun : icons.moon} ${esc(t('header.appearance'))}: ${esc(t(state.ui.dark ? 'header.dark' : 'header.light'))}</button>
-          <div class="menu-item accent-row">
-            ${icons.palette}
-            <span class="grow">${esc(t('header.accentColor'))}</span>
-            <span class="accent-swatches">
-              ${ACCENTS.map(a => `
-              <button class="accent-swatch ${state.ui.accent === a ? 'active' : ''}" data-accent="${a}" data-action="set-accent"
-                      title="${esc(t(`header.accent.${a}`))}" aria-label="${esc(t(`header.accent.${a}`))}"></button>`).join('')}
-            </span>
+          <div role="group" aria-labelledby="menu-group-data">
+            <div class="menu-heading" id="menu-group-data">${esc(t('header.groupData'))}</div>
+            <button class="menu-item" data-action="pick-csv">${icons.import} ${esc(t('header.importCsv'))}</button>
+            <input type="file" id="import-csv-file" accept=".csv" data-action-change="import-csv" hidden>
+            <button class="menu-item" data-action="export-csv" ${state.transactions.length === 0 ? 'disabled' : ''}>${icons.export} ${esc(t('header.exportCsv'))}</button>
+            <button class="menu-item" data-action="open-bank-sync">${icons.bank} ${esc(t('header.bankSync'))}</button>
+            ${state.ui.bankStatus?.configured && state.ui.bankStatus.connections.length ? `
+            <button class="menu-item" data-action="bank-sync" ${state.ui.bankBusy ? 'disabled' : ''}>${icons.repeat} ${esc(t(state.ui.bankBusy ? 'bank.syncing' : 'header.syncAllAccounts'))}</button>` : ''}
+            <button class="menu-item" data-action="auto-categorize">${icons.sparkles} ${esc(t('header.autoCategorize'))}</button>
           </div>
-          <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-group-organise">
+            <div class="menu-heading" id="menu-group-organise">${esc(t('header.groupOrganise'))}</div>
+            <button class="menu-item" data-action="open-rules">${icons.tag} ${esc(t('header.categoryRules', { count: state.rules.length }))}</button>
+            <button class="menu-item" data-action="open-category-manager">${icons.folder} ${esc(t('header.manageCategories', { count: cats.length }))}</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-group-preferences">
+            <div class="menu-heading" id="menu-group-preferences">${esc(t('header.groupPreferences'))}</div>
+            <div class="menu-item theme-row">
+              ${isDark(state.ui.theme) ? icons.moon : icons.sun}
+              <span class="grow" id="theme-label">${esc(t('header.appearance'))}</span>
+              <div class="seg theme-seg" role="group" aria-labelledby="theme-label">
+                ${THEMES.map(([value, key]) => `
+                <button id="theme-${value}" class="${state.ui.theme === value ? 'active' : ''}" data-action="set-theme" data-value="${value}"
+                        aria-pressed="${state.ui.theme === value}">${esc(t(key))}</button>`).join('')}
+              </div>
+            </div>
+            <div class="menu-item accent-row">
+              ${icons.palette}
+              <span class="grow">${esc(t('header.accentColor'))}</span>
+              <span class="accent-swatches">
+                ${ACCENTS.map(a => `
+                <button class="accent-swatch ${state.ui.accent === a ? 'active' : ''}" data-accent="${a}" data-action="set-accent"
+                        title="${esc(t(`header.accent.${a}`))}" aria-label="${esc(t(`header.accent.${a}`))}"></button>`).join('')}
+              </span>
+            </div>
+            <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
+          </div>
         </div>` : ''}
       </div>
     </div>
@@ -103,11 +162,11 @@ export function render(state, t) {
   ${importErrors ? `
   <div class="banner warning" style="margin:12px 16px 0">
     <div class="grow">
-      <strong>${esc(t('header.importWarning', { count: importErrors.count, suffix: importErrors.count > 1 ? 's' : '' }))}</strong>
+      <strong>${esc(t(importErrors.count === 1 ? 'header.importWarningOne' : 'header.importWarning', { count: importErrors.count }))}</strong>
       <div>${esc(t('header.importWarningDesc'))}</div>
       <div>${esc(t('header.lines', { lines: shownLines }))}${importErrors.lines.length > 20 ? esc(t('header.andMore', { count: importErrors.lines.length - 20 })) : ''}</div>
     </div>
-    <button class="icon-btn" data-action="dismiss-import-errors">✕</button>
+    <button class="icon-btn" data-action="dismiss-import-errors" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
   </div>` : ''}`;
 }
 
@@ -124,12 +183,13 @@ export function renderNav(state, t) {
 }
 
 export const actions = {
-  'toggle-dark': () => {
-    const dark = !get().ui.dark;
-    localStorage.setItem('darkMode', String(dark));
-    setUi({ dark });
+  'set-theme': (el) => {
+    const theme = el.dataset.value;
+    localStorage.setItem('theme', theme);
+    setUi({ theme });
     applyTheme(get());
   },
+  'pick-csv': () => document.getElementById('import-csv-file').click(),
   'set-accent': (el) => {
     const accent = el.dataset.accent;
     localStorage.setItem('accent', accent);
@@ -149,7 +209,22 @@ export const actions = {
   'toggle-account-menu': () => {
     const open = get().ui.accountMenuOpen;
     if (open) set({ addingAccount: false });
-    setUi({ accountMenuOpen: !open, settingsOpen: false });
+    setUi({ accountMenuOpen: !open, settingsOpen: false, balanceFormOpen: false });
+  },
+  'open-balance-form': () => {
+    setUi({ balanceFormOpen: true });
+    document.getElementById('opening-balance').focus();
+  },
+  'cancel-balance': () => setUi({ balanceFormOpen: false }),
+  'save-balance': async (el, ev, t) => {
+    const amount = document.getElementById('opening-balance').value.trim();
+    const date = document.getElementById('opening-balance-date').value;
+    if (amount === '' || !Number.isFinite(Number(amount)) || !date) return toast(t('header.balanceInvalid'));
+    const state = get();
+    const account = await api.patchAccountSettings(state.activeAccountId, { openingBalance: Number(amount), openingBalanceDate: date });
+    setUi({ accountMenuOpen: false, balanceFormOpen: false });
+    set({ accounts: state.accounts.map(a => a.id === account.id ? account : a) });
+    toast(t('header.balanceSaved'), { type: 'success' });
   },
   'nav': (el) => {
     location.hash = `#/${el.dataset.tab}`;
@@ -182,7 +257,7 @@ export const actions = {
     set({ accounts: state.accounts.filter(a => a.id !== el.dataset.id) });
     await loadAccount('default');
   },
-  'import-csv': async (el) => {
+  'import-csv': async (el, ev, t) => {
     const file = el.files[0];
     if (!file) return;
     const text = await file.text();
@@ -193,7 +268,9 @@ export const actions = {
       settingsOpen: false,
       importErrors: result.failedLines.length > 0 ? { count: result.failedLines.length, lines: result.failedLines } : null,
     });
-    toast(createImportMessage(result));
+    toast(t('header.importResult', { imported: result.imported, skipped: result.skippedDuplicates }), {
+      type: result.failedLines.length > 0 ? 'info' : 'success',
+    });
     await loadAccount(state.activeAccountId);
     await refreshBootstrap();
   },
@@ -210,7 +287,7 @@ export const actions = {
     const { updated } = await api.autocategorize(state.activeAccountId);
     setUi({ settingsOpen: false });
     await loadAccount(state.activeAccountId);
-    toast(t('header.applyRulesResult', { count: updated }));
+    toast(t('header.applyRulesResult', { count: updated }), { type: 'success' });
   },
   'open-rules': () => setUi({ settingsOpen: false, panel: 'rules', ruleSelection: new Set(), rulesFilter: '' }),
   // counts span every account, so they are re-read rather than derived from this one's transactions
@@ -220,7 +297,3 @@ export const actions = {
   },
   'dismiss-import-errors': () => setUi({ importErrors: null }),
 };
-
-function createImportMessage(result) {
-  return `Imported ${result.imported}, skipped ${result.skippedDuplicates} duplicate(s)`;
-}

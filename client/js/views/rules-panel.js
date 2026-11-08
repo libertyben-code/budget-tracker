@@ -1,4 +1,4 @@
-import { esc, icons, checkPill, confirmDialog } from '../dom.js';
+import { esc, icons, checkPill, confirmDialog, resetFields, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -14,29 +14,29 @@ export function render(state, t) {
 
   return `
   <div class="modal-backdrop" data-action="close-panel" data-self-only>
-    <div class="modal">
+    <div class="modal" id="rules-panel" role="dialog" aria-modal="true" aria-labelledby="rules-title" tabindex="-1">
       <div class="modal-head">
-        <h2 style="margin:0">${esc(t('categoryRules.title'))}</h2>
-        <button class="icon-btn" data-action="close-panel">✕</button>
+        <h2 id="rules-title" style="margin:0">${esc(t('categoryRules.title'))}</h2>
+        <button class="icon-btn" data-action="close-panel" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
       </div>
       <p class="muted">${esc(t('categoryRules.subtitle'))}</p>
       <div class="row" style="margin-bottom:12px">
-        <input id="rule-pattern" class="grow" placeholder="${esc(t('categoryRules.patternPlaceholder'))}">
-        <input id="rule-category" class="grow" list="rule-cat-list" placeholder="${esc(t('categoryRules.categoryPlaceholder'))}">
+        <input id="rule-pattern" class="grow" placeholder="${esc(t('categoryRules.patternPlaceholder'))}" aria-label="${esc(t('categoryRules.patternPlaceholder'))}">
+        <input id="rule-category" class="grow" list="rule-cat-list" placeholder="${esc(t('categoryRules.categoryPlaceholder'))}" aria-label="${esc(t('categoryRules.categoryPlaceholder'))}">
         <datalist id="rule-cat-list">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
         <button class="btn primary" data-action="add-rule">${esc(t('categoryRules.addRule'))}</button>
       </div>
       <div class="row" style="margin-bottom:8px">
-        <label class="muted">${esc(t('categoryRules.filterByCategory'))}</label>
-        <select data-action-change="rules-filter">
+        <label class="muted" for="rules-filter">${esc(t('categoryRules.filterByCategory'))}</label>
+        <select id="rules-filter" data-action-change="rules-filter">
           <option value="">${esc(t('categoryRules.allCategories'))}</option>
-          ${ruleCats.map(c => `<option value="${esc(c)}" ${filter === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          ${ruleCats.map(c => `<option value="${esc(c)}" ${filter === c ? 'selected' : ''}>${esc(categoryName(c, t))}</option>`).join('')}
         </select>
         <span style="margin-left:auto">${checkPill({ on: allSelected, action: 'rules-select-all', label: t('common.all') })}</span>
       </div>
       ${selection.size > 0 ? `
       <div class="selection-bar">
-        <span class="grow">${esc(t('categoryRules.selectedRules', { count: selection.size, suffix: selection.size > 1 ? 's' : '' }))}</span>
+        <span class="grow">${esc(t(selection.size === 1 ? 'categoryRules.selectedRulesOne' : 'categoryRules.selectedRules', { count: selection.size }))}</span>
         <button class="btn small primary" data-action="open-rule-batch">${esc(t('categoryRules.changeCategory'))}</button>
         <button class="btn small danger" data-action="delete-selected-rules">${esc(t('common.delete'))}</button>
       </div>` : ''}
@@ -44,7 +44,7 @@ export function render(state, t) {
       <div class="card" style="margin-bottom:12px">
         <h3>${esc(t('categoryRules.batchTitle', { count: selection.size }))}</h3>
         <div class="row">
-          <input id="rule-batch-cat" class="grow" list="rule-cat-list" placeholder="${esc(t('categoryRules.enterCategoryName'))}">
+          <input id="rule-batch-cat" class="grow" list="rule-cat-list" placeholder="${esc(t('categoryRules.enterCategoryName'))}" aria-label="${esc(t('categoryRules.enterCategoryName'))}">
           <button class="btn primary" data-action="apply-rule-batch">${esc(t('categoryRules.applyToRules', { count: selection.size }))}</button>
           <button class="btn" data-action="close-rule-batch">${esc(t('common.cancel'))}</button>
         </div>
@@ -57,8 +57,8 @@ export function render(state, t) {
             <span class="check-box">${icons.check}</span>
           </button>
           <span class="grow">${esc(r.pattern)}</span>
-          <span class="chip">${esc(r.category)}</span>
-          <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}">${icons.trash}</button>
+          <span class="chip">${esc(categoryName(r.category, t))}</span>
+          <button class="icon-btn danger" data-action="delete-rule" data-pattern="${esc(r.pattern)}" title="${esc(t('categoryRules.deleteRule', { pattern: r.pattern }))}" aria-label="${esc(t('categoryRules.deleteRule', { pattern: r.pattern }))}">${icons.trash}</button>
         </div>`).join('') || `<p class="muted">—</p>`}
       </div>
     </div>
@@ -72,6 +72,7 @@ export const actions = {
     const category = document.getElementById('rule-category')?.value.trim();
     if (!pattern || !category) return;
     const rule = await api.addRule(pattern, category);
+    resetFields('rule-pattern', 'rule-category');
     const rules = get().rules.filter(r => r.pattern !== rule.pattern);
     set({ rules: [...rules, rule] });
   },
@@ -90,13 +91,19 @@ export const actions = {
     const allSelected = rules.length > 0 && rules.every(r => state.ui.ruleSelection.has(r.pattern));
     setUi({ ruleSelection: allSelected ? new Set() : new Set(rules.map(r => r.pattern)) });
   },
-  'delete-rule': async (el) => {
-    await api.deleteRules([el.dataset.pattern]);
+  'delete-rule': async (el, ev, t) => {
+    const pattern = el.dataset.pattern;
+    if (!(await confirmDialog(t('categoryRules.confirmDeleteOne', { pattern }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
+    await api.deleteRules([pattern]);
     const state = get();
+    const shown = [...document.querySelectorAll('#rules-panel [data-action="delete-rule"]')];
+    const at = shown.findIndex(button => button.dataset.pattern === pattern);
+    const next = (shown[at + 1] || shown[at - 1])?.dataset.pattern;
     const selection = new Set(state.ui.ruleSelection);
-    selection.delete(el.dataset.pattern);
+    selection.delete(pattern);
     state.ui.ruleSelection = selection;
-    set({ rules: state.rules.filter(r => r.pattern !== el.dataset.pattern) });
+    set({ rules: state.rules.filter(r => r.pattern !== pattern) });
+    [...document.querySelectorAll('#rules-panel [data-action="delete-rule"]')].find(button => button.dataset.pattern === next)?.focus();
   },
   'delete-selected-rules': async (el, ev, t) => {
     const state = get();

@@ -7,14 +7,37 @@ import { isoToDisplay, todayIso } from '../../../shared/dates.js';
 const txColumns = 'id, account_id AS accountId, date, description, category, amount, type, state, source';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// A budget account fed by enabled bank accounts takes the sum of their last bank balances,
+// dated by the oldest; one that has never been read leaves the balance unknown. Otherwise an
+// opening balance plus every row from its date on.
 function accountRow(db, id) {
   const row = db.prepare(`
-    SELECT a.id, a.name, a.salary_person1 AS salaryPerson1, a.salary_person2 AS salaryPerson2,
-           a.joint_target_amount AS jointTargetAmount,
+    SELECT a.id, a.name, a.currency, a.opening_balance AS openingBalance, a.opening_balance_date AS openingBalanceDate,
            (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS txCount
     FROM accounts a WHERE a.id = ?
   `).get(id);
-  return row;
+  const bank = db.prepare(`
+    SELECT COUNT(*) AS feeds, COUNT(balance) AS known, SUM(balance) AS total, MIN(balance_date) AS asOf
+    FROM bank_accounts WHERE account_id = ? AND enabled = 1
+  `).get(id);
+  if (bank.feeds) {
+    const complete = bank.known === bank.feeds;
+    return { ...row, balance: complete ? round2(bank.total) : null, balanceAsOf: complete ? bank.asOf : null, balanceSource: 'bank' };
+  }
+  if (row.openingBalanceDate) {
+    const since = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total, MAX(date) AS last FROM transactions WHERE account_id = ? AND date >= ?')
+      .get(id, row.openingBalanceDate);
+    const asOf = since.last && since.last > row.openingBalanceDate ? since.last : row.openingBalanceDate;
+    return { ...row, balance: round2(row.openingBalance + since.total), balanceAsOf: asOf, balanceSource: 'manual' };
+  }
+  return { ...row, balance: null, balanceAsOf: null, balanceSource: null };
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && ISO_DATE.test(value)
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 }
 
 // one list for every budget account: what their transactions use plus the custom ones,
@@ -27,6 +50,14 @@ function categoryList(db) {
     ) GROUP BY name ORDER BY name
   `).all();
 }
+
+function jointSettings(db) {
+  return JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value);
+}
+
+const JOINT_AMOUNTS = ['wanted', 'salary1', 'salary2'];
+const JOINT_NAMES = ['name1', 'name2'];
+const MAX_NAME_LENGTH = 40;
 
 function allRules(db) {
   return db.prepare('SELECT pattern, category FROM category_rules ORDER BY id').all();
@@ -116,8 +147,6 @@ function applyDueRecurring(db) {
   })();
 }
 
-const round2 = (n) => Math.round(n * 100) / 100;
-
 // A category-fed savings account: every budget account's transactions in that category are its
 // movements — a debit is a deposit, a credit a withdrawal — on top of the stored opening balance.
 function fedMovements(db, category) {
@@ -172,7 +201,29 @@ export function createApiRouter(db) {
   router.get('/bootstrap', (req, res) => {
     const accounts = db.prepare('SELECT id FROM accounts ORDER BY created_at').all()
       .map(a => accountRow(db, a.id));
-    res.json({ accounts, rules: allRules(db) });
+    res.json({ accounts, rules: allRules(db), joint: jointSettings(db) });
+  });
+
+  // '' or null clears an amount
+  router.patch('/settings/joint', (req, res) => {
+    const joint = jointSettings(db);
+    for (const [key, value] of Object.entries(req.body)) {
+      if (JOINT_AMOUNTS.includes(key)) {
+        const amount = value === '' || value === null ? null : Number(value);
+        const valid = amount === null || ((typeof value === 'number' || typeof value === 'string') && Number.isFinite(amount) && amount >= 0);
+        if (!valid) return res.status(400).json({ error: `${key} must be an amount of 0 or more` });
+        joint[key] = amount;
+      } else if (JOINT_NAMES.includes(key)) {
+        if (typeof value !== 'string' || value.trim().length > MAX_NAME_LENGTH) {
+          return res.status(400).json({ error: `${key} must be text of at most ${MAX_NAME_LENGTH} characters` });
+        }
+        joint[key] = value.trim();
+      } else {
+        return res.status(400).json({ error: `Unknown setting: ${key}` });
+      }
+    }
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'joint'").run(JSON.stringify(joint));
+    res.json(joint);
   });
 
   // --- Accounts ---
@@ -187,24 +238,37 @@ export function createApiRouter(db) {
   router.post('/accounts', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Name required' });
+    const currency = req.body.currency === undefined ? 'EUR' : String(req.body.currency).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({ error: 'currency must be a three-letter code' });
     const id = `account_${randomUUID()}`;
-    db.prepare('INSERT INTO accounts (id, name) VALUES (?, ?)').run(id, name);
+    db.prepare('INSERT INTO accounts (id, name, currency) VALUES (?, ?, ?)').run(id, name, currency);
     res.status(201).json(accountRow(db, id));
   });
 
+  // '' or null clears a field; the amount and its date are set or cleared together
   router.patch('/accounts/:id/settings', requireAccount, (req, res) => {
-    const { salaryPerson1, salaryPerson2, jointTargetAmount, name } = req.body;
-    const current = accountRow(db, req.params.id);
-    db.prepare(`
-      UPDATE accounts SET salary_person1 = ?, salary_person2 = ?, joint_target_amount = ?, name = ?
-      WHERE id = ?
-    `).run(
-      salaryPerson1 ?? current.salaryPerson1,
-      salaryPerson2 ?? current.salaryPerson2,
-      jointTargetAmount ?? current.jointTargetAmount,
-      req.params.id === 'default' ? current.name : (name ?? current.name),
-      req.params.id
-    );
+    const current = db.prepare('SELECT opening_balance AS openingBalance, opening_balance_date AS openingBalanceDate FROM accounts WHERE id = ?')
+      .get(req.params.id);
+    const next = { ...current };
+    for (const [key, value] of Object.entries(req.body)) {
+      const cleared = value === '' || value === null;
+      if (key === 'openingBalance') {
+        const amount = Number(value);
+        const valid = cleared || ((typeof value === 'number' || typeof value === 'string') && Number.isFinite(amount));
+        if (!valid) return res.status(400).json({ error: 'openingBalance must be an amount' });
+        next.openingBalance = cleared ? null : round2(amount);
+      } else if (key === 'openingBalanceDate') {
+        if (!cleared && !isIsoDate(value)) return res.status(400).json({ error: 'openingBalanceDate must be YYYY-MM-DD' });
+        next.openingBalanceDate = cleared ? null : value;
+      } else {
+        return res.status(400).json({ error: `Unknown setting: ${key}` });
+      }
+    }
+    if ((next.openingBalance === null) !== (next.openingBalanceDate === null)) {
+      return res.status(400).json({ error: 'openingBalance and openingBalanceDate are set together' });
+    }
+    db.prepare('UPDATE accounts SET opening_balance = ?, opening_balance_date = ? WHERE id = ?')
+      .run(next.openingBalance, next.openingBalanceDate, req.params.id);
     res.json(accountRow(db, req.params.id));
   });
 
@@ -219,18 +283,20 @@ export function createApiRouter(db) {
   // --- Transactions ---
 
   router.post('/accounts/:id/transactions', requireAccount, (req, res) => {
-    const { date, description = '', category = 'Uncategorized', amount = 0, type = '', state = 'COMPLETED' } = req.body;
+    const { date, description, category = 'Uncategorized', amount, type = '', state = 'COMPLETED' } = req.body;
     if (date && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount);
+    if (!Number.isFinite(amountNum) || amountNum === 0) return res.status(400).json({ error: 'amount must be a non-zero number' });
+    if (typeof description !== 'string' || !description.trim()) return res.status(400).json({ error: 'description must not be empty' });
     const info = db.prepare(`
       INSERT INTO transactions (account_id, date, description, category, amount, type, state, source)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')
     `).run(
       req.params.id,
       String(date || todayIso()),
-      String(description ?? ''),
+      description.trim(),
       String(category ?? 'Uncategorized'),
-      Number.isFinite(amountNum) ? amountNum : 0,
+      amountNum,
       String(type ?? ''),
       String(state ?? 'COMPLETED')
     );
@@ -245,11 +311,13 @@ export function createApiRouter(db) {
     const { date, description, category, amount, learnRule } = req.body;
     if (date != null && !ISO_DATE.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const amountNum = Number(amount ?? current.amount);
+    if (amount != null && (!Number.isFinite(amountNum) || amountNum === 0)) return res.status(400).json({ error: 'amount must be a non-zero number' });
+    if (description != null && (typeof description !== 'string' || !description.trim())) return res.status(400).json({ error: 'description must not be empty' });
     const next = {
       date: String(date ?? current.date),
-      description: String(description ?? current.description),
+      description: description != null ? description.trim() : current.description,
       category: String(category ?? current.category),
-      amount: Number.isFinite(amountNum) ? amountNum : current.amount,
+      amount: amountNum,
     };
     db.prepare(`
       UPDATE transactions SET date = ?, description = ?, category = ?, amount = ?, updated_at = datetime('now')
@@ -257,6 +325,7 @@ export function createApiRouter(db) {
     `).run(next.date, next.description, next.category, next.amount, req.params.txId, req.params.id);
 
     let rule = null;
+    let applied = null;
     if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
       const pattern = next.description.toLowerCase().trim();
       db.prepare(`
@@ -264,10 +333,35 @@ export function createApiRouter(db) {
         ON CONFLICT(pattern) DO UPDATE SET category = excluded.category
       `).run(pattern, next.category);
       rule = { pattern, category: next.category };
+
+      const matches = db.prepare("SELECT id, description FROM transactions WHERE category = 'Uncategorized'").all()
+        .filter(t => autoCategorize(t.description, [rule]) === rule.category);
+      const update = db.prepare("UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE id = ?");
+      db.transaction(() => {
+        for (const t of matches) update.run(rule.category, t.id);
+      })();
+      applied = { count: matches.length, ids: matches.map(t => t.id) };
     }
 
     const tx = db.prepare(`SELECT ${txColumns} FROM transactions WHERE id = ?`).get(req.params.txId);
-    res.json({ transaction: tx, rule });
+    res.json({ transaction: tx, rule, applied });
+  });
+
+  // undoes the rows a learned rule just applied to, unless they were changed since
+  router.post('/transactions/uncategorize', (req, res) => {
+    const { ids, category } = req.body;
+    if (!Array.isArray(ids) || !ids.every(Number.isInteger) || typeof category !== 'string') {
+      return res.status(400).json({ error: 'ids and category required' });
+    }
+    const revert = db.prepare(`
+      UPDATE transactions SET category = 'Uncategorized', updated_at = datetime('now')
+      WHERE id = ? AND category = ?
+    `);
+    let reverted = 0;
+    db.transaction(() => {
+      for (const id of ids) reverted += revert.run(id, category).changes;
+    })();
+    res.json({ reverted });
   });
 
   router.delete('/accounts/:id/transactions/:txId', requireAccount, (req, res) => {
@@ -504,32 +598,40 @@ export function createApiRouter(db) {
     if (!['deposit', 'withdrawal'].includes(type) || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: 'type deposit|withdrawal and positive amount required' });
     }
-    if (db.prepare('SELECT category FROM savings_accounts WHERE id = ?').get(req.params.sid)?.category) {
-      return res.status(400).json({ error: 'This savings account is fed by a category' });
+    const account = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    if (!account) return res.status(404).json({ error: 'Savings account not found' });
+    if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
+    // refused rather than clamped at 0, so removing the entry later puts back exactly what it took
+    if (type === 'withdrawal' && value > account.balance) {
+      return res.status(400).json({ error: 'Withdrawal is larger than the balance' });
     }
-    let result = null;
+    const balance = round2(account.balance + (type === 'deposit' ? value : -value));
+    const entry = { id: `tx_${randomUUID()}`, date: todayIso(), type, amount: value, timestamp: Date.now() };
     db.transaction(() => {
-      const account = db.prepare('SELECT id, name, balance FROM savings_accounts WHERE id = ?').get(req.params.sid);
-      if (!account) return;
-      const newBalance = type === 'deposit'
-        ? account.balance + value
-        : Math.max(0, account.balance - value);
-      db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?')
-        .run(Number(newBalance.toFixed(2)), account.id);
-      const entry = {
-        id: `tx_${randomUUID()}`,
-        date: todayIso(),
-        type,
-        amount: value,
-        timestamp: Date.now(),
-      };
+      db.prepare('UPDATE savings_accounts SET balance = ? WHERE id = ?').run(balance, account.id);
       db.prepare(
         'INSERT INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
       ).run(entry.id, account.id, entry.date, entry.type, entry.amount, entry.timestamp);
-      result = { account: { ...account, balance: Number(newBalance.toFixed(2)) }, entry };
     })();
-    if (!result) return res.status(404).json({ error: 'Savings account not found' });
-    res.json(result);
+    res.json({ account: { ...account, balance }, entry });
+  });
+
+  // Manual entries only: a fed account's history is derived from transactions, and a bank entry
+  // would be fetched again on the next sync, which also resets the balance.
+  router.delete('/savings/:sid/history/:hid', (req, res) => {
+    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    if (!account) return res.status(404).json({ error: 'Savings account not found' });
+    if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
+    const entry = db.prepare('SELECT id, type, amount FROM savings_history WHERE id = ? AND savings_account_id = ?')
+      .get(req.params.hid, account.id);
+    if (!entry) return res.status(404).json({ error: 'History entry not found' });
+    if (entry.id.startsWith('bank_')) return res.status(400).json({ error: 'This entry comes from the bank' });
+    db.transaction(() => {
+      db.prepare('DELETE FROM savings_history WHERE id = ?').run(entry.id);
+      db.prepare('UPDATE savings_accounts SET balance = MAX(0, ROUND(balance + ?, 2)) WHERE id = ?')
+        .run(entry.type === 'deposit' ? -entry.amount : entry.amount, account.id);
+    })();
+    res.json({ account: savingsRow(db, account.id) });
   });
 
   return router;

@@ -1,14 +1,15 @@
 import { monthKey, todayIso, relativeMonthStart } from '/shared/dates.js';
 
-export function filteredTransactions(state, { ignoreTime = false } = {}) {
+export function filteredTransactions(state) {
   const { filter, sort } = state;
   const nowMonth = monthKey(todayIso());
+  const query = filter.description.toLowerCase();
+  const amountMatches = amountMatcher(filter.description);
 
   const filtered = state.transactions.filter(t => {
     if (filter.categories.length > 0 && !filter.categories.includes(t.category)) return false;
-    if (filter.description && !t.description.toLowerCase().includes(filter.description.toLowerCase())) return false;
+    if (query && !t.description.toLowerCase().includes(query) && !amountMatches?.(t.amount)) return false;
     if (filter.categorySearch && !t.category.toLowerCase().includes(filter.categorySearch.toLowerCase())) return false;
-    if (ignoreTime) return true;
 
     const txMonth = monthKey(t.date);
     if (filter.currentMonth && txMonth !== nowMonth) return false;
@@ -17,9 +18,7 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
       if (t.date.slice(0, 4) !== filter.year) return false;
     } else if (filter.dateFilterType === 'month' && filter.month) {
       if (filter.month === '__last_month__') {
-        const now = new Date();
-        const last = monthKey(`${new Date(now.getFullYear(), now.getMonth() - 1, 1).getFullYear()}-${String(new Date(now.getFullYear(), now.getMonth() - 1, 1).getMonth() + 1).padStart(2, '0')}-01`);
-        if (txMonth !== last) return false;
+        if (txMonth !== addMonths(nowMonth, -1)) return false;
       } else if (filter.month === '__last_3_months__') {
         if (txMonth < monthKey(relativeMonthStart(3)) || txMonth > nowMonth) return false;
       } else if (filter.month === '__last_6_months__') {
@@ -47,6 +46,65 @@ export function filteredTransactions(state, { ignoreTime = false } = {}) {
   }
 
   return filtered;
+}
+
+// "32" finds 32.00 to 32.99 either sign; "32.5" finds 32.50 to 32.59. "32,50", "€32" and "-£32" read
+// the same, and so do amounts copied as shown: a comma before three last digits groups thousands
+// ("1,950.00"), any space does too ("1 950,00").
+function amountMatcher(text) {
+  const q = text.replace(/[\s€£$]/g, '').replace(/^[-+]/, '').replace(/,(?=\d{3}(?!\d))/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{0,2})?$/.test(q)) return null;
+  if (!q.includes('.')) return (amount) => Math.trunc(Math.abs(amount)) === Number(q);
+  return (amount) => Math.abs(amount).toFixed(2).startsWith(q);
+}
+
+export function addMonths(m, delta) {
+  const [year, month] = m.split('-').map(Number);
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function dashboardMonth(state) {
+  return state.ui.dashMonth || monthKey(todayIso());
+}
+
+export function monthTransactions(state, month) {
+  return state.transactions.filter(t => monthKey(t.date) === month);
+}
+
+export function transactionsUpTo(state, month) {
+  return state.transactions.filter(t => monthKey(t.date) <= month);
+}
+
+// A manual balance is summed here too (the server does the same) so an added or edited row
+// shows at once; accounts only reload with the account data.
+export function accountBalance(state) {
+  const account = state.accounts.find(a => a.id === state.activeAccountId);
+  if (account?.balanceSource !== 'manual') {
+    return { amount: account?.balance ?? null, asOf: account?.balanceAsOf ?? null, source: account?.balanceSource ?? null };
+  }
+  let total = account.openingBalance;
+  let asOf = account.openingBalanceDate;
+  for (const t of state.transactions) {
+    if (t.date < account.openingBalanceDate) continue;
+    total += t.amount;
+    if (t.date > asOf) asOf = t.date;
+  }
+  return { amount: Math.round(total * 100) / 100, asOf, source: 'manual' };
+}
+
+// A bootstrap cached by the service worker before accounts had a currency has none.
+export function accountCurrency(state) {
+  return state.accounts.find(a => a.id === state.activeAccountId)?.currency || 'EUR';
+}
+
+export function lastBankSync(state) {
+  return (state.ui.bankStatus?.connections || [])
+    .flatMap(c => c.accounts)
+    .filter(a => a.enabled && a.accountId === state.activeAccountId && a.lastSyncAt)
+    .map(a => a.lastSyncAt)
+    .sort()
+    .at(-1) || null;
 }
 
 export function categories(state) {
@@ -142,29 +200,14 @@ export function monthlyData(filtered) {
 }
 
 export function jointData(state) {
-  const nowMonth = monthKey(todayIso());
-  const currentMonthTx = state.transactions.filter(t => monthKey(t.date) === nowMonth);
-  const bills = currentMonthTx.filter(t => (t.category || '').toLowerCase().includes('bill'));
-  const billsTotal = bills.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-  const nonBillCount = currentMonthTx.length - bills.length;
-
-  const account = state.accounts.find(a => a.id === state.activeAccountId) || {};
-  const salary1 = parseFloat(account.salaryPerson1) || 0;
-  const salary2 = parseFloat(account.salaryPerson2) || 0;
-  const target = parseFloat(account.jointTargetAmount) || 0;
-  const totalToSplit = target > 0 ? target : billsTotal;
+  const wanted = state.joint.wanted || 0;
+  const salary1 = state.joint.salary1 || 0;
+  const salary2 = state.joint.salary2 || 0;
   const totalSalaries = salary1 + salary2;
-
   return {
-    bills,
-    billsTotal,
-    nonBillCount,
-    salary1,
-    salary2,
-    totalToSplit,
-    person1: totalSalaries > 0 ? (totalToSplit * salary1) / totalSalaries : 0,
-    person2: totalSalaries > 0 ? (totalToSplit * salary2) / totalSalaries : 0,
-    hasSalaries: totalSalaries > 0,
+    person1: totalSalaries > 0 ? (wanted * salary1) / totalSalaries : 0,
+    person2: totalSalaries > 0 ? (wanted * salary2) / totalSalaries : 0,
+    ready: wanted > 0 && totalSalaries > 0,
   };
 }
 
@@ -173,4 +216,17 @@ export function monthLabel(m, lang) {
   const date = new Date(Number(year), Number(month) - 1, 1);
   const name = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' }).format(date);
   return `${name.charAt(0).toUpperCase()}${name.slice(1).replace('.', '')}-${year.slice(-2)}`;
+}
+
+export function dayTitle(iso, lang) {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    .format(new Date(year, month - 1, day));
+}
+
+export function monthTitle(m, lang) {
+  const [year, month] = m.split('-');
+  const name = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })
+    .format(new Date(Number(year), Number(month) - 1, 1));
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 }

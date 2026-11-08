@@ -148,7 +148,7 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_recurring').get().n, 1);
   assert.equal(db.prepare("SELECT savings_account_id AS sid FROM bank_accounts WHERE id = 'b1'").get().sid, 'sav1');
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '4');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '7');
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
 
   // the rebuilt table is still the parent: deleting it cascades and unlinks as before
@@ -166,4 +166,59 @@ test('deposits in the same millisecond each get their own history entry', async 
   );
   assert.deepEqual(deposits.map(r => r.status), [200, 200, 200, 200, 200]);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 5);
+});
+
+test('removing a history entry reverts its effect on the balance', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const del = (url) => fetch(`${app.base}${url}`, { method: 'DELETE' }).then(json);
+  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 100 }))).body;
+  const deposit = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 50.25 }))).body;
+  const withdrawal = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 30 }))).body;
+  assert.equal(withdrawal.account.balance, 120.25);
+
+  const removed = await del(`/api/savings/${id}/history/${deposit.entry.id}`);
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.account, { id, name: 'Pot', balance: 70, category: null });
+  const history = (await get(app.base, '/api/savings')).body.savingsHistory[id];
+  assert.deepEqual(history.map(h => h.id), [withdrawal.entry.id]);
+
+  assert.equal((await del(`/api/savings/${id}/history/${withdrawal.entry.id}`)).body.account.balance, 100);
+  assert.deepEqual((await get(app.base, '/api/savings')).body.savingsHistory[id], []);
+  assert.equal((await del(`/api/savings/${id}/history/${withdrawal.entry.id}`)).status, 404);
+});
+
+test('a removed deposit floors the balance at 0; a withdrawal above the balance is refused', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 0 }))).body;
+  const deposit = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 80 }))).body;
+  await patch(app.base, `/api/savings/${id}`, { balance: 20 });
+
+  const refused = await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 20.01 }));
+  assert.equal(refused.status, 400);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
+
+  const removed = await fetch(`${app.base}/api/savings/${id}/history/${deposit.entry.id}`, { method: 'DELETE' }).then(json);
+  assert.equal(removed.body.account.balance, 0);
+});
+
+test('fed accounts, bank entries and other accounts\' entries cannot be removed', async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  const del = (url) => fetch(`${app.base}${url}`, { method: 'DELETE' }).then(json);
+  addTx(app.db, 'default', '2026-09-01', 'Savings', -40);
+  const fed = (await json(await post(app.base, '/api/savings', { name: 'Fed', balance: 40, category: 'Savings' }))).body.id;
+  const fedEntry = (await get(app.base, '/api/savings')).body.savingsHistory[fed][0].id;
+  assert.equal((await del(`/api/savings/${fed}/history/${fedEntry}`)).status, 400);
+
+  const a = (await json(await post(app.base, '/api/savings', { name: 'A', balance: 0 }))).body.id;
+  const b = (await json(await post(app.base, '/api/savings', { name: 'B', balance: 0 }))).body.id;
+  const entryOfA = (await json(await post(app.base, `/api/savings/${a}/transactions`, { type: 'deposit', amount: 10 }))).body.entry.id;
+  assert.equal((await del(`/api/savings/${b}/history/${entryOfA}`)).status, 404);
+  assert.equal((await del(`/api/savings/missing/history/${entryOfA}`)).status, 404);
+
+  app.db.prepare("INSERT INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES ('bank_x', ?, '2026-09-01', 'deposit', 5, 1)").run(a);
+  assert.equal((await del(`/api/savings/${a}/history/bank_x`)).status, 400);
+  assert.equal(app.db.prepare('SELECT balance FROM savings_accounts WHERE id = ?').get(a).balance, 10);
 });

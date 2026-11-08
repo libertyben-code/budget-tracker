@@ -1,9 +1,13 @@
+// Not migrated to `theme`: appearance now follows the phone unless overridden.
+localStorage.removeItem('darkMode');
+
 const state = {
   loaded: false,
   offline: false,
   accounts: [],
   activeAccountId: localStorage.getItem('activeAccountId') || 'default',
   rules: [],
+  joint: null,
   transactions: [],
   categories: [],
   savingsAccounts: [],
@@ -23,12 +27,11 @@ const state = {
   sort: { key: null, direction: 'asc' },
   selection: new Set(),
   visibleCount: 100,
-  editingId: null,
   creatingTx: false,
   addingAccount: false,
   ui: {
     tab: 'dashboard',
-    dark: localStorage.getItem('darkMode') === 'true',
+    theme: localStorage.getItem('theme') || 'system',
     accent: localStorage.getItem('accent') || 'indigo',
     lang: localStorage.getItem('language') || 'en',
     settingsOpen: false,
@@ -36,10 +39,11 @@ const state = {
     categoryDropdownOpen: null,
     chartMode: 'stacked',
     chartRange: '6m',
+    dashMonth: '',
     importErrors: null,
     panel: null,
     batchEditOpen: false,
-    batchNewCategory: false,
+    batchCategory: '',
     rulesFilter: '',
     ruleSelection: new Set(),
     ruleBatchOpen: false,

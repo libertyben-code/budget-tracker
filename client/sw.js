@@ -1,4 +1,4 @@
-const CACHE = 'bt-static-v6';
+const CACHE = 'bt-static-v7';
 
 const SHELL = [
   '/',
@@ -21,6 +21,8 @@ const SHELL = [
   '/js/views/rules-panel.js',
   '/js/views/category-manager.js',
   '/js/views/bank-sync.js',
+  '/js/views/category-picker.js',
+  '/js/views/categorise.js',
   '/js/views/dashboard.js',
   '/js/views/joint-split.js',
   '/js/views/savings.js',
@@ -55,7 +57,7 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/')) {
     if (CACHEABLE_API.some(re => re.test(url.pathname))) {
-      event.respondWith(networkFirst(event.request));
+      event.respondWith(networkFirst(event.request, null, true));
     }
     return;
   }
@@ -63,11 +65,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(event.request, url.pathname === '/' || !url.pathname.includes('.') ? '/index.html' : null));
 });
 
-async function networkFirst(request, fallbackPath) {
+async function networkFirst(request, fallbackPath, stamp) {
   const cache = await caches.open(CACHE);
   try {
     const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
+    if (response.ok) cache.put(request, stamp ? await stamped(response.clone()) : response.clone());
     return response;
   } catch {
     const cached = await cache.match(request);
@@ -78,4 +80,11 @@ async function networkFirst(request, fallbackPath) {
     }
     return Response.error();
   }
+}
+
+// The page tells a cached answer from a fresh one by this header, and shows its time.
+async function stamped(response) {
+  const headers = new Headers(response.headers);
+  headers.set('X-BT-Cached-At', new Date().toISOString());
+  return new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers });
 }

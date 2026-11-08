@@ -1,4 +1,4 @@
-import { esc } from '../dom.js';
+import { esc, categoryName } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -6,30 +6,32 @@ import { categories } from '../derive.js';
 export function render(state, t) {
   if (!state.ui.batchEditOpen) return '';
   const cats = categories(state);
+  const picked = state.ui.batchCategory;
   return `
   <div class="modal-backdrop" data-action="close-batch-edit" data-self-only>
-    <div class="modal">
+    <div class="modal" id="batch-edit" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title" tabindex="-1">
       <div class="modal-head">
-        <h2 style="margin:0">${esc(t('app.batchEditTransactions'))}</h2>
-        <button class="icon-btn" data-action="close-batch-edit">✕</button>
+        <h2 id="batch-edit-title" style="margin:0">${esc(t('app.batchEditTransactions'))}</h2>
+        <button class="icon-btn" data-action="close-batch-edit" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
       </div>
       <p class="muted">${esc(t('app.editingTransactions', { count: state.selection.size }))} — ${esc(t('app.leaveEmpty'))}</p>
       <div class="field">
-        <label>${esc(t('app.descriptionOptional'))}</label>
+        <label for="batch-desc">${esc(t('app.descriptionOptional'))}</label>
         <input id="batch-desc" placeholder="${esc(t('app.newDescriptionAll'))}">
       </div>
       <div class="field">
-        <label>${esc(t('app.categoryOptional'))}</label>
+        <label for="batch-cat">${esc(t('app.categoryOptional'))}</label>
         <select id="batch-cat" data-action-change="batch-cat-select">
           <option value="">${esc(t('app.keepExistingCategories'))}</option>
-          ${cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
-          <option value="__new__" ${state.ui.batchNewCategory ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
+          ${cats.map(c => `<option value="${esc(c)}" ${c === picked ? 'selected' : ''}>${esc(categoryName(c, t))}</option>`).join('')}
+          <option value="__new__" ${picked === '__new__' ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
         </select>
       </div>
-      ${state.ui.batchNewCategory ? `
-      <div class="field">
-        <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}">
-      </div>` : ''}
+      <div id="batch-new-cat-wrap" ${picked === '__new__' ? '' : 'hidden'}>
+        <div class="field">
+          <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}" aria-label="${esc(t('app.enterNewCategoryName'))}">
+        </div>
+      </div>
       <div class="row" style="justify-content:flex-end">
         <button class="btn" data-action="close-batch-edit">${esc(t('common.cancel'))}</button>
         <button class="btn primary" data-action="apply-batch-edit">${esc(t('app.applyChanges'))}</button>
@@ -39,11 +41,8 @@ export function render(state, t) {
 }
 
 export const actions = {
-  'close-batch-edit': () => setUi({ batchEditOpen: false, batchNewCategory: false }),
-  'batch-cat-select': (el) => {
-    const isNew = el.value === '__new__';
-    if (isNew !== get().ui.batchNewCategory) setUi({ batchNewCategory: isNew });
-  },
+  'close-batch-edit': () => setUi({ batchEditOpen: false, batchCategory: '' }),
+  'batch-cat-select': (el) => setUi({ batchCategory: el.value }),
   'apply-batch-edit': async () => {
     const state = get();
     const description = document.getElementById('batch-desc')?.value.trim();
@@ -61,7 +60,8 @@ export const actions = {
       transactions: state.transactions.map(tx =>
         state.selection.has(tx.id) ? { ...tx, ...setFields } : tx),
       selection: new Set(),
+      selecting: false,
     });
-    setUi({ batchEditOpen: false, batchNewCategory: false });
+    setUi({ batchEditOpen: false, batchCategory: '' });
   },
 };

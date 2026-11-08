@@ -36,7 +36,40 @@ function migrate(db) {
   if (db.pragma('table_info(savings_accounts)').some(c => c.name === 'account_id')) dropSavingsOwner(db);
   // v4: categories are global, so custom_categories loses account_id
   if (db.pragma('table_info(custom_categories)').some(c => c.name === 'account_id')) dropCategoryOwner(db);
-  db.prepare("UPDATE meta SET value = '4' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 4").run();
+  // v5: the joint split is one global setting; the per-account columns stay, unused
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'").get()) createSettings(db);
+  // v6: a budget account has one currency, so a bank account in another one gets its own
+  ensureColumn(db, 'accounts', 'currency', "TEXT NOT NULL DEFAULT 'EUR'");
+  // v7: real balances, from the bank for synced accounts and an opening balance for manual ones
+  ensureColumn(db, 'bank_accounts', 'balance', 'REAL');
+  ensureColumn(db, 'bank_accounts', 'balance_date', 'TEXT');
+  ensureColumn(db, 'accounts', 'opening_balance', 'REAL');
+  ensureColumn(db, 'accounts', 'opening_balance_date', 'TEXT');
+  db.prepare("UPDATE meta SET value = '7' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 7").run();
+}
+
+// The joint split starts from the budget account whose salaries were filled in, else the default.
+function createSettings(db) {
+  const source = db.prepare(`
+    SELECT salary_person1, salary_person2, joint_target_amount FROM accounts
+    ORDER BY (CAST(salary_person1 AS REAL) > 0 OR CAST(salary_person2 AS REAL) > 0) DESC, id = 'default' DESC, created_at
+    LIMIT 1
+  `).get();
+  const amount = (text) => {
+    const n = parseFloat(text);
+    return Number.isFinite(n) ? n : null;
+  };
+  const joint = {
+    wanted: amount(source.joint_target_amount),
+    salary1: amount(source.salary_person1),
+    salary2: amount(source.salary_person2),
+    name1: '',
+    name2: '',
+  };
+  db.transaction(() => {
+    db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    db.prepare("INSERT INTO settings (key, value) VALUES ('joint', ?)").run(JSON.stringify(joint));
+  })();
 }
 
 // SQLite cannot drop a column that carries a foreign key, so the table is rebuilt (create, copy,

@@ -1,3 +1,5 @@
+import { get } from './store.js';
+
 export function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -7,19 +9,31 @@ export function esc(value) {
     .replaceAll("'", '&#39;');
 }
 
-export function eur(value) {
-  return `€${Number(value || 0).toFixed(2)}`;
+const moneyFormats = new Map();
+
+// narrowSymbol: French otherwise writes the pound "£GB".
+function moneyFormat(currency, options = {}) {
+  const locale = get().ui.lang === 'fr' ? 'fr-FR' : 'en-GB';
+  const key = JSON.stringify([locale, currency, options]);
+  if (!moneyFormats.has(key)) {
+    moneyFormats.set(key, new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', ...options }));
+  }
+  return moneyFormats.get(key);
 }
 
-export function eurSigned(value) {
-  const n = Number(value || 0);
-  return `${n > 0 ? '+' : n < 0 ? '-' : ''}€${Math.abs(n).toFixed(2)}`;
+// Rounded first: a float sum like -0.0000001 would otherwise show as "-€0.00".
+export function money(value, { currency, signed = false, compact = false }) {
+  const format = moneyFormat(currency, { ...(signed && { signDisplay: 'exceptZero' }), ...(compact && { notation: 'compact' }) });
+  return format.format(Math.round(Number(value || 0) * 100) / 100 || 0);
 }
 
-export function eurSpaced(value) {
-  const fixed = Number(value || 0).toFixed(2);
-  const [int, dec] = fixed.split('.');
-  return `€${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${dec}`;
+export function currencySymbol(currency) {
+  return moneyFormat(currency).formatToParts(0).find(part => part.type === 'currency').value;
+}
+
+// The stored name stays 'Uncategorized' whatever the language.
+export function categoryName(name, t) {
+  return name === 'Uncategorized' ? t('common.uncategorized') : name;
 }
 
 export function debounce(fn, ms) {
@@ -30,26 +44,116 @@ export function debounce(fn, ms) {
   };
 }
 
-export function toast(message) {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = message;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+// render() carries typed values over to the next render, so a form that stays open after a
+// submit puts its fields back to how they were rendered. Looked up by id: a render during the
+// request may have replaced them.
+export function resetFields(...ids) {
+  for (const el of ids.map(id => document.getElementById(id))) {
+    if (el instanceof HTMLSelectElement) for (const option of el.options) option.selected = option.defaultSelected;
+    else if (el) el.value = el.defaultValue;
+  }
 }
 
-// styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop
+// A way back to an element after render() has replaced it: by id, else by its tag and data-*
+// attributes (the same match by position, as rows can be drawn twice).
+export function finder(el) {
+  if (!(el instanceof HTMLElement) || el === document.body) return () => null;
+  const id = el.id;
+  if (id) return () => (el.isConnected ? el : document.getElementById(id));
+  const attrs = [...el.attributes].filter(a => a.name.startsWith('data-'));
+  if (!attrs.length) return () => (el.isConnected ? el : null);
+  const selector = el.tagName + attrs.map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join('');
+  const index = [...document.querySelectorAll(selector)].indexOf(el);
+  return () => (el.isConnected ? el : document.querySelectorAll(selector)[index] || null);
+}
+
+// Dialogs stack in document order (#modals, then a confirm dialog on <body>). Only the topmost
+// can be reached: the page and every dialog under it are inert.
+export function syncLayers() {
+  const layers = [...document.querySelectorAll('.modal-backdrop')];
+  const top = layers.at(-1) || null;
+  for (const layer of layers) layer.inert = layer !== top;
+  document.getElementById('app').inert = Boolean(top);
+  return top;
+}
+
+function liveRegion(attrs) {
+  const el = document.createElement('div');
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+  document.body.appendChild(el);
+  return el;
+}
+
+// A live region is only announced when its content changes after it is in the page, so both
+// exist from load, outside the re-rendered roots, and each toast goes into the one for its type.
+const toastRegions = {
+  polite: liveRegion({ role: 'status', 'aria-live': 'polite' }),
+  alert: liveRegion({ role: 'alert' }),
+};
+let dismissCurrentToast = () => {};
+
+// type: 'error' (default) | 'success' | 'info'. action: { label, onClick } adds a button.
+// onExpire runs when the toast runs out or the next toast replaces it, not after its action or
+// the returned dismiss().
+export function toast(message, { type = 'error', action, onExpire } = {}) {
+  dismissCurrentToast();
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  if (type === 'success') el.insertAdjacentHTML('beforeend', icons.check);
+  const text = document.createElement('span');
+  text.textContent = message;
+  el.appendChild(text);
+
+  let timer;
+  let open = true;
+  const dismiss = () => {
+    const wasOpen = open;
+    open = false;
+    clearTimeout(timer);
+    el.remove();
+    return wasOpen;
+  };
+  const expire = () => { if (dismiss()) onExpire?.(); };
+  const arm = () => { timer = setTimeout(expire, action ? 6000 : 3500); };
+  if (action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      dismiss();
+      Promise.resolve().then(action.onClick).catch(err => toast(err.message || 'Error'));
+    });
+    el.appendChild(button);
+    el.addEventListener('focusin', () => clearTimeout(timer));
+    el.addEventListener('focusout', arm);
+  }
+  (type === 'error' ? toastRegions.alert : toastRegions.polite).appendChild(el);
+  dismissCurrentToast = expire;
+  arm();
+  return dismiss;
+}
+
+// styled replacement for window.confirm — resolves true on confirm, false on cancel/escape/backdrop.
+// Escape and the focus trap are app.js's: it treats this like any other dialog.
 export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, title } = {}) {
   return new Promise((resolve) => {
+    const opener = finder(document.activeElement);
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
+    // Not a tap outside the menu it was opened from: that menu stays open behind it.
+    backdrop.dataset.keepOpen = '';
     const modal = document.createElement('div');
     modal.className = 'modal confirm-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.tabIndex = -1;
 
     if (title) {
       const head = document.createElement('div');
       head.className = 'modal-head';
       const h = document.createElement('h2');
+      h.id = 'confirm-title';
       h.style.margin = '0';
       h.textContent = title;
       head.appendChild(h);
@@ -57,9 +161,12 @@ export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Can
     }
 
     const body = document.createElement('p');
+    body.id = 'confirm-message';
     body.className = 'confirm-message';
     body.textContent = message;
     modal.appendChild(body);
+    modal.setAttribute('aria-labelledby', title ? 'confirm-title' : 'confirm-message');
+    if (title) modal.setAttribute('aria-describedby', 'confirm-message');
 
     const row = document.createElement('div');
     row.className = 'row';
@@ -75,18 +182,15 @@ export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Can
 
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
+    syncLayers();
     confirmBtn.focus();
 
     const close = (result) => {
-      document.removeEventListener('keydown', onKey, true);
       backdrop.remove();
+      syncLayers();
+      opener()?.focus();
       resolve(result);
     };
-    const onKey = (ev) => {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(false); }
-      else if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); close(true); }
-    };
-    document.addEventListener('keydown', onKey, true);
     cancelBtn.addEventListener('click', () => close(false));
     confirmBtn.addEventListener('click', () => close(true));
     backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) close(false); });

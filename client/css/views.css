@@ -46,15 +46,19 @@
 .account-btn {
   max-width: 100%;
   min-height: 40px;
-  padding: 5px 34px 5px 14px;
   border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 600;
   background-color: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent-strong);
-  background-position: right 12px center;
-  background-size: 15px;
+}
+/* .btn.select-btn out-ranks a bare .account-btn, so the pill's own box is set at its specificity.
+   "Main Account" needs ~90px of the ~127px the row leaves the pill at 375px. */
+.btn.account-btn {
+  padding: 5px 24px 5px 12px;
+  background-position: right 8px center;
+  background-size: 12px;
 }
 .account-btn:hover { border-color: var(--accent-strong); }
 /* Desktop only — on a phone the row needs these ~75px for the account name. */
@@ -85,9 +89,10 @@
   transform: translateX(-50%);
   max-width: calc(100vw - 24px);
 }
-.account-item { cursor: pointer; }
+.account-item { padding: 0; }
 .account-item.active { background: var(--accent-soft); color: var(--accent-strong); }
-.account-item .icon-btn { width: 32px; height: 32px; margin: -6px 0; }
+.account-switch { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding: 10px; text-align: left; }
+.account-item .icon-btn { width: 32px; height: 32px; margin-right: 4px; }
 .account-add { display: flex; gap: var(--space-2); padding: 6px 4px; }
 
 main {
@@ -133,11 +138,109 @@ main {
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .tiles > * { min-width: 0; }
 
-.filter-bar { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
-.filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.month-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  max-width: 420px;
+  margin: 0 auto var(--space-3);
+}
+.month-stepper .icon-btn:disabled { opacity: 0.35; cursor: default; background: none; }
+.month-label {
+  flex: 1;
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+}
+.month-label.past { color: var(--accent); }
 
-.chip-row { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-.chip-row::-webkit-scrollbar { display: none; }
+/* Search takes what the pill leaves, down to a usable 96px. Past that the
+   category part of the pill truncates; the period never does. */
+.filter-bar { display: flex; gap: var(--space-2); }
+.filter-bar input[type="search"] { flex: 1 1 0; min-width: 96px; }
+.filter-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+.filter-pill.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.filter-pill.active .filter-btn { padding-right: 2px; }
+.filter-btn svg, .filter-period { flex-shrink: 0; }
+.filter-cats { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-clear { flex-shrink: 0; width: 38px; border-radius: 999px; }
+/* 2px under the search field's height: the pill's border makes up the rest. */
+@media (pointer: coarse) { .filter-btn { min-height: 42px; } }
+
+.filter-sheet { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+@media (min-width: 640px) { .filter-sheet { max-width: 480px; } }
+.filter-sheet .modal-head h2 { margin: 0; }
+.filter-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: 0 var(--space-4) var(--space-3);
+}
+.filter-sheet-body .picker-label:first-child { margin-top: 0; }
+.chip-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.filter-detail { width: 100%; margin-top: var(--space-3); }
+.filter-range { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.filter-range label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.filter-range input { width: 100%; min-width: 0; }
+.filter-sheet-foot {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4) max(var(--space-4), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+.filter-sheet-foot .primary { flex: 1; }
+
+.tile-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 var(--space-2); margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
+.tile .btn.small { margin-top: var(--space-1); }
+
+.glance-card { margin-bottom: var(--space-3); }
+.glance-label { display: block; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.glance-value { margin: 2px 0; font-size: clamp(1.75rem, 8vw, 2.25rem); font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.glance-meta { font-size: 0.85rem; color: var(--muted); }
+.glance-card .btn.small { margin-top: var(--space-1); }
+.glance-flows { display: flex; gap: var(--space-6); margin-top: var(--space-2); font-size: 1.05rem; font-weight: 600; }
+.glance-flows > div { display: flex; flex-direction: column; }
+.glance-todo { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); background: var(--accent-soft); border-color: transparent; }
+.tx-todo { width: 100%; justify-content: space-between; margin-bottom: var(--space-3); background: var(--accent-soft); border-color: transparent; }
+
+.welcome-card h2 { margin: 0 0 var(--space-1); }
+.welcome-card > p { margin: 0 0 var(--space-4); }
+.welcome-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.welcome-actions .btn { justify-content: flex-start; }
+@media (min-width: 640px) {
+  .welcome-actions { flex-direction: row; flex-wrap: wrap; }
+}
+.starter-offer { margin: var(--space-3) 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.welcome-card .starter-offer { margin-bottom: 0; margin-top: var(--space-4); }
+.starter-offer p { margin: 0 0 var(--space-2); }
+.starter-title { font-weight: 600; }
+.starter-names { font-size: 0.85rem; }
+
 .chip-btn {
   display: inline-flex;
   align-items: center;
@@ -151,24 +254,65 @@ main {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.chip-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
-/* Transactions: cards on mobile, table >= 640px */
-.tx-cards { display: flex; flex-direction: column; gap: var(--space-2); }
-.tx-card {
+/* Transactions: day-grouped rows on mobile, table >= 640px */
+.tx-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.tx-day-title { margin: 0 0 var(--space-1); padding: 0 var(--space-1); font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.tx-day-rows { padding: 0; overflow: hidden; }
+.tx-item {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 8px var(--space-3);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.tx-card.selectable { cursor: pointer; }
-.tx-card.selected { border-color: var(--accent); background: var(--accent-soft); }
-.tx-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
-.tx-card .tx-desc { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
-.tx-card .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tx-row-bottom { display: flex; align-items: center; gap: var(--space-2); }
-.tx-card .tx-date { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-.tx-card .tx-actions { margin-left: auto; display: flex; gap: 4px; }
+.tx-item:first-child { border-top: 0; }
+.tx-item.selected { background: var(--accent-soft); }
+.tx-item.selected .check-box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tx-item.editing { display: block; padding: var(--space-3); cursor: default; }
+.tx-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tx-item .tx-desc, .tx-item .tx-cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-item .tx-desc { font-weight: 550; }
+.tx-item .tx-cat { font-size: 0.8rem; color: var(--muted); }
+.tx-item .tx-cat.uncat { color: var(--warning); font-weight: 600; }
+.tx-item .tx-cat.uncat::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+.tx-item .tx-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tx-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4); text-align: center; }
+.tx-empty p { margin: 0; color: var(--muted); }
+.tx-empty h3 { margin: 0; }
+
+/* To categorise inbox */
+.inbox-head { display: flex; align-items: center; gap: var(--space-2); }
+.inbox-head .icon-btn { flex-shrink: 0; margin-left: -6px; color: var(--text); }
+.inbox-head h2 { margin: 0; font-size: 1.25rem; }
+.inbox-head p { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.inbox-seg { align-self: stretch; }
+.inbox-seg button { flex: 1; }
+@media (min-width: 640px) { .inbox-seg { align-self: flex-start; } }
+.inbox-hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.inbox-list { padding: 0; overflow: hidden; }
+.tx-item .inbox-meta { font-size: 0.8rem; color: var(--muted); }
+.inbox-more { align-self: center; }
 
 .chip-select {
   font-size: 0.85rem;
@@ -182,16 +326,21 @@ main {
   color: var(--text);
   font-weight: 500;
 }
-.tx-card .chip-select { max-width: 60%; }
+.tx-edit-grid .chip-select { width: 100%; min-height: 42px; }
 
 .tx-table { display: none; }
 
 .tx-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); grid-column: 1 / -1; }
 .tx-edit-grid .span2 { grid-column: 1 / -1; }
-.tx-edit-grid input, .tx-edit-grid select { width: 100%; min-width: 0; }
+.tx-edit-grid input { width: 100%; min-width: 0; }
+.tx-field { min-width: 0; }
+.tx-field label { display: flex; flex-direction: column; gap: 4px; }
+.tx-field label > span { font-size: 0.8rem; color: var(--muted); }
+.tx-field .field-error { margin: 4px 0 0; font-size: 0.85rem; color: var(--danger); }
+.tx-edit-grid [aria-invalid="true"] { border-color: var(--danger); }
 
 @media (min-width: 640px) {
-  .tx-cards { display: none; }
+  .tx-list { display: none; }
   .tx-table { display: block; overflow-x: auto; }
   .tx-table th {
     text-align: left;
@@ -203,15 +352,16 @@ main {
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
   }
-  .tx-table th.sortable { cursor: pointer; user-select: none; }
+  .tx-table .th-sort { text-transform: inherit; letter-spacing: inherit; white-space: nowrap; }
   .tx-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
   .tx-table tr:hover td { background: var(--surface-2); }
   .tx-table tr.selectable { cursor: pointer; }
   .tx-table tr.selected td { background: var(--accent-soft); }
+  .tx-table .check-cell { width: 1%; padding-right: 0; }
+  .tx-table .tx-open { text-align: left; overflow-wrap: anywhere; }
   .tx-table td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; white-space: nowrap; }
   .tx-table input, .tx-table select { min-height: 34px; }
   .tx-table input { padding: 4px 8px; }
-  .tx-table .tx-edit-grid select { padding: 4px 34px 4px 10px; }
 }
 
 .selection-bar {
@@ -246,8 +396,8 @@ main {
   .chart-pane + .chart-pane { border-left: 1px solid var(--border); padding-left: var(--space-4); }
 }
 
-/* The two salaries read as a pair either side of the card's centre line, so the
-   fields are centred rather than stretched: an input capped at 200px keeps the
+/* The two people read as a pair either side of the card's centre line, so their
+   fields are centred rather than stretched: inputs capped at 200px keep each
    figure near its label instead of stranding it at the left edge of a wide box. */
 .salary-row {
   display: grid;
@@ -255,9 +405,12 @@ main {
   gap: var(--space-3);
   justify-items: center;
 }
-.salary-field { margin: 0; align-items: center; width: 100%; max-width: 200px; }
-.salary-field label { text-align: center; }
-.salary-field input { width: 100%; text-align: center; font-weight: 600; }
+.joint-person { border: 0; margin: 0; padding: 0; min-width: 0; width: 100%; max-width: 200px; }
+.joint-person legend { width: 100%; padding: 0; margin-bottom: var(--space-2); text-align: center; font-weight: 650; }
+.joint-person .field { align-items: center; }
+.joint-person label { text-align: center; }
+.joint-person input { width: 100%; text-align: center; }
+.joint-person input[type="number"] { font-weight: 600; }
 
 .panel-list { display: flex; flex-direction: column; }
 .panel-list-item {
@@ -269,6 +422,27 @@ main {
 }
 .panel-list-item:last-child { border-bottom: none; }
 .panel-list-item .grow { overflow-wrap: anywhere; }
+.panel-list-item.delete-confirm {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--space-3);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  border-bottom: none;
+}
+.delete-confirm:focus { outline: none; }
+.delete-confirm h3 { margin: 0; overflow-wrap: anywhere; }
+.delete-confirm p { margin: 0; color: var(--text); }
+.delete-choices { display: flex; flex-direction: column; gap: var(--space-2); }
+.delete-choice { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.delete-choice label { flex: 1; cursor: pointer; }
+.delete-choice input[type="radio"] {
+  min-height: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  accent-color: var(--accent);
+}
 
 .savings-account {
   display: flex;
@@ -284,8 +458,10 @@ main {
   gap: var(--space-2);
 }
 .row input, .row select { min-width: 0; }
+.savings-account .field-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
+.savings-account [aria-invalid="true"] { border-color: var(--danger); }
 .history-list { font-size: 0.85rem; }
-.history-list li { display: flex; justify-content: space-between; padding: 3px 0; }
+.history-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: 3px 0; }
 ul.history-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
 
 section.view { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -306,7 +482,56 @@ section.view { display: flex; flex-direction: column; gap: var(--space-4); }
 .bank-acct .controls input:not([type="date"]) { flex: 1 1 160px; min-width: 0; }
 .bank-acct .small, .bank-link .small, .modal .small { font-size: 0.8rem; }
 .bank-link .field { margin-bottom: var(--space-2); }
+.bank-link .delete-choice label { color: var(--text); font-size: 1rem; }
+.bank-summary { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.bank-summary h3 { margin: 0; }
+.bank-setup { margin-top: var(--space-3); }
+.bank-setup summary { cursor: pointer; }
 .danger-text { color: var(--danger); }
 .chip.ok { color: var(--muted); }
 .chip.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
 .chip.danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+
+/* ---- Desktop: left navigation rail ----
+   At 1280px the phone's bottom bar is four 320px tabs. From 900px it becomes a
+   rail on the left and the content takes the width; everything below 900px is
+   the phone layout and must stay as it is. Last in the file so it out-ranks the
+   equal-specificity rules above. */
+@media (min-width: 900px) {
+  :root { --rail-w: 96px; }
+  #app { padding-left: var(--rail-w); }
+  main { max-width: 1400px; padding: var(--space-5); }
+
+  .tab-bar {
+    top: 0;
+    right: auto;
+    width: var(--rail-w);
+    height: auto;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-2);
+    border-top: none;
+    border-right: 1px solid var(--border);
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+    min-height: 64px;
+    padding: var(--space-2) 2px;
+    gap: 4px;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+  }
+  .tab-btn span { white-space: normal; text-align: center; line-height: 1.2; }
+  .tab-btn:hover { background: var(--surface-2); color: var(--text); }
+  .tab-btn.active { background: var(--accent-soft); color: var(--accent-strong); }
+
+  /* Alone on its row next to nothing, it left half the width empty. */
+  .charts > .card:first-child:has(+ .chart-wide) { grid-column: 1 / -1; }
+
+  .selection-bar { left: calc(50% + var(--rail-w) / 2); bottom: var(--space-4); }
+
+  .tx-table table { font-size: 0.9rem; }
+  .tx-table th { padding: 8px 12px; }
+  .tx-table td { padding: 3px 12px; }
+  .tx-table .chip-select { min-height: 30px; padding-top: 2px; padding-bottom: 2px; }
+}

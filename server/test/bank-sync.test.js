@@ -69,12 +69,19 @@ test('isBooked keeps booked and status-less rows, drops pending', () => {
 
 test('pickBalance prefers closing booked, then available, then whatever is numeric', () => {
   const amt = (a) => ({ amount: a, currency: 'EUR' });
-  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLBD', balance_amount: amt('2') }]), 2);
-  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLAV', balance_amount: amt('3') }]), 3);
-  assert.equal(pickBalance([{ balance_type: 'OTHR', balance_amount: amt('7.5') }]), 7.5);
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLBD', balance_amount: amt('2') }]).amount, 2);
+  assert.equal(pickBalance([{ balance_type: 'ITAV', balance_amount: amt('1') }, { balance_type: 'CLAV', balance_amount: amt('3') }]).amount, 3);
+  assert.equal(pickBalance([{ balance_type: 'OTHR', balance_amount: amt('7.5') }]).amount, 7.5);
   assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt('abc') }]), null);
   assert.equal(pickBalance([]), null);
   assert.equal(pickBalance(undefined), null);
+});
+
+test('pickBalance dates the figure by its reference date, then its last change, then today', () => {
+  const amt = { amount: '5', currency: 'EUR' };
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt, reference_date: '2026-11-01' }], '2026-11-07').date, '2026-11-01');
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt, last_change_date_time: '2026-11-03T08:12:00Z' }], '2026-11-07').date, '2026-11-03');
+  assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: amt }], '2026-11-07').date, '2026-11-07');
 });
 
 test('syncWindow: overlap behind the cursor, floored by sync_from, wide default on first sync', () => {
@@ -100,7 +107,16 @@ function tx(id, amount, indicator, date, name, extra = {}) {
   };
 }
 
-function startMockProvider() {
+function defaultAccounts(n) {
+  return [
+    { uid: `uid-A-${n}`, account_id: { iban: 'FR7600000000000000000000A' }, currency: 'EUR', name: 'Main', identification_hash: 'hashA' },
+    { uid: `uid-B-${n}`, account_id: { iban: 'FR7600000000000000000000B' }, currency: 'EUR', name: 'Joint', identification_hash: 'hashB', cash_account_type: 'SVGS' },
+    // a pocket the user only ticked at the second consent: a current-type account, new on renewal
+    ...(n >= 2 ? [{ uid: `uid-C-${n}`, account_id: {}, currency: 'EUR', name: 'Pocket', identification_hash: 'hashC', cash_account_type: 'CACC' }] : []),
+  ];
+}
+
+function startMockProvider({ accounts = defaultAccounts } = {}) {
   const state = { authCalls: [], sessionCount: 0, txCalls: [], deleted: [] };
   const app = express();
   app.use(express.json());
@@ -127,12 +143,7 @@ function startMockProvider() {
     const n = ++state.sessionCount;
     res.json({
       session_id: `sess-${n}`,
-      accounts: [
-        { uid: `uid-A-${n}`, account_id: { iban: 'FR7600000000000000000000A' }, currency: 'EUR', name: 'Main', identification_hash: 'hashA' },
-        { uid: `uid-B-${n}`, account_id: { iban: 'FR7600000000000000000000B' }, currency: 'EUR', name: 'Joint', identification_hash: 'hashB', cash_account_type: 'SVGS' },
-        // a pocket the user only ticked at the second consent: a current-type account, new on renewal
-        ...(n >= 2 ? [{ uid: `uid-C-${n}`, account_id: {}, currency: 'EUR', name: 'Pocket', identification_hash: 'hashC', cash_account_type: 'CACC' }] : []),
-      ],
+      accounts: accounts(n),
       aspsp: { name: 'Revolut', country: 'FR' },
       psu_type: 'personal',
       access: { valid_until: '2027-01-01T00:00:00Z' },
@@ -191,6 +202,13 @@ function startApp(bank) {
 
 const json = async (res) => ({ status: res.status, body: await res.json() });
 
+function linkSummary(res) {
+  assert.equal(res.status, 302);
+  const url = new URL(res.headers.get('location'), 'http://app.test');
+  assert.equal(url.searchParams.get('bank'), 'linked');
+  return JSON.parse(url.searchParams.get('summary'));
+}
+
 test('unconfigured server: status says so and every other bank route is 503', async (t) => {
   const app = await startApp({ config: { configured: false }, client: null });
   t.after(app.close);
@@ -239,8 +257,9 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   assert.equal(unknown.headers.get('location'), '/?bank=error&reason=expired');
 
   const cb = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
-  assert.equal(cb.status, 302);
-  assert.equal(cb.headers.get('location'), '/?bank=linked&imported=3&skipped=0&errors=0', 'the savings-type account is not synced into the budget');
+  const summary = linkSummary(cb);
+  assert.deepEqual(summary.accounts, [{ id: 'hashA', imported: 3, skipped: 0 }], 'the savings-type account is not synced into the budget');
+  assert.deepEqual(summary.created, []);
   assert.equal(mock.state.txCalls[0].query.date_from, '2026-09-01', 'first sync starts at the chosen cutover');
   assert.equal(mock.state.txCalls[0].psu, '127.0.0.1', 'user-present headers are forwarded');
 
@@ -275,10 +294,11 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   }));
   const state2 = new URL(relink.body.url).searchParams.get('state');
   const cb2 = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state2}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
-  assert.equal(cb2.headers.get('location'), '/?bank=linked&imported=0&skipped=3&errors=0');
+  assert.deepEqual(linkSummary(cb2).accounts, [{ id: 'hashA', imported: 0, skipped: 3 }]);
   status = await json(await fetch(`${app.base}/api/bank/status`));
   assert.equal(status.body.connections.length, 1);
   assert.notEqual(status.body.connections[0].id, conn.id);
+  assert.equal(linkSummary(cb2).connection, status.body.connections[0].id);
   assert.deepEqual(status.body.connections[0].accounts.map(a => [a.id, a.uid, a.accountId, a.syncFrom]), [
     ['hashA', 'uid-A-2', 'default', '2026-09-01'],
     ['hashB', 'uid-B-2', null, '2026-09-01'],
@@ -371,4 +391,121 @@ test('a provider error during sync is reported per account, not thrown', async (
 
   const failedCallback = await fetch(`${app.base}/api/bank/callback?code=bad&state=nope`, { redirect: 'manual' });
   assert.equal(failedCallback.headers.get('location'), '/?bank=error&reason=expired');
+});
+
+// --- other-currency accounts ----------------------------------------------------------------
+
+function multiCurrency(n) {
+  return [
+    { uid: `uid-A-${n}`, account_id: { iban: 'FR7600000000000000000000A' }, currency: 'EUR', name: 'Revolut EUR', identification_hash: 'hashA' },
+    { uid: `uid-G-${n}`, account_id: { iban: 'GB29REVO00997012345678' }, currency: 'gbp', name: 'Revolut GBP', identification_hash: 'hashG' },
+    { uid: `uid-B-${n}`, account_id: {}, currency: 'USD', name: 'Vault', identification_hash: 'hashB', cash_account_type: 'SVGS' },
+  ];
+}
+
+async function linkAndReturn(app, body) {
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'test-agent' };
+  const link = await json(await fetch(`${app.base}/api/bank/link`, {
+    method: 'POST', headers, body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', accountId: 'default', ...body }),
+  }));
+  assert.equal(link.status, 200);
+  const state = new URL(link.body.url).searchParams.get('state');
+  return linkSummary(await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers }));
+}
+
+async function multiCurrencyApp(t) {
+  const mock = await startMockProvider({ accounts: multiCurrency });
+  t.after(mock.close);
+  const config = { appId: 'app-test', privateKey: pem, apiBase: mock.base, redirectUrl: '', configured: true };
+  const app = await startApp({ config, client: new EnableBankingClient(config) });
+  t.after(app.close);
+  return app;
+}
+
+const mappingOf = async (app) => Object.fromEntries((await json(await fetch(`${app.base}/api/bank/status`))).body
+  .connections.flatMap(c => c.accounts).map(a => [a.id, [a.accountId, a.syncFrom]]));
+const rowsByAccount = (app) => app.db.prepare(`
+  SELECT a.name, a.currency, substr(t.external_id, 1, 5) AS bank, COUNT(*) AS n
+  FROM transactions t JOIN accounts a ON a.id = t.account_id GROUP BY t.account_id, bank ORDER BY a.name
+`).all();
+
+test('other-currency accounts go into a budget account of their own by default, never into the chosen one', async (t) => {
+  const app = await multiCurrencyApp(t);
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'test-agent' };
+
+  const summary = await linkAndReturn(app, { syncFrom: '2026-09-01' });
+  const gbp = app.db.prepare("SELECT id, name, currency FROM accounts WHERE id != 'default'").all();
+  assert.equal(gbp.length, 1);
+  assert.deepEqual([gbp[0].name, gbp[0].currency], ['Revolut GBP', 'GBP'], 'named after the bank and the currency');
+  assert.deepEqual(summary.created, [gbp[0].id]);
+  assert.deepEqual(summary.accounts, [{ id: 'hashA', imported: 3, skipped: 0 }, { id: 'hashG', imported: 3, skipped: 0 }]);
+  assert.deepEqual(await mappingOf(app), {
+    hashA: ['default', '2026-09-01'],
+    hashG: [gbp[0].id, null], // the cutover was chosen for the EUR account's rows, not this one's
+    hashB: [null, '2026-09-01'], // savings-type stays unmapped whatever its currency
+  });
+  assert.deepEqual(rowsByAccount(app), [
+    { name: 'Main Account', currency: 'EUR', bank: 'hashA', n: 3 },
+    { name: 'Revolut GBP', currency: 'GBP', bank: 'hashG', n: 3 },
+  ]);
+  const boot = await json(await fetch(`${app.base}/api/bootstrap`));
+  assert.deepEqual(boot.body.accounts.map(a => [a.name, a.currency]), [['Main Account', 'EUR'], ['Revolut GBP', 'GBP']]);
+
+  // re-mapping across currencies is refused both ways and changes nothing
+  const intoEur = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
+  assert.equal(intoEur.status, 400);
+  assert.equal(intoEur.body.error, 'Revolut GBP is in GBP, Main Account is in EUR');
+  const intoGbp = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
+  assert.equal(intoGbp.status, 400);
+  assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
+
+  // a budget account created in the right currency is a valid target; rows follow it there and back
+  const badCurrency = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'pounds' }) }));
+  assert.equal(badCurrency.status, 400);
+  const pounds = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'gbp' }) }));
+  assert.equal(pounds.body.currency, 'GBP');
+  const plain = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Plain' }) }));
+  assert.equal(plain.body.currency, 'EUR', 'currency defaults to EUR');
+  const moved = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: pounds.body.id }) }));
+  assert.equal(moved.body.moved, 3);
+  const back = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
+  assert.equal(back.body.moved, 3);
+
+  // one bank account can be synced alone (the panel's "Add to Savings" shortcut does this)
+  const one = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: JSON.stringify({ bankAccountId: 'hashG' }) }));
+  assert.deepEqual(one.body.results.map(r => [r.bankAccountId, r.imported, r.skippedDuplicates]), [['hashG', 0, 3]]);
+
+  // renewal: mappings kept, nothing created
+  const renewed = await linkAndReturn(app, {});
+  assert.deepEqual(renewed.created, []);
+  assert.deepEqual(renewed.accounts.map(a => [a.id, a.imported, a.skipped]), [['hashA', 0, 3], ['hashG', 0, 3]]);
+  assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
+
+  // linking again after an unlink finds the budget account it made the first time
+  const connection = (await json(await fetch(`${app.base}/api/bank/status`))).body.connections[0].id;
+  await fetch(`${app.base}/api/bank/connections/${connection}`, { method: 'DELETE' });
+  const relinked = await linkAndReturn(app, {});
+  assert.deepEqual(relinked.created, []);
+  assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
+  assert.equal(app.db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE name = 'Revolut GBP'").get().n, 1);
+});
+
+test('"don\'t import" leaves other-currency accounts unmapped; the chosen account sets the currency', async (t) => {
+  const app = await multiCurrencyApp(t);
+
+  const summary = await linkAndReturn(app, { otherCurrencies: 'skip' });
+  assert.deepEqual(summary.created, []);
+  assert.deepEqual(summary.accounts, [{ id: 'hashA', imported: 3, skipped: 0 }]);
+  assert.deepEqual(await mappingOf(app), { hashA: ['default', null], hashG: [null, null], hashB: [null, null] });
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM accounts').get().n, 1);
+  assert.deepEqual(rowsByAccount(app), [{ name: 'Main Account', currency: 'EUR', bank: 'hashA', n: 3 }]);
+
+  // linked into a GBP budget account, the EUR account is the one in another currency
+  const connection = (await json(await fetch(`${app.base}/api/bank/status`))).body.connections[0].id;
+  await fetch(`${app.base}/api/bank/connections/${connection}`, { method: 'DELETE' });
+  const sterling = await json(await fetch(`${app.base}/api/accounts`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Sterling', currency: 'GBP' }),
+  }));
+  await linkAndReturn(app, { accountId: sterling.body.id, otherCurrencies: 'skip' });
+  assert.deepEqual(await mappingOf(app), { hashA: [null, null], hashG: [sterling.body.id, null], hashB: [null, null] });
 });
