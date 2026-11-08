@@ -30,6 +30,16 @@ export function debounce(fn, ms) {
   };
 }
 
+// render() carries typed values over to the next render, so a form that stays open after a
+// submit puts its fields back to how they were rendered. Looked up by id: a render during the
+// request may have replaced them.
+export function resetFields(...ids) {
+  for (const el of ids.map(id => document.getElementById(id))) {
+    if (el instanceof HTMLSelectElement) for (const option of el.options) option.selected = option.defaultSelected;
+    else if (el) el.value = el.defaultValue;
+  }
+}
+
 function liveRegion(attrs) {
   const el = document.createElement('div');
   for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);

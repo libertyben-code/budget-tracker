@@ -1,4 +1,4 @@
-import { esc, icons, toast } from '../dom.js';
+import { esc, icons, resetFields, toast } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -128,6 +128,7 @@ export const actions = {
       return;
     }
     await api.addCategory(name);
+    resetFields('new-cat-input');
     set({ categories: [...state.categories, { name, count: 0 }] });
   },
   'start-rename-category': (el) => setUi({ editingCategory: el.dataset.cat, deletingCategory: null }),
