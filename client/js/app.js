@@ -39,6 +39,38 @@ function translator() {
   return createTranslator(get().ui.lang);
 }
 
+const FIELDS = 'input:not([type=file]):not([type=hidden]), select, textarea';
+// A field whose change was handed to its data-action-change action: the state now owns its value,
+// so a failed save (or runAction's offline rollback) shows the stored value again.
+const committed = new WeakSet();
+
+const isCheckable = el => el.type === 'checkbox' || el.type === 'radio';
+const currentValue = el => (isCheckable(el) ? el.checked : el.value);
+
+function renderedValue(el) {
+  if (isCheckable(el)) return el.defaultChecked;
+  if (el.tagName !== 'SELECT') return el.defaultValue;
+  const options = [...el.options];
+  return (options.findLast(o => o.defaultSelected) || options.find(o => !o.disabled))?.value;
+}
+
+// The nearest data-id tells apart forms that reuse ids, like one savings account's edit form after another's.
+function fieldKey(el) {
+  const scope = el.closest('[data-id]')?.dataset.id;
+  if (el.id) return JSON.stringify([el.id, scope]);
+  if (!el.name && !Object.keys(el.dataset).length) return null;
+  return JSON.stringify([el.tagName, el.name, { ...el.dataset }, isCheckable(el) && el.value, scope]);
+}
+
+function fieldsByKey() {
+  const fields = new Map();
+  for (const el of [appEl, modalsEl].flatMap(root => [...root.querySelectorAll(FIELDS)])) {
+    const key = fieldKey(el);
+    if (key) fields.set(key, fields.has(key) ? null : el);
+  }
+  return fields;
+}
+
 function render() {
   const state = get();
   if (!state.loaded) return;
@@ -47,24 +79,36 @@ function render() {
   // Theme actions call setUi() before applyTheme(); charts read their colours from CSS.
   header.applyTheme(state);
 
+  // What the user typed and the state doesn't hold is carried over to the new fields, unless the
+  // state rendered the field differently this time (a form reset or switched to another item).
+  const edited = [...fieldsByKey()]
+    .filter(([, el]) => el && !committed.has(el) && currentValue(el) !== renderedValue(el))
+    .map(([key, el]) => [key, currentValue(el), renderedValue(el)]);
   const active = document.activeElement;
+  const focusKey = active?.matches(FIELDS) ? fieldKey(active) : null;
   const focusId = active?.id;
-  const selStart = active?.selectionStart;
+  const { selectionStart, selectionEnd } = active || {};
 
   const view = views[state.ui.tab] || views.dashboard;
   appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
   modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
 
+  const fields = fieldsByKey();
+  for (const [key, value, rendered] of edited) {
+    const el = fields.get(key);
+    if (!el || renderedValue(el) !== rendered) continue;
+    if (isCheckable(el)) el.checked = value;
+    else el.value = value;
+  }
+
   dashboard.afterRender(state, t);
   savings.afterRender(state);
 
-  if (focusId) {
-    const el = document.getElementById(focusId);
-    if (el) {
-      el.focus();
-      if (selStart !== undefined && selStart !== null && typeof el.setSelectionRange === 'function') {
-        try { el.setSelectionRange(selStart, selStart); } catch {}
-      }
+  const target = (focusKey && fields.get(focusKey)) || (focusId && document.getElementById(focusId));
+  if (target) {
+    target.focus();
+    if (selectionStart !== undefined && selectionStart !== null && typeof target.setSelectionRange === 'function') {
+      try { target.setSelectionRange(selectionStart, selectionEnd); } catch {}
     }
   }
 }
@@ -131,11 +175,14 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('change', (ev) => {
   const el = ev.target.closest('[data-action-change]');
-  if (el) runAction(el.dataset.actionChange, el, ev);
+  if (!el) return;
+  committed.add(el);
+  runAction(el.dataset.actionChange, el, ev);
 });
 
 const debouncedInput = debounce((name, el, ev) => runAction(name, el, ev), 200);
 document.addEventListener('input', (ev) => {
+  committed.delete(ev.target);
   const el = ev.target.closest('[data-action-input]');
   if (el) debouncedInput(el.dataset.actionInput, el, ev);
 });

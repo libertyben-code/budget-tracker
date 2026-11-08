@@ -6,6 +6,7 @@ import { categories } from '../derive.js';
 export function render(state, t) {
   if (!state.ui.batchEditOpen) return '';
   const cats = categories(state);
+  const picked = state.ui.batchCategory;
   return `
   <div class="modal-backdrop" data-action="close-batch-edit" data-self-only>
     <div class="modal">
@@ -22,11 +23,11 @@ export function render(state, t) {
         <label>${esc(t('app.categoryOptional'))}</label>
         <select id="batch-cat" data-action-change="batch-cat-select">
           <option value="">${esc(t('app.keepExistingCategories'))}</option>
-          ${cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
-          <option value="__new__" ${state.ui.batchNewCategory ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
+          ${cats.map(c => `<option value="${esc(c)}" ${c === picked ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          <option value="__new__" ${picked === '__new__' ? 'selected' : ''}>${esc(t('app.createNewCategory'))}</option>
         </select>
       </div>
-      <div id="batch-new-cat-wrap" ${state.ui.batchNewCategory ? '' : 'hidden'}>
+      <div id="batch-new-cat-wrap" ${picked === '__new__' ? '' : 'hidden'}>
         <div class="field">
           <input id="batch-new-cat" placeholder="${esc(t('app.enterNewCategoryName'))}">
         </div>
@@ -40,13 +41,8 @@ export function render(state, t) {
 }
 
 export const actions = {
-  'close-batch-edit': () => setUi({ batchEditOpen: false, batchNewCategory: false }),
-  'batch-cat-select': (el) => {
-    const isNew = el.value === '__new__';
-    // No setUi: it re-renders #modals from a string and empties the fields already typed
-    get().ui.batchNewCategory = isNew;
-    document.getElementById('batch-new-cat-wrap').hidden = !isNew;
-  },
+  'close-batch-edit': () => setUi({ batchEditOpen: false, batchCategory: '' }),
+  'batch-cat-select': (el) => setUi({ batchCategory: el.value }),
   'apply-batch-edit': async () => {
     const state = get();
     const description = document.getElementById('batch-desc')?.value.trim();
@@ -66,6 +62,6 @@ export const actions = {
       selection: new Set(),
       selecting: false,
     });
-    setUi({ batchEditOpen: false, batchNewCategory: false });
+    setUi({ batchEditOpen: false, batchCategory: '' });
   },
 };

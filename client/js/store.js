@@ -43,7 +43,7 @@ const state = {
     importErrors: null,
     panel: null,
     batchEditOpen: false,
-    batchNewCategory: false,
+    batchCategory: '',
     rulesFilter: '',
     ruleSelection: new Set(),
     ruleBatchOpen: false,

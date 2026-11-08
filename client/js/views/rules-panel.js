@@ -1,4 +1,4 @@
-import { esc, icons, checkPill, confirmDialog } from '../dom.js';
+import { esc, icons, checkPill, confirmDialog, resetFields } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { categories } from '../derive.js';
@@ -72,6 +72,7 @@ export const actions = {
     const category = document.getElementById('rule-category')?.value.trim();
     if (!pattern || !category) return;
     const rule = await api.addRule(pattern, category);
+    resetFields('rule-pattern', 'rule-category');
     const rules = get().rules.filter(r => r.pattern !== rule.pattern);
     set({ rules: [...rules, rule] });
   },

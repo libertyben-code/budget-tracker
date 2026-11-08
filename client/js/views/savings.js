@@ -1,4 +1,4 @@
-import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog } from '../dom.js';
+import { esc, eur, eurSpaced, chartColors, icons, toast, confirmDialog, resetFields } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { refreshSavings } from '../app.js';
@@ -63,7 +63,7 @@ function renderAccount(a, state, t, total) {
 
   if (state.ui.editingSavingsId === a.id) {
     return `
-    <div class="card savings-account">
+    <div class="card savings-account" data-id="${esc(a.id)}">
       <div class="row">
         <input id="edit-savings-name" class="grow" value="${esc(a.name)}" placeholder="${esc(t('savings.name'))}">
         <input id="edit-savings-balance" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(a.balance)}" style="width:130px">
@@ -307,6 +307,7 @@ export const actions = {
     }
     if (!validate([input], problems)) return;
     const result = await api.savingsTransaction(id, type, amount);
+    resetFields(`sav-amount-${id}`);
     const state = get();
     set({
       savingsAccounts: state.savingsAccounts.map(a => a.id === id ? result.account : a),
@@ -341,6 +342,7 @@ export const actions = {
     if (!validate([input], input.value === '' || amount <= 0 ? [[input, t('savings.amountInvalid')]] : [])) return;
     try {
       const rule = await api.createSavingsRecurring(id, amount, day);
+      resetFields(`rec-amount-${id}`, `rec-day-${id}`);
       const state = get();
       set({
         savingsRecurring: {
