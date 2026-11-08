@@ -4,6 +4,20 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.3.0 — 2026-11-08
+
+### What's new
+
+- **Syncs when you open the app.** Linked banks update on their own when you open or return to the app, at most once an hour per account. If a sync fails, the Balance card says so and it tries again six hours later.
+- **A nicer account picker.** Each account shows an icon and its balance, with a checkmark on the active one. Delete is now a single item for the active account, so switch to an account to delete it.
+- **A slimmer Dashboard.** The Balance card takes about half the height, and the balance and net figures are centered.
+
+### Fixes & improvements
+
+- A manual sync that finds nothing new now still updates the balance.
+
+---
+
 ## 2.2.1 — 2026-11-08
 
 ### Fixes & improvements

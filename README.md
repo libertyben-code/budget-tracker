@@ -6,7 +6,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 
 ### Transactions
 
-- **Bank sync** — link Revolut, Crédit Agricole or any bank Enable Banking covers from Settings ▸ *Bank sync*; the first sync runs the moment the bank approves, and *Sync now* (or *Sync all accounts* in the Settings menu) pulls new transactions through the same dedupe and category rules as a CSV import. Each linked bank account maps to a budget account of your choice, or to a savings account whose balance and history then come from the bank; re-mapping carries what was already imported along. Accounts in another currency are offered their own budget account (or left out) at link time, so pounds never land in a euro account, and a summary after linking shows where each account went. Consents expire after 90–180 days and are renewed from the same panel. Needs two server variables — see [docs/V2-SETUP.md](docs/V2-SETUP.md#bank-sync-enable-banking).
+- **Bank sync** — link Revolut, Crédit Agricole or any bank Enable Banking covers from Settings ▸ *Bank sync*; the first sync runs the moment the bank approves, and *Sync now* (or *Sync all accounts* in the Settings menu) pulls new transactions through the same dedupe and category rules as a CSV import. Opening the app syncs on its own too, at most once an hour per account, and six hours after a failure. Each linked bank account maps to a budget account of your choice, or to a savings account whose balance and history then come from the bank; re-mapping carries what was already imported along. Accounts in another currency are offered their own budget account (or left out) at link time, so pounds never land in a euro account, and a summary after linking shows where each account went. Consents expire after 90–180 days and are renewed from the same panel. Needs two server variables — see [docs/V2-SETUP.md](docs/V2-SETUP.md#bank-sync-enable-banking).
 - CSV import from bank statements (skip pending/reverted, dedupe, auto-categorize), and CSV export.
 - Compact list grouped by day; tap a transaction to open its details, edit it or delete it (with Undo). A **Select** button enters batch mode for batch edit and batch delete.
 - **Add sheet** — Expense / Income, amount, description, category chips and date chips; the button stays disabled until the entry is valid.
@@ -42,7 +42,7 @@ Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS fronte
 ### Navigation & appearance
 
 - **Bottom tab bar** on phones (Dashboard, Transactions, Joint Split, Savings); a left navigation rail from 900px wide.
-- **Header** — one row: the wallet mark and the app name, the account switcher pill in the middle, the settings icon on the right.
+- **Header** — one row: the wallet mark and the app name, the account switcher pill in the middle, which lists each account with its balance, the settings icon on the right.
 - **Settings menu** grouped into Data, Organise and Preferences.
 - **Appearance** — Match phone (default), Light or Dark; six accent colours, readable in both themes. Charts keep their own fixed palette.
 - Money is formatted for the language and the account's currency (`€2,310.45` / `2 310,45 €`, `£` on a GBP account).
