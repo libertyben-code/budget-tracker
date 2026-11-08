@@ -4,6 +4,14 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.2.1 — 2026-11-08
+
+### Fixes & improvements
+
+- **More reliable deploys.** The server image can now still build when the prebuilt database module can't be downloaded from GitHub, by compiling it instead.
+
+---
+
 ## 2.2.0 — 2026-11-08
 
 ### What's new
