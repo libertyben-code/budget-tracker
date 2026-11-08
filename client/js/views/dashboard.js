@@ -5,7 +5,7 @@ import { renderStarterOffer } from './category-manager.js';
 import { openInbox } from './categorise.js';
 import {
   categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
-  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, accountCurrency, lastBankSync,
+  addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, accountCurrency, lastBankSync, bankSyncFailed,
 } from '../derive.js';
 import { monthKey, todayIso } from '/shared/dates.js';
 
@@ -30,25 +30,30 @@ function renderMonthStepper(state, t, month) {
 function renderBalance(state, t) {
   const { amount, asOf, source } = accountBalance(state);
   const lang = state.ui.lang;
-  let body;
+  const failed = source === 'bank' && bankSyncFailed(state);
+  let value = '<div class="glance-value muted">—</div>';
+  let meta = '';
   if (amount !== null) {
     const when = asOf === todayIso() ? t('app.asOfToday') : t('app.asOf', { date: dayTitle(asOf, lang) });
     const sync = source === 'bank' ? lastBankSync(state) : null;
-    body = `
-      <div class="glance-value ${amount < 0 ? 'neg' : ''}">${money(amount, { currency: accountCurrency(state) })}</div>
-      <div class="glance-meta">${esc(t(source === 'bank' ? 'app.fromBank' : 'app.fromOpening'))} · ${esc(when)}</div>
-      ${sync ? `<div class="glance-meta">${esc(t('bank.lastSync', { date: new Date(sync).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) }))}</div>` : ''}`;
+    value = `<div class="glance-value ${amount < 0 ? 'neg' : ''}">${money(amount, { currency: accountCurrency(state) })}</div>`;
+    meta = sync
+      ? [asOf === todayIso() ? '' : when, t('bank.lastSync', { date: new Date(sync).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) })].filter(Boolean).join(' · ')
+      : `${t(source === 'bank' ? 'app.fromBank' : 'app.fromOpening')} · ${when}`;
   } else if (source === 'bank') {
-    body = `<div class="glance-value muted">—</div><div class="glance-meta">${esc(t('app.balancePending'))}</div>`;
+    meta = t('app.balancePending');
   } else {
-    body = `
-      <div class="glance-value muted">—</div>
-      <button class="btn small" data-action="open-set-balance">${esc(t('header.setBalance'))}</button>`;
+    value += `<button class="btn small" data-action="open-set-balance">${esc(t('header.setBalance'))}</button>`;
   }
+  if (source === 'bank' && state.ui.bankBusy) meta = t('bank.syncing');
+  else if (failed) meta = t('bank.couldNotUpdate');
   return `
-  <div class="card glance-card">
-    <div class="glance-label">${esc(t('app.balance'))}</div>
-    ${body}
+  <div class="card glance-card glance-balance">
+    <div class="glance-balance-row">
+      <div class="glance-label">${esc(t('app.balance'))}</div>
+      ${value}
+    </div>
+    ${meta ? `<div class="glance-meta ${failed && !state.ui.bankBusy ? 'danger-text' : ''}">${esc(meta)}</div>` : ''}
   </div>`;
 }
 

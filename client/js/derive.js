@@ -107,6 +107,12 @@ export function lastBankSync(state) {
     .at(-1) || null;
 }
 
+export function bankSyncFailed(state) {
+  return (state.ui.bankStatus?.connections || [])
+    .flatMap(c => c.accounts)
+    .some(a => a.enabled && a.accountId === state.activeAccountId && a.lastSyncStatus && a.lastSyncStatus !== 'ok');
+}
+
 export function categories(state) {
   return [...new Set([
     ...state.transactions.map(t => t.category),

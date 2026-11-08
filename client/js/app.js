@@ -405,6 +405,11 @@ async function boot() {
   await load();
   syncTabFromHash();
   if (!get().connection) handleBankReturn();
+  bankSync.autoSync(translator());
+  // An installed PWA is usually resumed from the background rather than started again.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') bankSync.autoSync(translator());
+  });
 
   if ('serviceWorker' in navigator) {
     const registration = await navigator.serviceWorker.register('/sw.js').catch(() => null);
