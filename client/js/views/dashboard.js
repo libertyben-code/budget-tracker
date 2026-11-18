@@ -3,6 +3,8 @@ import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { renderStarterOffer } from './category-manager.js';
 import { openInbox } from './categorise.js';
+import { accountTiles, balanceOf } from './header.js';
+import { plural } from './bank-sync.js';
 import {
   categoryPalette, categoryData, categoryByMonthData, monthlyData, monthLabel, monthTitle, dayTitle, OTHER,
   addMonths, dashboardMonth, monthTransactions, transactionsUpTo, months, stats, accountBalance, accountCurrency, lastBankSync, bankSyncFailed,
@@ -27,6 +29,46 @@ function renderMonthStepper(state, t, month) {
   </div>`;
 }
 
+function renderAccountGrid(state, t) {
+  if (state.accounts.length < 2) return '';
+  return `<div class="account-grid dashboard-accounts" role="group" aria-label="${esc(t('dashboard.allAccounts'))}">${accountTiles(state, t)}</div>`;
+}
+
+const syncTime = (iso, lang) => new Date(iso).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' });
+
+// With several accounts the Balance card sums them all: each account's own figure is on its tile.
+// Amounts in different currencies are not added up: one total per currency, in account order.
+function renderTotal(state, t) {
+  const totals = new Map();
+  let unknown = 0;
+  for (const account of state.accounts) {
+    const { amount } = balanceOf(account, state);
+    if (amount === null) unknown++;
+    else totals.set(account.currency, (totals.get(account.currency) || 0) + amount);
+  }
+  const figures = [...totals].map(([currency, amount]) =>
+    `<span class="${amount < 0 ? 'neg' : ''}">${money(amount, { currency })}</span>`);
+  const feeds = (state.ui.bankStatus?.connections || []).flatMap(c => c.accounts).filter(a => a.enabled && a.accountId);
+  const sync = feeds.map(a => a.lastSyncAt).filter(Boolean).sort().at(-1);
+  const failed = feeds.some(a => a.lastSyncStatus && a.lastSyncStatus !== 'ok');
+  let meta = [sync && t('bank.lastSync', { date: syncTime(sync, state.ui.lang) }), unknown && plural(t, 'dashboard.noBalance', unknown)]
+    .filter(Boolean).join(' · ');
+  if (state.ui.bankBusy && feeds.length) meta = t('bank.syncing');
+  else if (failed) meta = t('bank.couldNotUpdate');
+  const active = accountBalance(state);
+  const activeName = state.accounts.find(a => a.id === state.activeAccountId)?.name || '';
+  return `
+  <div class="card glance-card glance-balance">
+    <div class="glance-balance-row">
+      <div class="glance-label">${esc(t('dashboard.totalBalance'))}</div>
+      <div class="glance-value">${figures.length ? figures.join('<span class="muted"> · </span>') : '—'}</div>
+    </div>
+    ${meta ? `<div class="glance-meta ${failed && !state.ui.bankBusy ? 'danger-text' : ''}">${esc(meta)}</div>` : ''}
+    ${active.amount === null && active.source !== 'bank' ? `
+    <button class="btn small" data-action="open-set-balance">${esc(t('header.setBalanceOf', { name: activeName }))}</button>` : ''}
+  </div>`;
+}
+
 function renderBalance(state, t) {
   const { amount, asOf, source } = accountBalance(state);
   const lang = state.ui.lang;
@@ -38,7 +80,7 @@ function renderBalance(state, t) {
     const sync = source === 'bank' ? lastBankSync(state) : null;
     value = `<div class="glance-value ${amount < 0 ? 'neg' : ''}">${money(amount, { currency: accountCurrency(state) })}</div>`;
     meta = sync
-      ? [asOf === todayIso() ? '' : when, t('bank.lastSync', { date: new Date(sync).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) })].filter(Boolean).join(' · ')
+      ? [asOf === todayIso() ? '' : when, t('bank.lastSync', { date: syncTime(sync, lang) })].filter(Boolean).join(' · ')
       : `${t(source === 'bank' ? 'app.fromBank' : 'app.fromOpening')} · ${when}`;
   } else if (source === 'bank') {
     meta = t('app.balancePending');
@@ -114,7 +156,8 @@ export function render(state, t) {
   if (!state.transactions.length) {
     return `
   <section class="view">
-    ${accountBalance(state).amount !== null ? renderBalance(state, t) : ''}
+    ${renderAccountGrid(state, t)}
+    ${state.accounts.length > 1 ? renderTotal(state, t) : accountBalance(state).amount !== null ? renderBalance(state, t) : ''}
     ${renderWelcome(state, t)}
   </section>`;
   }
@@ -123,7 +166,8 @@ export function render(state, t) {
 
   return `
   <section class="view">
-    ${renderBalance(state, t)}
+    ${renderAccountGrid(state, t)}
+    ${state.accounts.length > 1 ? renderTotal(state, t) : renderBalance(state, t)}
     ${renderMonthStepper(state, t, month)}
     ${renderMonth(monthTransactions(state, month), t, accountCurrency(state))}
     ${renderToCategorise(state, t)}
@@ -166,7 +210,7 @@ export function render(state, t) {
 
 export function afterRender(state, t) {
   // The Balance card's last sync time comes from the bank status, otherwise loaded only by the bank panel.
-  if (state.ui.tab === 'dashboard' && !bankStatusAsked && !state.ui.bankStatus && accountBalance(state).source === 'bank') {
+  if (state.ui.tab === 'dashboard' && !bankStatusAsked && !state.ui.bankStatus && state.accounts.some(a => a.balanceSource === 'bank')) {
     bankStatusAsked = true;
     api.bankStatus().then(bankStatus => setUi({ bankStatus }), () => {});
   }
@@ -334,7 +378,7 @@ export const actions = {
     location.hash = '#/transactions';
   },
   'open-set-balance': () => {
-    setUi({ accountMenuOpen: true, settingsOpen: false, balanceFormOpen: true });
+    setUi({ panel: 'accounts', settingsOpen: false, balanceFormOpen: true });
     document.getElementById('opening-balance').focus();
   },
 };
