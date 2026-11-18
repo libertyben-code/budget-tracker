@@ -71,7 +71,6 @@ test('rename and delete reach every budget account', async (t) => {
 
 test('v4 migration merges the per-account custom categories into one list', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-categories-v4-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const dbPath = path.join(dir, 'old.db');
   // a v3 database: today's schema with the per-account custom_categories table it replaced
   const schema = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/schema.sql'), 'utf8')
@@ -96,7 +95,7 @@ test('v4 migration merges the per-account custom categories into one list', (t) 
   old.close();
 
   const db = openDb(dbPath);
-  t.after(() => db.close());
+  t.after(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   assert.deepEqual(db.pragma('table_info(custom_categories)').map(c => c.name), ['workspace_id', 'name', 'created_at']);
   assert.deepEqual(db.prepare('SELECT name, created_at FROM custom_categories ORDER BY name').all(), [
     { name: 'Gifts', created_at: '2026-09-01 00:00:00' },
