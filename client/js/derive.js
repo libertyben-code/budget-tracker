@@ -158,11 +158,10 @@ export function categoryPalette(state) {
   };
 }
 
-export function categoryData(filtered, pieCategories, palette) {
+export function categoryData(filtered, palette) {
   const spending = {};
   for (const t of filtered) {
     if (t.amount >= 0) continue;
-    if (pieCategories.length > 0 && !pieCategories.includes(t.category)) continue;
     const name = palette.fold.has(t.category) ? OTHER : t.category;
     spending[name] = (spending[name] || 0) + Math.abs(t.amount);
   }

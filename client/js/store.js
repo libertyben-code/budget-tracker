@@ -39,6 +39,8 @@ const state = {
     categoryDropdownOpen: null,
     chartMode: 'stacked',
     chartRange: '6m',
+    chartCategories: [],
+    chartFilterSheet: false,
     dashMonth: '',
     importErrors: null,
     panel: null,
