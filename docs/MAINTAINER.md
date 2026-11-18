@@ -93,7 +93,7 @@ A fresh `data/budget.db` is created automatically and seeded with a `default` ac
 
 One flex row: `.app-title` (wallet + name), `.account-switcher`, then the settings `.dropdown`. Three things about it are load-bearing and none are obvious from reading the rules:
 
-- **`.app-title` is `flex: 0 0 auto` — it never shrinks.** When the row runs out of width the account pill gives way instead. That is a deliberate priority call, not an oversight: the app name is fixed branding, while the account name is user data that is also readable in full in the dropdown. Making the title shrinkable puts an ellipsis in "Budget Tracker" at 360px.
+- **`.app-title` is `flex: 0 0 auto` — it never shrinks.** When the row runs out of width the account pill gives way instead. That is a deliberate priority call, not an oversight: the app name is fixed branding, while the account name is user data that is also readable in full in the dropdown. Making the title shrinkable would cut the app name short on a narrow phone.
 - **The width cap lives on `.account-switcher`, not on `.account-btn`.** Flex shrinking applies to the flex item; with the `max-width` on the button, the button keeps its content width and rides over the settings gear below 390px.
 - **The account menu is anchored to the header, not to its own button.** `.account-switcher .dropdown` is `position: static`, so the absolutely positioned menu resolves against `.app-header` (sticky counts as positioned) and drops centred beneath the whole header. A menu hanging from `left: 0` of a centred button runs off the right edge of a phone.
 
@@ -162,6 +162,21 @@ Schema changes that touch an existing table cannot live in `schema.sql` (it is `
 ```
 
 The SVG is also the browser-tab favicon (declared before the PNG, so browsers that support it prefer it). **An installed Android PWA caches its launcher icon at install time**: changing the mark does not reach a phone that already has it on the home screen — that needs a remove and re-add.
+
+### App name
+
+The app is called **Ça Compte ?**, written with a plain space before the "?", the same way **Ça Tétonne ?** is written. It appears in:
+
+- `client/manifest.webmanifest`: `name` and `short_name`, which is the home-screen label.
+- `client/index.html`: `<title>`.
+- `client/js/views/header.js` `render()`: the `<h1>`.
+- `client/js/views/login.js`: the name above the sign-in form.
+- `client/js/i18n.js`, in English and French: `dashboard.welcomeTitle` and `bank.openInApp`. These two use `\u00a0` before the "?" so it cannot wrap onto a line by itself.
+- `server/tools/dev-harness.mjs`: the mock bank's consent page.
+
+The name a real bank shows on its consent screen comes from the application registered in the Enable Banking Control Panel. Nothing in this repo sets it.
+
+When renaming, leave the manifest `id`, `start_url` and `scope` alone. An installed app is identified by those fields, so changing them leaves installs behind instead of renaming them. These also keep the old name on purpose: the repository, folders, Docker image and service, `budget.db`, the `bt-static-*` cache and the localStorage keys. A phone that already has the app installed may keep the old label until Chrome next checks the manifest. If it never changes, remove the app and add it again, as for the icon.
 
 ## Known gotchas
 

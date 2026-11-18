@@ -82,7 +82,7 @@ mock.get('/authorize', (req, res) => {
   const ok = `${redirect}?${new URLSearchParams({ code: 'good-code', state })}`;
   const no = `${redirect}?${new URLSearchParams({ error: 'access_denied', error_description: 'User refused', state })}`;
   res.send(`<!doctype html><html><body style="font-family:sans-serif;max-width:480px;margin:60px auto">
-    <h1>${bank} (mock)</h1><p><b>Budget Tracker</b> asks to read your accounts and transactions for 90 days.</p>
+    <h1>${bank} (mock)</h1><p><b>Ça Compte ?</b> asks to read your accounts and transactions for 90 days.</p>
     <p><a href="${ok}" style="padding:10px 16px;background:#1a7f4b;color:#fff;border-radius:6px;text-decoration:none">Approve</a>
        &nbsp; <a href="${no}">Deny</a></p></body></html>`);
 });

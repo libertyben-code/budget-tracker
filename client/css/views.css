@@ -24,18 +24,18 @@
 /* Never shrinks: when the row runs out of width the account button gives way, not
    the app name. The name is fixed branding, the account name is data the user
    picked and can also be read in full in the account sheet. */
-.app-title { flex: 0 0 auto; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 8px; }
-.app-title svg { color: var(--accent); flex-shrink: 0; width: 24px; height: 24px; }
+.app-title { flex: 0 0 auto; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
+.app-title svg { color: var(--accent); flex-shrink: 0; width: 20px; height: 20px; }
 .app-title-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
 .header-top h1 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app-version { font-size: 0.65rem; color: var(--muted); font-weight: 400; letter-spacing: 0.02em; }
+.app-version { font-size: 0.6rem; color: var(--muted); font-weight: 400; letter-spacing: 0.02em; }
 
 /* A fixed width, so the header does not shift when the account changes: it takes the room between
    the name and the gear, up to a cap, and the auto margins centre it there. */

@@ -18,7 +18,7 @@ export function render(state, t) {
   return `
   <main class="login">
     <div class="card login-card">
-      <div class="login-brand">${icons.wallet}<span>Budget Tracker</span></div>
+      <div class="login-brand">${icons.wallet}<span>Ça Compte ?</span></div>
       <h1>${esc(t(activating ? 'auth.activateTitle' : 'auth.signInTitle'))}</h1>
       ${activating ? `<p class="muted login-hint">${esc(t('auth.activateHint'))}</p>` : ''}
       <form data-action-submit="${activating ? 'activate' : 'login'}" novalidate>
