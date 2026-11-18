@@ -27,6 +27,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Remove the category filter dropdown from the Spending by Category card — OK
 - [x] Every account's real balance on the Dashboard: cards two per row (tap to switch), and with several accounts the Balance card shows the total, one figure per currency — OK
+- [x] Filter the two Spending by Category charts by category from a sheet above the charts (Monthly Overview keeps all spending; resets on reload) — OK
 
 ## UI / UX
 
