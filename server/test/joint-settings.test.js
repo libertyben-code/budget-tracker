@@ -58,9 +58,8 @@ test('a joint split patch with a bad value changes nothing', async (t) => {
 });
 
 // a v4 database: today's schema before the settings table, with the per-account values it replaced
-function v4Db(t, accounts) {
+function v4Db(accounts) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-joint-v5-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const dbPath = path.join(dir, 'old.db');
   const old = new Database(dbPath);
   old.exec(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/schema.sql'), 'utf8'));
@@ -76,12 +75,12 @@ function v4Db(t, accounts) {
 }
 
 test('v5 migration takes the joint split from the account whose salaries were set', (t) => {
-  const dbPath = v4Db(t, [
+  const dbPath = v4Db([
     { id: 'default', salary1: '', salary2: '', wanted: '2100' },
     { id: 'joint', salary1: '3000', salary2: '2000.5', wanted: '1800', createdAt: '2026-02-01 00:00:00' },
   ]);
   const db = openDb(dbPath);
-  t.after(() => db.close());
+  t.after(() => { db.close(); fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); });
   assert.deepEqual(JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value),
     { wanted: 1800, salary1: 3000, salary2: 2000.5, name1: '', name2: '' });
   assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '8');
@@ -89,7 +88,7 @@ test('v5 migration takes the joint split from the account whose salaries were se
 });
 
 test('v5 migration falls back to the default account, and runs once', (t) => {
-  const dbPath = v4Db(t, [
+  const dbPath = v4Db([
     { id: 'default', salary1: '', salary2: '', wanted: '2100' },
     { id: 'other', salary1: '', salary2: '', wanted: '999' },
   ]);
@@ -100,6 +99,6 @@ test('v5 migration falls back to the default account, and runs once', (t) => {
   db.close();
 
   const reopened = openDb(dbPath);
-  t.after(() => reopened.close());
+  t.after(() => { reopened.close(); fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); });
   assert.equal(JSON.parse(reopened.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value).wanted, 500);
 });

@@ -102,7 +102,6 @@ test('savings outlive a budget account; due recurring deposits apply globally, s
 
 test('v3 migration drops the savings owner and keeps history, recurring and bank links', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-savings-v3-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const dbPath = path.join(dir, 'old.db');
   // a v2 database: today's schema with the per-account savings table it replaced
   const schema = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/schema.sql'), 'utf8')
@@ -129,7 +128,7 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   old.close();
 
   const db = openDb(dbPath);
-  t.after(() => db.close());
+  t.after(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   assert.deepEqual(db.pragma('table_info(savings_accounts)').map(c => c.name), ['id', 'name', 'balance', 'category', 'workspace_id']);
   assert.deepEqual(db.prepare('SELECT id, name, balance, category FROM savings_accounts').all(), [{ id: 'sav1', name: 'Livret', balance: 500, category: null }]);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
