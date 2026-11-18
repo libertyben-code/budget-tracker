@@ -1,6 +1,19 @@
 # Changelog
 
-Release notes for Budget Tracker. Versions before 2.0.1 were released without a changelog; their history is in the dated development log in `docs/WORKFLOW.md`.
+Release notes for Ça Compte ? (called Budget Tracker until 2.6.0). Versions before 2.0.1 were released without a changelog; their history is in the dated development log in `docs/WORKFLOW.md`.
+
+---
+
+## 2.6.0 — 2026-11-18
+
+### What's new
+
+- **A new name: Ça Compte ?** The app is now called *Ça Compte ?* in the browser tab, on the login page, in the header and on your home screen. The header title is smaller, which leaves the account button room for longer account names. An installed app keeps working and is renamed, not replaced.
+- **Filter the charts by category.** An *All Categories* button above the charts lets you pick which categories the two Spending by Category charts show, and ✕ brings them all back. Monthly Overview still counts all spending, and the choice resets when you reopen the app.
+
+### Before you update
+
+- A phone may keep the old name under the home-screen icon until Chrome next checks the app. If it never changes, remove the app from the home screen and add it again.
 
 ---
 
