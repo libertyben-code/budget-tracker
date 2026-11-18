@@ -161,16 +161,17 @@ export async function syncBankAccount(db, client, bankAccount, { psu, today = to
   }
 }
 
-// Every enabled account with a target (optionally one connection's, or one account). One
-// failing account is reported in its result rather than aborting the rest.
-export async function syncAll(db, client, { connectionId, bankAccountId, psu, today } = {}) {
+// Every enabled account of the household with a target (optionally one connection's, or one
+// account). One failing account is reported in its result rather than aborting the rest.
+export async function syncAll(db, client, { workspaceId, connectionId, bankAccountId, psu, today }) {
   const rows = db.prepare(`
-    SELECT id, uid, account_id, savings_account_id, sync_from, synced_to FROM bank_accounts
-    WHERE enabled = 1 AND (account_id IS NOT NULL OR savings_account_id IS NOT NULL)
-      ${connectionId ? 'AND connection_id = ?' : ''}
-      ${bankAccountId ? 'AND id = ?' : ''}
-    ORDER BY rowid
-  `).all(...[connectionId, bankAccountId].filter(Boolean));
+    SELECT b.id, b.uid, b.account_id, b.savings_account_id, b.sync_from, b.synced_to
+    FROM bank_accounts b JOIN bank_connections c ON c.id = b.connection_id
+    WHERE c.workspace_id = ? AND b.enabled = 1 AND (b.account_id IS NOT NULL OR b.savings_account_id IS NOT NULL)
+      ${connectionId ? 'AND b.connection_id = ?' : ''}
+      ${bankAccountId ? 'AND b.id = ?' : ''}
+    ORDER BY b.rowid
+  `).all(workspaceId, ...[connectionId, bankAccountId].filter(Boolean));
   const results = [];
   for (const row of rows) results.push(await syncBankAccount(db, client, row, { psu, today }));
   return results;

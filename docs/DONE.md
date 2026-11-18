@@ -8,6 +8,11 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 
 - [x] Extract CategoryRulesPanel, CategoryManagerPanel, DashboardCharts into components — OK
 
+## Accounts
+
+- [x] Logins so the app can be shared: one account per person created from the CLI with an activation code, a couple sharing one household, anyone else in a household of their own with their own bank connection; log out and log out everywhere — OK
+- [x] `client/sw.js` kept `/api/bootstrap` and `/api/accounts/:id/data` in Cache Storage after a logout on a shared device — logout now clears every `/api` entry (from docs/Bugs.md) — OK
+
 ## Security
 
 - [x] Security hardening before self-host deploy: CSP + security headers, CSV export formula-injection guard + RFC-4180 quoting, API input coercion, `text/csv`-only import (closes cross-site bypass), non-root container + `.dockerignore` — OK
@@ -21,6 +26,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 ## Dashboard
 
 - [x] Remove the category filter dropdown from the Spending by Category card — OK
+- [x] Every account's real balance on the Dashboard: cards two per row (tap to switch), and with several accounts the Balance card shows the total, one figure per currency — OK
 
 ## UI / UX
 
@@ -28,6 +34,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Move the tab navigation to a fixed bottom bar, icon over label, active tab in the accent colour — OK
 - [x] Use the wallet mark as the PWA/Android icon and the browser-tab favicon, replacing the € glyph — OK
 - [x] Replace the desktop-style category and select-all checkboxes with app-like drawn ticks on tappable rows — OK
+- [x] Replace the header account dropdown, which resized with the account name, with a fixed-width button opening an account sheet (cards, set balance, new account, delete) — OK
 - [x] Centre the salary fields and their figures in Joint Split — OK
 - [x] Move the light/dark toggle into the Settings menu — OK
 - [x] Colour themes: six accents with dark-mode steps, picked from Settings and persisted — OK

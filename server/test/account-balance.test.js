@@ -1,34 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { openDb } from '../src/db.js';
-import { createApp } from '../src/app.js';
+import { startApp } from './helpers.js';
 import { syncAll } from '../src/bank-sync.js';
 
-function startApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-balance-'));
-  const db = openDb(path.join(dir, 'test.db'));
-  const app = createApp(db, { bank: { config: { configured: false }, client: null } });
-  return new Promise((resolve) => {
-    const server = app.listen(0, '127.0.0.1', () => {
-      resolve({
-        db,
-        base: `http://127.0.0.1:${server.address().port}`,
-        close: () => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); },
-      });
-    });
-  });
-}
 
 const headers = { 'Content-Type': 'application/json' };
 const json = async (res) => ({ status: res.status, body: await res.json() });
-const account = (app, id) => fetch(`${app.base}/api/bootstrap`).then(json).then(r => r.body.accounts.find(a => a.id === id));
+const account = (app, id) => app.fetch(`/api/bootstrap`).then(json).then(r => r.body.accounts.find(a => a.id === id));
 const patchSettings = (app, id, body) =>
-  fetch(`${app.base}/api/accounts/${id}/settings`, { method: 'PATCH', headers, body: JSON.stringify(body) }).then(json);
+  app.fetch(`/api/accounts/${id}/settings`, { method: 'PATCH', headers, body: JSON.stringify(body) }).then(json);
 const addTx = (app, id, date, amount) =>
-  fetch(`${app.base}/api/accounts/${id}/transactions`, { method: 'POST', headers, body: JSON.stringify({ date, description: 'x', amount }) });
+  app.fetch(`/api/accounts/${id}/transactions`, { method: 'POST', headers, body: JSON.stringify({ date, description: 'x', amount }) });
 
 function fakeBank(balances) {
   const failing = new Set();
@@ -43,7 +25,7 @@ function fakeBank(balances) {
 }
 
 function linkBankAccounts(db, rows) {
-  db.prepare("INSERT INTO bank_connections (id, session_id, aspsp_name, aspsp_country, valid_until) VALUES ('c1', 's1', 'Revolut', 'FR', '2027-01-01')").run();
+  db.prepare("INSERT INTO bank_connections (id, session_id, aspsp_name, aspsp_country, valid_until, workspace_id) VALUES ('c1', 's1', 'Revolut', 'FR', '2027-01-01', 'home')").run();
   const insert = db.prepare("INSERT INTO bank_accounts (id, connection_id, account_id, uid, enabled) VALUES (?, 'c1', ?, ?, ?)");
   for (const [id, accountId, enabled = 1] of rows) insert.run(id, accountId, `uid-${id}`, enabled);
 }
@@ -60,7 +42,7 @@ test('a bank-fed account sums its enabled bank accounts, dated by the oldest, an
   app.db.prepare("UPDATE bank_accounts SET balance = 9999, balance_date = '2026-01-01' WHERE id = 'old'").run();
   const bank = fakeBank({ 'uid-main': closing(1000.1, '2026-11-05'), 'uid-pocket': closing(250.25, '2026-11-03') });
 
-  await syncAll(app.db, bank, { today: '2026-11-06' });
+  await syncAll(app.db, bank, { workspaceId: 'home', today: '2026-11-06' });
   const first = await account(app, 'default');
   assert.equal(first.balanceSource, 'bank');
   assert.equal(first.balance, 1250.35);
@@ -69,7 +51,7 @@ test('a bank-fed account sums its enabled bank accounts, dated by the oldest, an
   assert.equal(first.openingBalanceDate, null);
 
   bank.failing.add('uid-pocket');
-  await syncAll(app.db, bank, { today: '2026-11-07' });
+  await syncAll(app.db, bank, { workspaceId: 'home', today: '2026-11-07' });
   const second = await account(app, 'default');
   assert.equal(second.balance, 1250.35);
   assert.equal(second.balanceAsOf, '2026-11-03');
@@ -84,7 +66,7 @@ test('a bank account whose balance was never read leaves the account balance unk
   const bank = fakeBank({ 'uid-main': closing(500, '2026-11-05') });
   bank.failing.add('uid-silent');
 
-  await syncAll(app.db, bank, { today: '2026-11-06' });
+  await syncAll(app.db, bank, { workspaceId: 'home', today: '2026-11-06' });
   const row = await account(app, 'default');
   assert.equal(row.balanceSource, 'bank');
   assert.equal(row.balance, null);

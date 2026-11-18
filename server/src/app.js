@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApiRouter } from './routes/api.js';
 import { createBankRouter } from './routes/bank.js';
+import { createAuthPublicRouter, createAuthRouter } from './routes/auth.js';
+import { requireSession } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -13,6 +15,8 @@ export function createApp(db, { bank }) {
   const app = express();
 
   app.disable('x-powered-by');
+  // `tailscale serve` is the one proxy in front, on loopback; req.ip is then the phone's address.
+  app.set('trust proxy', 'loopback');
   app.use((req, res, next) => {
     res.setHeader(
       'Content-Security-Policy',
@@ -26,6 +30,8 @@ export function createApp(db, { bank }) {
     next();
   });
 
+  // The one route a stranger can reach gets a small body limit, parsed before the general one.
+  app.use('/api/auth', express.json({ limit: '16kb' }), createAuthPublicRouter(db));
   app.use(express.json({ limit: '5mb' }));
   // Express 5 leaves req.body undefined when no parser matched, and every route reads it.
   // A later route-level parser (the CSV import's express.text) still replaces it.
@@ -33,7 +39,12 @@ export function createApp(db, { bank }) {
     req.body ??= {};
     next();
   });
+  // Docker's healthcheck, the only data-free route.
+  app.get('/api/health', (req, res) => res.json({ ok: true, version: 2 }));
+  // Before the general session check: the bank's callback is reached without one.
   app.use('/api/bank', createBankRouter(db, bank));
+  app.use('/api', requireSession(db));
+  app.use('/api/auth', createAuthRouter(db));
   app.use('/api', createApiRouter(db));
   // Anything under /api the router did not claim is a 404, not the SPA shell:
   // the catch-all below would answer it with index.html and a 200, which the

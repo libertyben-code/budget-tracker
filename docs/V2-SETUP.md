@@ -1,6 +1,6 @@
 # Budget Tracker v2 — Setup & Operations
 
-v2 is a self-hosted rewrite: vanilla HTML/CSS/JS frontend + Node/Express + SQLite, installed on Android as a PWA over Tailscale HTTPS. No login — Tailscale is the security perimeter.
+v2 is a self-hosted rewrite: vanilla HTML/CSS/JS frontend + Node/Express + SQLite, installed on Android as a PWA over Tailscale HTTPS. Tailscale is the perimeter; inside it, everyone logs in and sees only their household.
 
 ## Run locally (development, Windows or Linux)
 
@@ -149,6 +149,7 @@ Tagging also fixes node expiry permanently, which is why it is worth doing even 
    If that is awkward, register cleanly instead: delete the machine in the admin console, `docker volume rm budgetapp_ts-budget-state`, redeploy.
 
 5. Confirm with `tailscale status` — the machine's owner should read `tag:budget` rather than your email.
+6. Create their app account — see [Accounts and logins](#accounts-and-logins).
 
 When you hand the URL over, send it **with the scheme**: `https://budget.<tailnet>.ts.net`. **Type the `https://` scheme yourself.** Chrome assumes `http://` for a bare hostname, and a TLS listener answers plaintext with `client sent an HTTP request to an HTTPS server` — which reads like the server is down rather than like a typo. Their existing install cannot follow the move either — an installed PWA is pinned to the origin it was installed from, so they must remove the old icon and reinstall from the new address.
 
@@ -242,21 +243,48 @@ starts a fake Enable Banking on port 4545 and the app on http://localhost:3055 w
 - `client/` — static frontend, native ES modules, no build step. Views in `client/js/views/`, one module per screen; state in `client/js/store.js`; all server calls in `client/js/api.js`.
 - `shared/` — pure ESM modules (categorization engine, date + CSV helpers) imported by both Node and the browser.
 - `server/` — Express 5 + better-sqlite3. All routes in `server/src/routes/api.js`; schema in `server/src/schema.sql`.
-- Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed as `dd/mm/yy`. Amounts: negative = spending, positive = income. Category rules are global; everything else is per budget account.
+- Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed as `dd/mm/yy`. Amounts: negative = spending, positive = income. Categories, rules, savings, the joint split and bank connections belong to the household; transactions to a budget account.
 - Recurring savings deposits: rules live in `savings_recurring` (amount + day 1–28). Due deposits are applied lazily on `GET /accounts/:id/data` with multi-month catch-up; history ids are deterministic (`rec_<ruleId>_<date>`) so an occurrence can never apply twice.
 - CSV import (parse → skip REVERTED/PENDING → dedup → categorize) runs server-side in `importTransactions()`. Bank sync feeds the same function: `server/src/enablebanking.js` is the provider client, `server/src/bank-sync.js` maps and syncs, `server/src/routes/bank.js` holds the `/api/bank/*` routes, and `bank_connections` / `bank_accounts` in the schema hold consents and per-account mapping. Bank rows carry a provider `external_id` and are deduplicated on it; CSV/manual rows still use the date|description|amount|type key.
 
 ## Security model
 
-No application-layer auth by design — **Tailscale is the perimeter**, so keep it that way:
+**Tailscale is the perimeter**; inside it, each person logs in and sees only their household (see [Accounts and logins](#accounts-and-logins)). The login is not meant to face the internet on its own — keep the perimeter:
 
-- The app container publishes **no host port at all** — it sits on the Tailscale sidecar's network namespace, so the tailnet is the only route in. **Never `tailscale funnel`** it, and never give the `budget` service a `ports:` block back (e.g. `3001:3000`) — either one would expose all your financial data with no login.
+- The app container publishes **no host port at all** — it sits on the Tailscale sidecar's network namespace, so the tailnet is the only route in. **Never `tailscale funnel`** it, and never give the `budget` service a `ports:` block back (e.g. `3001:3000`) — the login would then be the only thing between the internet and your financial data, and it has no rate-limiting beyond a per-account lockout.
 - `HOST=127.0.0.1` on the app service is load-bearing. Sharing the sidecar's network namespace means `0.0.0.0` there includes the node's *tailnet* IP — the API would answer on `http://budget.<tailnet>.ts.net:3000` to every device on the tailnet, in plain HTTP, bypassing the TLS proxy. Loopback keeps `tailscale serve` the only way in; the proxy reaches it either way.
-- `TS_AUTHKEY` is a real credential: it can join machines to your tailnet, and every tailnet machine reaches this app with no login. It is readable in Portainer's stack settings and in `docker inspect ts-budget`, so anyone in the host's `docker` group has it. Give it an expiry and regenerate rather than keeping one immortal reusable key.
+- `TS_AUTHKEY` is a real credential: it can join machines to your tailnet, and every tailnet machine reaches this app's login page. It is readable in Portainer's stack settings and in `docker inspect ts-budget`, so anyone in the host's `docker` group has it. Give it an expiry and regenerate rather than keeping one immortal reusable key.
 - The sidecar image is pinned rather than `:latest` — it is the network perimeter, so a new image should land because you chose it, not because you redeployed.
 - Hardening already in the code: strict CSP + `X-Frame-Options`/`nosniff`/`Referrer-Policy` headers; CSV export neutralizes spreadsheet formula injection; the import endpoint only accepts `text/csv` (blocks cross-site form POSTs); the container runs as non-root uid 1000.
-- Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock.
+- Logins: passwords are hashed with Argon2id (scrypt if the native module is missing); sessions are opaque tokens stored hashed, ending after 14 days unused or 90 days in all; the cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, and every write must echo the CSRF cookie in a header. Five wrong passwords lock an account for 15 minutes. Every failure answers the same, so the login does not reveal which usernames exist.
+- Offline caveat: the service worker keeps an unencrypted snapshot of your data on each phone for offline reads — rely on device lock. Logging out clears it.
 
-## Adding a login later (if ever needed)
+## Accounts and logins
 
-One Express middleware in front of `/api/*` checking a session cookie + a `POST /api/login` route, and a 401 handler in `client/js/api.js`. No data model changes needed.
+There is no sign-up page: the owner creates every account on the server, and each person sets their own password in the app with a one-time code. **Deploying this version logs every phone out** — nothing opens until the first account exists, so create it right after the redeploy.
+
+Each account belongs to one **household**. Everything that existed before logins (all budget accounts, transactions, savings, categories, rules, the joint split and bank connections) goes to the **first `--admin` account**. Data is shared within a household and invisible from another one.
+
+```bash
+# 1. You: takes the existing data
+docker exec budget-tracker node server/scripts/create-user.js ben "Ben" --admin
+# 2. Your partner: shares your household
+docker exec budget-tracker node server/scripts/create-user.js lea "Léa" --pair-with ben
+# 3. Anyone else: a household of their own, starting with an empty "Main Account"
+docker exec budget-tracker node server/scripts/create-user.js tom "Tom"
+```
+
+Each command prints an **activation code** (one-time, valid 7 days). Give it to the person over a private channel. On the login page they tap **First time here? Activate your account**, enter their username, the code and a password (10 characters or more), and are signed in. Usernames ignore case.
+
+- **Forgotten password or expired code:** `docker exec budget-tracker node server/scripts/create-user.js <username> --reissue` prints a new code. The old password keeps working until the new code is used.
+- **Pairing happens at creation only.** To move an existing account into another household, delete its row and create it again with `--pair-with` (ask before doing that: it has to be done in SQLite).
+- **Someone else on your tailnet** (a brother, a friend) needs the [tailnet grant](#sharing-with-another-tailnet-user) first, then an account of their own.
+
+### Their own bank connection
+
+Bank sync runs through **your** Enable Banking application, which is in restricted mode: it only reads accounts that were authorised in your [Control Panel](#one-time-setup-in-the-enable-banking-control-panel). So before someone in another household can link a bank in the app:
+
+1. In the Enable Banking Control Panel, open your application → **Link accounts**, choose their bank, and have **them** log in to their bank and approve (on your screen, or on theirs while you share the session). This only allows their accounts to be read through your application; it does not show you their data in the app.
+2. They then link the same bank from the app (Settings ▸ *Bank sync*) under their own login. The connection, its accounts and their transactions belong to their household only.
+
+A bank account can belong to one household only: if someone links an account another household already holds, the app leaves it with the first household and imports nothing for them.

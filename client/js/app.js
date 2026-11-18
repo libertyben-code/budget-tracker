@@ -14,6 +14,7 @@ import * as savings from './views/savings.js';
 import * as bankSync from './views/bank-sync.js';
 import * as categoryPicker from './views/category-picker.js';
 import * as categorise from './views/categorise.js';
+import * as login from './views/login.js';
 
 const views = { dashboard, transactions, joint: jointSplit, savings, categorise };
 const actions = {
@@ -29,6 +30,7 @@ const actions = {
   ...bankSync.actions,
   ...categoryPicker.actions,
   ...categorise.actions,
+  ...login.actions,
   'retry-connection': retryConnection,
 };
 
@@ -125,8 +127,14 @@ function render() {
   const { selectionStart, selectionEnd } = active || {};
 
   const view = views[state.ui.tab] || views.dashboard;
-  appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-  modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + dashboard.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
+  appEl.classList.toggle('signed-out', Boolean(state.signedOut));
+  if (state.signedOut) {
+    appEl.innerHTML = login.render(state, t);
+    modalsEl.innerHTML = '';
+  } else {
+    appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
+    modalsEl.innerHTML = header.renderAccountSheet(state, t) + batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + dashboard.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
+  }
 
   const fields = fieldsByKey();
   for (const [key, value, rendered] of edited) {
@@ -185,6 +193,7 @@ async function runAction(name, el, ev) {
   try {
     await action(el, ev, t);
   } catch (err) {
+    if (err.signedOut) return;
     if (!err.network) toast(err.message || t('common.error'));
     else if (net.failedWrites === failedWrites) toast(err.message, { type: 'info' });
   }
@@ -199,8 +208,6 @@ function closeMenus() {
   const state = get();
   if (state.ui.settingsOpen) setUi({ settingsOpen: false });
   if (state.ui.categoryDropdownOpen) setUi({ categoryDropdownOpen: null });
-  if (state.ui.accountMenuOpen) setUi({ accountMenuOpen: false });
-  if (state.addingAccount) set({ addingAccount: false });
 }
 
 document.addEventListener('click', (ev) => {
@@ -210,6 +217,13 @@ document.addEventListener('click', (ev) => {
   if (!el) return;
   if (el.dataset.selfOnly !== undefined && ev.target !== el) return;
   runAction(el.dataset.action, el, ev);
+});
+
+document.addEventListener('submit', (ev) => {
+  const el = ev.target.closest('[data-action-submit]');
+  if (!el) return;
+  ev.preventDefault();
+  runAction(el.dataset.actionSubmit, el, ev);
 });
 
 document.addEventListener('change', (ev) => {
@@ -235,11 +249,10 @@ function closeTopmost(ev) {
     layer.click();
     return;
   }
-  const { settingsOpen, accountMenuOpen } = get().ui;
-  if (!settingsOpen && !accountMenuOpen) return;
+  if (!get().ui.settingsOpen) return;
   ev.preventDefault();
   closeMenus();
-  document.getElementById(settingsOpen ? 'settings-toggle' : 'account-toggle')?.focus();
+  document.getElementById('settings-toggle').focus();
 }
 
 // Tab past either end of the topmost dialog comes back round. Inside it the browser's own order
@@ -284,6 +297,46 @@ window.addEventListener('hashchange', () => {
 export async function refreshBootstrap() {
   const boot = await api.bootstrap();
   set({ accounts: boot.accounts, rules: boot.rules, joint: boot.joint });
+}
+
+// The service worker keeps API answers for offline use; on a shared phone they must not outlive
+// the session that fetched them.
+async function clearApiCache() {
+  if (!('caches' in window)) return;
+  for (const name of await caches.keys()) {
+    const cache = await caches.open(name);
+    for (const request of await cache.keys()) {
+      if (new URL(request.url).pathname.startsWith('/api/')) await cache.delete(request);
+    }
+  }
+}
+
+// What this device remembers of one person: their figures in the worker's cache, their selected
+// account, recent categories and the starter-categories answer.
+export async function forgetSession() {
+  await clearApiCache();
+  for (const key of ['activeAccountId', 'recentCategories', 'starterCategoriesOffered']) localStorage.removeItem(key);
+}
+
+// Logged out elsewhere, expired, or never logged in on this device: the next screen is the login.
+net.onSignedOut = () => {
+  if (get().signedOut) return;
+  net.paused = false;
+  set({ loaded: true, signedOut: true, connection: null });
+  clearApiCache();
+};
+
+// After a login. Someone else's figures may still be in memory, so a different account starts
+// from a fresh page.
+export async function signedIn(user) {
+  const previous = get().user;
+  if (previous && previous.username.toLowerCase() !== user.username.toLowerCase()) {
+    await forgetSession();
+    location.reload();
+    return;
+  }
+  set({ signedOut: false });
+  await start();
 }
 
 function savingsState(data) {
@@ -373,10 +426,11 @@ async function load() {
   try {
     const bootData = await api.bootstrap();
     let accountId = get().activeAccountId;
-    if (!bootData.accounts.some(a => a.id === accountId)) accountId = 'default';
+    if (!bootData.accounts.some(a => a.id === accountId)) accountId = bootData.accounts[0].id;
     const data = await api.accountData(accountId);
     set({
       loaded: true,
+      user: bootData.user,
       accounts: bootData.accounts,
       rules: bootData.rules,
       joint: bootData.joint,
@@ -391,7 +445,8 @@ async function load() {
     }
   } catch (err) {
     if (err.network) return set({ loaded: true });
-    // An HTTP error (a future 401 among them) means the server answered: not the offline state.
+    if (err.signedOut) return;
+    // An HTTP error means the server answered: not the offline state.
     net.paused = false;
     set({ loaded: true, connection: { error: err.message } });
   }
@@ -402,13 +457,10 @@ async function boot() {
   document.querySelector('.boot-loading')?.setAttribute('aria-label', translator()('common.loading'));
   header.applyTheme(get());
   subscribe(render);
-  await load();
-  syncTabFromHash();
-  if (!get().connection) handleBankReturn();
-  bankSync.autoSync(translator());
+  await start();
   // An installed PWA is usually resumed from the background rather than started again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') bankSync.autoSync(translator());
+    if (document.visibilityState === 'visible' && !get().signedOut) bankSync.autoSync(translator());
   });
 
   if ('serviceWorker' in navigator) {
@@ -419,6 +471,15 @@ async function boot() {
       });
     }
   }
+}
+
+// At boot and again after a login.
+async function start() {
+  await load();
+  if (get().signedOut) return;
+  syncTabFromHash();
+  if (!get().connection) handleBankReturn();
+  bankSync.autoSync(translator());
 }
 
 boot();
