@@ -40,6 +40,7 @@ Archive of completed feedback items. Do not edit during sessions — items are m
 - [x] Colour themes: six accents with dark-mode steps, picked from Settings and persisted — OK
 - [x] Centre the account switcher between the app name and the settings icon — OK
 - [x] Restore the wallet mark beside the app name, enlarge the app name, and make the account switcher a prominent accent pill — all on one header row — OK
+- [x] Renamed the app to **Ça Compte ?** and made the header title smaller — manifest `name`/`short_name`, `<title>`, the header, the login page and the welcome/open-in-app strings; `start_url`/`scope`/`id` untouched so installs are renamed, not orphaned — OK
 
 ## Deployment
 

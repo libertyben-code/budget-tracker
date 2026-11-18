@@ -246,6 +246,14 @@ Since logins, a household (workspace) only ever sees its own rows, and the serve
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
 
+### 2026-11-18 — Renamed to Ça Compte ? (branch: feature/rename-app)
+
+- Asked for: a shorter name in the style of Ben's other apps (Ça Tétonne ?, Scores, Equipeo), and a smaller header title. Ben chose **Ça Compte ?** from three options: *compte* is a bank account, and *ça compte* means "it matters". Grisbi and Pécule were dropped because existing personal-finance apps already use those names. Budgeo and Des Sous turned up no app with the same name and were the other two options.
+- Only what the user sees changed; every place the name appears is listed in `MAINTAINER.md` ▸ *App name*. The manifest `id`/`start_url`/`scope`, the repo, the Docker image, `budget.db`, the `bt-static-*` cache and the localStorage keys keep the old name, following the precedent of score-counter's rename to Scores.
+- Written with a plain space before the "?" like Ça Tétonne ?. The two translated sentences that contain it use `\u00a0` instead, so the "?" cannot wrap onto a line by itself.
+- Header title: wallet 24→20px, name 1.05→0.95rem, version 0.65→0.6rem. The title is 115px wide at 375px, against about 157px for "Budget Tracker" at the old size, which leaves the account button more room.
+- The name a real bank shows on its consent screen is the Enable Banking application's registered name, set in its Control Panel, not here. An installed phone may keep the old home-screen label until Chrome next checks the manifest; if it never changes, remove the app and add it again.
+
 ### 2026-11-18 — Logins and households (branch: feature/accounts)
 
 - Asked for: a login so the owner's partner (shared data) and brother (his own data, his own Enable Banking connection) can use the app, still over Tailscale. That is S8 and S9 of `docs/AUTH_ROLLOUT_PLAN.md` together: sessions alone would have shown the brother everything.
