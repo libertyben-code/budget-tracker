@@ -506,9 +506,34 @@ section.view { display: flex; flex-direction: column; gap: var(--space-4); }
    rail on the left and the content takes the width; everything below 900px is
    the phone layout and must stay as it is. Last in the file so it out-ranks the
    equal-specificity rules above. */
+/* Login: the whole page, no header or tab bar. */
+main.login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--space-4);
+  padding-top: max(var(--space-4), env(safe-area-inset-top));
+}
+.login-card { width: 100%; max-width: 380px; }
+.login-brand { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); color: var(--accent); font-weight: 650; }
+.login-brand span { color: var(--text); }
+.login-card h1 { margin: 0 0 var(--space-3); font-size: 1.35rem; }
+.login-hint { margin: calc(-1 * var(--space-2)) 0 var(--space-3); }
+.login-card input { width: 100%; }
+.login-error { margin: 0 0 var(--space-3); color: var(--danger); font-size: 0.9rem; }
+.login-card form .btn.primary { width: 100%; }
+.login-switch { width: 100%; margin-top: var(--space-2); white-space: normal; }
+.login-lang { color: var(--muted); }
+
 @media (min-width: 900px) {
   :root { --rail-w: 96px; }
   #app { padding-left: var(--rail-w); }
+  #app.signed-out { padding-left: 0; }
+  main.login { padding: var(--space-4); }
   main { max-width: 1400px; padding: var(--space-5); }
 
   .tab-bar {

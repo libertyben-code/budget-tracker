@@ -19,4 +19,3 @@ Format: `- [ ] description` pending, `- [x] description — OK` once fixed.
 
 ## Auth / UI
 
-- [ ] `client/sw.js` keeps `/api/bootstrap` and `/api/accounts/:id/data` in Cache Storage; on a shared device that outlives a logout — clear on logout (auth rollout).
