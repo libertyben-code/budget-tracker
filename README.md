@@ -1,6 +1,8 @@
-# Budget Tracker
+# Ça Compte ?
 
-Budget Tracker is a self-hosted personal finance app: a plain HTML/CSS/JS frontend and a Node/Express + SQLite backend, installed as a PWA on your phone over Tailscale. No login, no cloud dependency — your data stays on your own server.
+**Ça Compte ?** is a self-hosted personal finance app: a plain HTML/CSS/JS frontend and a Node/Express + SQLite backend, installed as a PWA on your phone over Tailscale. No login, no cloud dependency — your data stays on your own server.
+
+It used to be called Budget Tracker, and the project still is: the repository, folders, Docker image and service, database file and storage keys all keep the `budget-tracker` name. Only what you see in the app changed. The places that show the name are listed in [docs/MAINTAINER.md](docs/MAINTAINER.md#app-name).
 
 ## Features
 

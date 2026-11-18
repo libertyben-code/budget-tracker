@@ -1,6 +1,6 @@
 {
-  "name": "Budget Tracker",
-  "short_name": "Budget",
+  "name": "Ça Compte ?",
+  "short_name": "Ça Compte ?",
   "description": "Self-hosted budget tracker",
   "id": "/",
   "start_url": "/",

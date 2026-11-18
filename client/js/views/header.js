@@ -74,7 +74,7 @@ export function render(state, t) {
       <div class="app-title">
         ${icons.wallet}
         <div class="app-title-text">
-          <h1>Budget Tracker</h1>
+          <h1>Ça Compte ?</h1>
           <span class="app-version">${VERSION}</span>
         </div>
       </div>
