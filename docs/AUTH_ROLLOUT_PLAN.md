@@ -1,7 +1,7 @@
 # Auth Rollout Plan — public access for the 3 PWAs
 
 **Status:** in progress — S2, S4 (2026-09-28) and S5 (2026-09-29) done in score-counter, S3
-(2026-09-28) and S6 (2026-09-29) in CaTetonne · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
+(2026-09-28) and S6 (2026-09-29) in CaTetonne, S8 + S9 (2026-11-18) in budget-tracker · **Written:** 2026-09-06 · **Revised:** 2026-09-28 (review session, decisions below) · **Owner:** ben
 
 Plan to give `CaTetonne`, `budget-tracker` and `score-counter` real login-based access over the
 public internet, **Tailscale removed**, with per-user data isolation and owner-paired sharing —
@@ -195,9 +195,21 @@ until its account exists; a first login keeps what the phone holds.
 
 **S7 — CaTetonne**: S5 applied.
 
-**S8, S9 — budget-tracker**: the same in better-sqlite3 idiom, plus a versioned migration runner
-(`meta.schema_version` is read at last), per-workspace default account, UUID ids, `requireAccount`
-membership check, child routes joined through the account.
+**S8, S9 — done 2026-11-18** (budget-tracker, `feature/accounts`, one branch: the brother of the
+request needed both). S4 and S5 in better-sqlite3 idiom: `auth/*`, `middleware/auth.js`
+(`requireSession(db)`), `routes/auth.js`, `scripts/create-user.js`, cookies `budget_session` /
+`budget_csrf`, `/api/auth` body limit 16 KB, `trust proxy` = loopback (`tailscale serve`). No
+`cfAccess` and no `/api/auth/return`: Tailscale stays, so there is no Access to lapse. **No migration
+runner**: v8 is one more idempotent step of `migrate()`, detected by shape like v3–v7. Workspaces:
+`workspace_id` on `accounts`, `savings_accounts`, `bank_connections` (ALTER), `category_rules`,
+`custom_categories`, `settings` (rebuilt, the workspace joins the key); children join through their
+parent. **The backfill is a seeded workspace**, not NULL adoption: v8 stamps every existing row
+`home` once, and the first `--admin` takes the memberless `home`; a new workspace is born with an
+empty "Main Account" (the `'default'` id stays in `home`, re-seeded at boot, undeletable). Ids were
+already UUIDs. The bank callback is public, the link's `state` carrying the workspace; a provider
+account hash held by another workspace is skipped at link time. Client: login page in `views/login.js`,
+CSRF header, 401 → login, logout and a different-user login clear the `/api` Cache Storage entries and
+per-person `localStorage`, then reload. Tests: `test/accounts.test.js`, `test/helpers.js`.
 
 **S10 — Phase 0 infra.** Per repo: `docker-compose.yml` gains a `cloudflared` sidecar
 (`TUNNEL_TOKEN` as a stack variable, no `ports:`); the Tailscale sidecar is removed only at the

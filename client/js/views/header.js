@@ -2,7 +2,7 @@ import { esc, icons, money, navIcons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { accountBalance, categories } from '../derive.js';
-import { loadAccount, refreshBootstrap, refreshCategories } from '../app.js';
+import { loadAccount, refreshBootstrap, refreshCategories, forgetSession } from '../app.js';
 import { loadStatus as loadBankStatus, plural } from './bank-sync.js';
 import { todayIso } from '/shared/dates.js';
 
@@ -116,7 +116,7 @@ export function render(state, t) {
               <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
             </div>` : `
             <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
-            ${activeAccount.id && activeAccount.id !== 'default' ? `
+            ${activeAccount.id && activeAccount.id !== 'default' && state.accounts.length > 1 ? `
             <button class="menu-item account-delete" data-action="delete-account" data-id="${esc(activeAccount.id)}">${icons.trash} ${esc(t('header.deleteAccountNamed', { name: activeAccount.name }))}</button>` : ''}
           </div>` : ''}
         </div>
@@ -164,6 +164,13 @@ export function render(state, t) {
             </div>
             <button class="menu-item" data-action="toggle-lang">${icons.globe} ${esc(t('common.language'))}: ${state.ui.lang === 'en' ? esc(t('common.english')) : esc(t('common.french'))}</button>
           </div>
+          ${state.user ? `
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-group-account">
+            <div class="menu-heading" id="menu-group-account">${esc(t('auth.signedInAs', { name: state.user.displayName }))}</div>
+            <button class="menu-item" data-action="log-out">${icons.logOut} ${esc(t('auth.logOut'))}</button>
+            <button class="menu-item" data-action="log-out-everywhere">${icons.logOut} ${esc(t('auth.logOutEverywhere'))}</button>
+          </div>` : ''}
         </div>` : ''}
       </div>
     </div>
@@ -263,9 +270,10 @@ export const actions = {
     if (!(await confirmDialog(t('header.confirmDeleteAccount', { name: account?.name || '' }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
     setUi({ accountMenuOpen: false });
     await api.deleteAccount(el.dataset.id);
-    localStorage.setItem('activeAccountId', 'default');
-    set({ accounts: state.accounts.filter(a => a.id !== el.dataset.id) });
-    await loadAccount('default');
+    const remaining = state.accounts.filter(a => a.id !== el.dataset.id);
+    localStorage.setItem('activeAccountId', remaining[0].id);
+    set({ accounts: remaining });
+    await loadAccount(remaining[0].id);
   },
   'import-csv': async (el, ev, t) => {
     const file = el.files[0];
@@ -306,4 +314,21 @@ export const actions = {
     await refreshCategories();
   },
   'dismiss-import-errors': () => setUi({ importErrors: null }),
+  // Nothing of the session may stay on a shared phone, so the page starts again from the login.
+  'log-out': () => leave(() => api.logout()),
+  'log-out-everywhere': async (el, ev, t) => {
+    if (!(await confirmDialog(t('auth.confirmLogOutEverywhere'), { confirmLabel: t('auth.logOut'), cancelLabel: t('common.cancel') }))) return;
+    await leave(() => api.logoutAll());
+  },
 };
+
+async function leave(call) {
+  setUi({ settingsOpen: false });
+  try {
+    await call();
+  } catch (err) {
+    if (err.status !== 401) throw err;
+  }
+  await forgetSession();
+  location.reload();
+}

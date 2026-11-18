@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { createApp } from './app.js';
 import { loadConfig, EnableBankingClient } from './enablebanking.js';
+import { pruneSessions } from './auth/session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -15,6 +16,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || path.join(ROOT, 'data', 'budget.db');
 
 const db = openDb(DB_PATH);
+const pruned = pruneSessions(db);
+if (pruned) console.log(`Pruned ${pruned} expired session(s)`);
+if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
+  console.log('No accounts yet: create the first with `node server/scripts/create-user.js <username> "<Name>" --admin`');
+}
 const bankConfig = loadConfig();
 const app = createApp(db, {
   bank: { config: bankConfig, client: bankConfig.configured ? new EnableBankingClient(bankConfig) : null },

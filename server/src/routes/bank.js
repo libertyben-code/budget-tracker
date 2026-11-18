@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { ApiError } from '../enablebanking.js';
 import { syncAll } from '../bank-sync.js';
+import { requireSession } from '../middleware/auth.js';
 
 const LINK_TTL_MS = 15 * 60 * 1000;
 const MAX_CONSENT_SECONDS = 180 * 24 * 3600; // PSD2 ceiling; banks may allow less
@@ -49,13 +50,14 @@ function bankAccountRows(db, connectionId) {
 }
 
 function statusPayload(db, config, req) {
+  const ws = req.user.workspaceId;
   const connections = db.prepare(`
     SELECT id, provider, aspsp_name AS aspspName, aspsp_country AS country, psu_type AS psuType,
            valid_until AS validUntil, created_at AS createdAt
-    FROM bank_connections ORDER BY created_at
-  `).all().map(c => ({ ...c, accounts: bankAccountRows(db, c.id) }));
+    FROM bank_connections WHERE workspace_id = ? ORDER BY created_at
+  `).all(ws).map(c => ({ ...c, accounts: bankAccountRows(db, c.id) }));
   // every savings account, so the panel can offer them as targets
-  const savingsAccounts = db.prepare('SELECT id, name, balance FROM savings_accounts ORDER BY name').all();
+  const savingsAccounts = db.prepare('SELECT id, name, balance FROM savings_accounts WHERE workspace_id = ? ORDER BY name').all(ws);
   return {
     configured: config.configured,
     redirectUrl: config.configured ? redirectUrlFor(req, config) : '',
@@ -71,36 +73,41 @@ function sameCurrency(bankCurrency, budgetCurrency) {
 
 // Reuses a budget account of that name and currency, so linking again after an unlink lands
 // the rows where they went before (where the provider ids dedupe them) rather than in a copy.
-function budgetAccountFor(db, name, currency) {
-  const existing = db.prepare('SELECT id FROM accounts WHERE name = ? AND currency = ?').get(name, currency);
+function budgetAccountFor(db, ws, name, currency) {
+  const existing = db.prepare('SELECT id FROM accounts WHERE name = ? AND currency = ? AND workspace_id = ?').get(name, currency, ws);
   if (existing) return { id: existing.id, created: false };
   const id = `account_${crypto.randomUUID()}`;
-  db.prepare('INSERT INTO accounts (id, name, currency) VALUES (?, ?, ?)').run(id, name, currency);
+  db.prepare('INSERT INTO accounts (id, name, currency, workspace_id) VALUES (?, ?, ?, ?)').run(id, name, currency, ws);
   return { id, created: true };
 }
 
+const OWN_CONNECTION = 'connection_id IN (SELECT id FROM bank_connections WHERE workspace_id = ?)';
+
 // Upserts by the provider's stable account hash: a renewal re-points existing rows at the new
 // session and keeps their mapping and cursor; anything newly exposed gets a first target.
-// Connections left with no accounts are stale and dropped.
+// Connections left with no accounts are stale and dropped. The hash is one row for the whole
+// server, so an account another household already linked is left with them, untouched.
 function storeSession(db, session, link) {
+  const ws = link.workspaceId;
   const connectionId = crypto.randomUUID();
   const orphaned = [];
   const created = [];
   const bankName = session.aspsp?.name || link.aspspName;
   db.transaction(() => {
     db.prepare(`
-      INSERT INTO bank_connections (id, session_id, aspsp_name, aspsp_country, psu_type, valid_until)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO bank_connections (id, session_id, aspsp_name, aspsp_country, psu_type, valid_until, workspace_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       connectionId,
       session.session_id,
       bankName,
       session.aspsp?.country || link.country,
       session.psu_type || link.psuType,
-      session.access?.valid_until || ''
+      session.access?.valid_until || '',
+      ws
     );
     const update = db.prepare(
-      'UPDATE bank_accounts SET connection_id = ?, uid = ?, iban = ?, name = ?, currency = ?, kind = ? WHERE id = ?'
+      `UPDATE bank_accounts SET connection_id = ?, uid = ?, iban = ?, name = ?, currency = ?, kind = ? WHERE id = ? AND ${OWN_CONNECTION}`
     );
     const insert = db.prepare(`
       INSERT INTO bank_accounts (id, connection_id, account_id, uid, iban, name, currency, kind, enabled, sync_from)
@@ -110,15 +117,17 @@ function storeSession(db, session, link) {
       acc,
       id: acc.identification_hash || acc.account_id?.iban || acc.uid,
     }));
-    const known = db.prepare('SELECT id FROM bank_accounts WHERE id = ?');
-    const renewal = accounts.some(a => known.get(a.id));
+    const known = db.prepare(`SELECT id FROM bank_accounts WHERE id = ? AND ${OWN_CONNECTION}`);
+    const elsewhere = db.prepare(`SELECT id FROM bank_accounts WHERE id = ? AND NOT ${OWN_CONNECTION}`);
+    const renewal = accounts.some(a => known.get(a.id, ws));
     const budgetCurrency = db.prepare('SELECT currency FROM accounts WHERE id = ?').get(link.accountId).currency;
     for (const { acc, id } of accounts) {
       const iban = acc.account_id?.iban || '';
       const name = acc.name || acc.product || '';
       const currency = (acc.currency || '').toUpperCase();
       const kind = acc.cash_account_type || '';
-      if (update.run(connectionId, acc.uid, iban, name, currency, kind, id).changes === 0) {
+      if (elsewhere.get(id, ws)) continue;
+      if (update.run(connectionId, acc.uid, iban, name, currency, kind, id, ws).changes === 0) {
         // Starts unmapped when it is a savings-type account (a livret, a pocket: its movements
         // do not belong in the budget's transactions) or when it is new on a renewed consent
         // (the user ticked more accounts at the bank; where they go is their call, and a
@@ -132,7 +141,7 @@ function storeSession(db, session, link) {
           if (sameCurrency(currency, budgetCurrency)) {
             target = link.accountId;
           } else if (link.otherCurrencies === 'import') {
-            const own = budgetAccountFor(db, `${bankName} ${currency}`, currency);
+            const own = budgetAccountFor(db, ws, `${bankName} ${currency}`, currency);
             target = own.id;
             if (own.created) created.push(own.id);
             syncFrom = null; // the cutover was picked against the chosen account's rows
@@ -141,9 +150,9 @@ function storeSession(db, session, link) {
         insert.run(id, connectionId, target, acc.uid, iban, name, currency, kind, syncFrom);
       }
     }
-    const stale = 'SELECT id FROM bank_connections WHERE id NOT IN (SELECT DISTINCT connection_id FROM bank_accounts)';
-    orphaned.push(...db.prepare(`SELECT id, session_id AS sessionId FROM bank_connections WHERE id IN (${stale})`).all());
-    db.prepare(`DELETE FROM bank_connections WHERE id IN (${stale})`).run();
+    const stale = 'SELECT id FROM bank_connections WHERE workspace_id = ? AND id NOT IN (SELECT DISTINCT connection_id FROM bank_accounts)';
+    orphaned.push(...db.prepare(`SELECT id, session_id AS sessionId FROM bank_connections WHERE id IN (${stale})`).all(ws));
+    db.prepare(`DELETE FROM bank_connections WHERE id IN (${stale})`).run(ws);
   })();
   return { connectionId, orphaned, created };
 }
@@ -155,6 +164,10 @@ function redirectWith(res, params) {
 
 export function createBankRouter(db, { config, client }) {
   const router = express.Router();
+  const session = requireSession(db);
+  // The bank's redirect may land in a browser that holds no session (not the installed app), so
+  // the callback is reached without one: the link's `state`, made behind a login, names the household.
+  router.use((req, res, next) => (req.method === 'GET' && req.path === '/callback' ? next() : session(req, res, next)));
 
   router.get('/status', (req, res) => {
     res.json(statusPayload(db, config, req));
@@ -190,7 +203,8 @@ export function createBankRouter(db, { config, client }) {
     const language = /^[a-z]{2}$/.test(req.body.language || '') ? req.body.language : undefined;
     const otherCurrencies = req.body.otherCurrencies === 'skip' ? 'skip' : 'import';
     if (!aspspName || !/^[A-Z]{2}$/.test(country)) return res.status(400).json({ error: 'aspspName and country required' });
-    if (!db.prepare('SELECT id FROM accounts WHERE id = ?').get(accountId)) return res.status(400).json({ error: 'Unknown budget account' });
+    const ws = req.user.workspaceId;
+    if (!db.prepare('SELECT id FROM accounts WHERE id = ? AND workspace_id = ?').get(accountId, ws)) return res.status(400).json({ error: 'Unknown budget account' });
     if (syncFrom && !/^\d{4}-\d{2}-\d{2}$/.test(syncFrom)) return res.status(400).json({ error: 'syncFrom must be YYYY-MM-DD' });
 
     const listed = (await client.listAspsps(country))?.aspsps?.find(a => a.name === aspspName);
@@ -198,7 +212,7 @@ export function createBankRouter(db, { config, client }) {
     const validitySeconds = Math.min(Number(listed.maximum_consent_validity) || MAX_CONSENT_SECONDS, MAX_CONSENT_SECONDS);
 
     const redirectUrl = redirectUrlFor(req, config);
-    const state = rememberLink({ aspspName, country, psuType, accountId, syncFrom, otherCurrencies });
+    const state = rememberLink({ workspaceId: ws, aspspName, country, psuType, accountId, syncFrom, otherCurrencies });
     const auth = await client.startAuth({
       access: { valid_until: rfc3339(validitySeconds * 1000) },
       aspsp: { name: aspspName, country },
@@ -234,7 +248,7 @@ export function createBankRouter(db, { config, client }) {
 
     // Some banks (Revolut) only expose full history in the first minutes after consent —
     // the initial fetch has to happen here, not on a later button press.
-    const results = await syncAll(db, client, { connectionId, psu: psuFromRequest(req) });
+    const results = await syncAll(db, client, { workspaceId: link.workspaceId, connectionId, psu: psuFromRequest(req) });
     const summary = {
       connection: connectionId,
       created,
@@ -251,12 +265,14 @@ export function createBankRouter(db, { config, client }) {
   router.post('/sync', async (req, res) => {
     const connectionId = req.body?.connectionId ? String(req.body.connectionId) : undefined;
     const bankAccountId = req.body?.bankAccountId ? String(req.body.bankAccountId) : undefined;
-    const results = await syncAll(db, client, { connectionId, bankAccountId, psu: psuFromRequest(req) });
+    const results = await syncAll(db, client, { workspaceId: req.user.workspaceId, connectionId, bankAccountId, psu: psuFromRequest(req) });
     res.json({ results, status: statusPayload(db, config, req) });
   });
 
   router.patch('/accounts/:id', (req, res) => {
-    const current = db.prepare('SELECT id, name, currency, account_id, savings_account_id, enabled, sync_from FROM bank_accounts WHERE id = ?').get(req.params.id);
+    const ws = req.user.workspaceId;
+    const current = db.prepare(`SELECT id, name, currency, account_id, savings_account_id, enabled, sync_from FROM bank_accounts WHERE id = ? AND ${OWN_CONNECTION}`)
+      .get(req.params.id, ws);
     if (!current) return res.status(404).json({ error: 'Bank account not found' });
     const { accountId, savingsAccountId, enabled, syncFrom } = req.body;
     // A bank account feeds either a budget account (transactions) or a savings account
@@ -264,7 +280,7 @@ export function createBankRouter(db, { config, client }) {
     let nextAccount = current.account_id;
     let nextSavings = current.savings_account_id;
     if (accountId !== undefined) {
-      const target = accountId ? db.prepare('SELECT id, name, currency FROM accounts WHERE id = ?').get(accountId) : null;
+      const target = accountId ? db.prepare('SELECT id, name, currency FROM accounts WHERE id = ? AND workspace_id = ?').get(accountId, ws) : null;
       if (accountId && !target) return res.status(400).json({ error: 'Unknown budget account' });
       if (target && target.id !== current.account_id && !sameCurrency(current.currency, target.currency)) {
         return res.status(400).json({
@@ -275,7 +291,7 @@ export function createBankRouter(db, { config, client }) {
       if (nextAccount) nextSavings = null;
     }
     if (savingsAccountId !== undefined) {
-      if (savingsAccountId && !db.prepare('SELECT id FROM savings_accounts WHERE id = ?').get(savingsAccountId)) {
+      if (savingsAccountId && !db.prepare('SELECT id FROM savings_accounts WHERE id = ? AND workspace_id = ?').get(savingsAccountId, ws)) {
         return res.status(400).json({ error: 'Unknown savings account' });
       }
       nextSavings = savingsAccountId || null;
@@ -302,15 +318,17 @@ export function createBankRouter(db, { config, client }) {
         moved = db.prepare(`
           UPDATE transactions SET account_id = ?, updated_at = datetime('now')
           WHERE external_id IS NOT NULL AND substr(external_id, 1, ?) = ? AND account_id != ?
+            AND account_id IN (SELECT id FROM accounts WHERE workspace_id = ?)
             AND NOT EXISTS (SELECT 1 FROM transactions t2 WHERE t2.account_id = ? AND t2.external_id = transactions.external_id)
-        `).run(nextAccount, prefix.length, prefix, nextAccount, nextAccount).changes;
+        `).run(nextAccount, prefix.length, prefix, nextAccount, ws, nextAccount).changes;
       }
     })();
     res.json({ ...statusPayload(db, config, req), moved });
   });
 
   router.delete('/connections/:id', async (req, res) => {
-    const conn = db.prepare('SELECT id, session_id AS sessionId FROM bank_connections WHERE id = ?').get(req.params.id);
+    const conn = db.prepare('SELECT id, session_id AS sessionId FROM bank_connections WHERE id = ? AND workspace_id = ?')
+      .get(req.params.id, req.user.workspaceId);
     if (!conn) return res.status(404).json({ error: 'Connection not found' });
     await client.deleteSession(conn.sessionId, psuFromRequest(req)).catch(() => {});
     db.prepare('DELETE FROM bank_connections WHERE id = ?').run(conn.id);

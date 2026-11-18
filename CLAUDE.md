@@ -7,8 +7,9 @@ lives in the docs below; this file is the map plus the rules that apply to every
 ## What this is
 
 Self-hosted personal finance app: **plain HTML/CSS/JS frontend** (no build step, no framework) +
-Node/Express + SQLite backend, installed as a PWA on the phone over **Tailscale**. No login, no
-cloud dependency — the data stays on your own server.
+Node/Express + SQLite backend, installed as a PWA on the phone over **Tailscale**. One login per
+person, created by the owner from the command line; each **household** (workspace) sees only its
+own data, and a couple shares one. No cloud dependency — the data stays on your own server.
 
 Unlike the sibling PWAs (`score-counter`, `CaTetonne`, `pwa-sync-template`), this one is **not**
 built from the Vite template and has no outbox/watermark sync engine: the client talks to the API
@@ -39,7 +40,9 @@ Note the casing: `Bugs.md` here, not `BUGS.md`.
 - `shared/` — `categorize.js`, `csv.js`, `dates.js`: used by both sides. A change here lands on the
   client and the server at once.
 - `server/src/` — `index.js` (entry), `app.js` (Express app, what tests mount), `db.js`,
-  `routes/api.js`, `schema.sql`; bank sync in `routes/bank.js`, `bank-sync.js`, `enablebanking.js`.
+  `routes/api.js`, `schema.sql`; bank sync in `routes/bank.js`, `bank-sync.js`, `enablebanking.js`;
+  logins in `auth/`, `middleware/auth.js`, `routes/auth.js`, accounts made by
+  `server/scripts/create-user.js`.
   `npm start` / `npm test` in `server/`; `server/tools/dev-harness.mjs` (launch config
   `dev-harness`) runs the app with a fake bank.
 - `backup.sh`, `Dockerfile`, `docker-compose.yml` at the root; the SQLite file lives in `data/`.
@@ -64,6 +67,8 @@ dated section.
 - **`schema.sql` cannot change a table that already exists** — new columns go in `db.js` `migrate()`.
 - **Dropping a foreign-key column cascades unless foreign keys are off** — table rebuilds follow
   `dropSavingsOwner()`.
+- **Every row belongs to one household** — a new top-level table needs `workspace_id`, and every
+  query filters by `req.ws` or joins through a parent that does.
 
 ## Rules that apply to every task (inline so they're always loaded)
 

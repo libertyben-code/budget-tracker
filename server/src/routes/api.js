@@ -9,6 +9,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// Transactions belong to a household through their budget account; bind the workspace id.
+const IN_WORKSPACE = 'account_id IN (SELECT id FROM accounts WHERE workspace_id = ?)';
+
 // A budget account fed by enabled bank accounts takes the sum of their last bank balances,
 // dated by the oldest; one that has never been read leaves the balance unknown. Otherwise an
 // opening balance plus every row from its date on.
@@ -40,27 +43,38 @@ function isIsoDate(value) {
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 }
 
-// one list for every budget account: what their transactions use plus the custom ones,
-// each with its transaction count across all accounts
-function categoryList(db) {
+// one list for the household's budget accounts: what their transactions use plus the custom
+// ones, each with its transaction count across those accounts
+function categoryList(db, ws) {
   return db.prepare(`
     SELECT name, SUM(n) AS count FROM (
-      SELECT category AS name, COUNT(*) AS n FROM transactions GROUP BY category
-      UNION ALL SELECT name, 0 FROM custom_categories
+      SELECT category AS name, COUNT(*) AS n FROM transactions WHERE ${IN_WORKSPACE} GROUP BY category
+      UNION ALL SELECT name, 0 FROM custom_categories WHERE workspace_id = ?
     ) GROUP BY name ORDER BY name
-  `).all();
+  `).all(ws, ws);
 }
 
-function jointSettings(db) {
-  return JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value);
+const EMPTY_JOINT = { wanted: null, salary1: null, salary2: null, name1: '', name2: '' };
+
+// a household that never saved its split has no row yet
+function jointSettings(db, ws) {
+  const row = db.prepare("SELECT value FROM settings WHERE workspace_id = ? AND key = 'joint'").get(ws);
+  return row ? JSON.parse(row.value) : { ...EMPTY_JOINT };
 }
 
 const JOINT_AMOUNTS = ['wanted', 'salary1', 'salary2'];
 const JOINT_NAMES = ['name1', 'name2'];
 const MAX_NAME_LENGTH = 40;
 
-function allRules(db) {
-  return db.prepare('SELECT pattern, category FROM category_rules ORDER BY id').all();
+function allRules(db, ws) {
+  return db.prepare('SELECT pattern, category FROM category_rules WHERE workspace_id = ? ORDER BY id').all(ws);
+}
+
+function saveRule(db, ws, pattern, category) {
+  db.prepare(`
+    INSERT INTO category_rules (workspace_id, pattern, category) VALUES (?, ?, ?)
+    ON CONFLICT(workspace_id, pattern) DO UPDATE SET category = excluded.category
+  `).run(ws, pattern, category);
 }
 
 // rows: { date, description, amount, type, state, externalId? }.
@@ -70,8 +84,9 @@ function allRules(db) {
 // date|description|amount|type key, but a bank row only against rows that have NO external
 // id: that catches the overlap with the CSV era without collapsing distinct bank rows.
 export function importTransactions(db, accountId, rows, { source = 'csv' } = {}) {
-  const rules = allRules(db);
-  const categories = categoryList(db).map(c => c.name);
+  const ws = db.prepare('SELECT workspace_id FROM accounts WHERE id = ?').get(accountId).workspace_id;
+  const rules = allRules(db, ws);
+  const categories = categoryList(db, ws).map(c => c.name);
   const existing = db.prepare('SELECT date, description, amount, type, external_id AS externalId FROM transactions WHERE account_id = ?')
     .all(accountId);
   const legacyKeys = new Set(existing.filter(t => !t.externalId).map(dedupKey));
@@ -119,12 +134,12 @@ function nextMonthDate(iso, day) {
   return m === 12 ? monthDate(y + 1, 1, day) : monthDate(y, m + 1, day);
 }
 
-function applyDueRecurring(db) {
+function applyDueRecurring(db, ws) {
   const rules = db.prepare(`
     SELECT r.id, r.savings_account_id AS sid, r.amount, r.day, r.next_date AS nextDate
     FROM savings_recurring r JOIN savings_accounts s ON s.id = r.savings_account_id
-    WHERE s.category IS NULL
-  `).all();
+    WHERE s.category IS NULL AND s.workspace_id = ?
+  `).all(ws);
   const today = todayIso();
   db.transaction(() => {
     for (const rule of rules) {
@@ -147,35 +162,35 @@ function applyDueRecurring(db) {
   })();
 }
 
-// A category-fed savings account: every budget account's transactions in that category are its
+// A category-fed savings account: the household's transactions in that category are its
 // movements — a debit is a deposit, a credit a withdrawal — on top of the stored opening balance.
-function fedMovements(db, category) {
-  return db.prepare('SELECT id, date, amount FROM transactions WHERE category = ? AND amount != 0 ORDER BY date DESC, id DESC')
-    .all(category)
+function fedMovements(db, ws, category) {
+  return db.prepare(`SELECT id, date, amount FROM transactions WHERE category = ? AND amount != 0 AND ${IN_WORKSPACE} ORDER BY date DESC, id DESC`)
+    .all(category, ws)
     .map(t => ({ id: `cat_${t.id}`, date: t.date, type: t.amount < 0 ? 'deposit' : 'withdrawal', amount: Math.abs(t.amount) }));
 }
 
-function fedNet(db, category) {
+function fedNet(db, ws, category) {
   if (!category) return 0;
-  return -db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE category = ?').get(category).total;
+  return -db.prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE category = ? AND ${IN_WORKSPACE}`).get(category, ws).total;
 }
 
 // The API speaks in the balance the user sees: stored as-is for a manual account, opening plus
 // movements for a fed one. Writes convert back (shown − net), so a fed account may store a
 // negative opening.
-function savingsRow(db, id) {
-  const row = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(id);
-  return row && { ...row, balance: round2(row.balance + fedNet(db, row.category)) };
+function savingsRow(db, ws, id) {
+  const row = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ? AND workspace_id = ?').get(id, ws);
+  return row && { ...row, balance: round2(row.balance + fedNet(db, ws, row.category)) };
 }
 
-function savingsPayload(db) {
-  applyDueRecurring(db);
-  const savingsAccounts = db.prepare('SELECT id FROM savings_accounts ORDER BY rowid').all()
-    .map(s => savingsRow(db, s.id));
+function savingsPayload(db, ws) {
+  applyDueRecurring(db, ws);
+  const savingsAccounts = db.prepare('SELECT id FROM savings_accounts WHERE workspace_id = ? ORDER BY rowid').all(ws)
+    .map(s => savingsRow(db, ws, s.id));
   const savingsHistory = {};
   const savingsRecurring = {};
   for (const s of savingsAccounts) {
-    savingsHistory[s.id] = s.category ? fedMovements(db, s.category) : db.prepare(
+    savingsHistory[s.id] = s.category ? fedMovements(db, ws, s.category) : db.prepare(
       'SELECT id, date, type, amount, timestamp FROM savings_history WHERE savings_account_id = ? ORDER BY timestamp DESC'
     ).all(s.id);
     savingsRecurring[s.id] = db.prepare(
@@ -188,25 +203,29 @@ function savingsPayload(db) {
 export function createApiRouter(db) {
   const router = express.Router();
 
+  // Mounted behind requireSession, which names the household a request may touch.
+  router.use((req, res, next) => {
+    req.ws = req.user.workspaceId;
+    next();
+  });
+
+  // Another household's account answers exactly like one that does not exist.
   const requireAccount = (req, res, next) => {
-    const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+    const account = db.prepare('SELECT id FROM accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.ws);
     if (!account) return res.status(404).json({ error: 'Account not found' });
     next();
   };
 
-  router.get('/health', (req, res) => {
-    res.json({ ok: true, version: 2 });
-  });
-
   router.get('/bootstrap', (req, res) => {
-    const accounts = db.prepare('SELECT id FROM accounts ORDER BY created_at').all()
+    const accounts = db.prepare('SELECT id FROM accounts WHERE workspace_id = ? ORDER BY created_at').all(req.ws)
       .map(a => accountRow(db, a.id));
-    res.json({ accounts, rules: allRules(db), joint: jointSettings(db) });
+    const { displayName, username, role } = req.user;
+    res.json({ user: { displayName, username, role }, accounts, rules: allRules(db, req.ws), joint: jointSettings(db, req.ws) });
   });
 
   // '' or null clears an amount
   router.patch('/settings/joint', (req, res) => {
-    const joint = jointSettings(db);
+    const joint = jointSettings(db, req.ws);
     for (const [key, value] of Object.entries(req.body)) {
       if (JOINT_AMOUNTS.includes(key)) {
         const amount = value === '' || value === null ? null : Number(value);
@@ -222,17 +241,20 @@ export function createApiRouter(db) {
         return res.status(400).json({ error: `Unknown setting: ${key}` });
       }
     }
-    db.prepare("UPDATE settings SET value = ? WHERE key = 'joint'").run(JSON.stringify(joint));
+    db.prepare(`
+      INSERT INTO settings (workspace_id, key, value) VALUES (?, 'joint', ?)
+      ON CONFLICT(workspace_id, key) DO UPDATE SET value = excluded.value
+    `).run(req.ws, JSON.stringify(joint));
     res.json(joint);
   });
 
   // --- Accounts ---
 
-  // savings and categories ride along although they are global, so one request loads the app
+  // savings and categories ride along although they are the household's, so one request loads the app
   router.get('/accounts/:id/data', requireAccount, (req, res) => {
     const transactions = db.prepare(`SELECT ${txColumns} FROM transactions WHERE account_id = ? ORDER BY date DESC, id DESC`)
       .all(req.params.id);
-    res.json({ transactions, ...savingsPayload(db), categories: categoryList(db) });
+    res.json({ transactions, ...savingsPayload(db, req.ws), categories: categoryList(db, req.ws) });
   });
 
   router.post('/accounts', (req, res) => {
@@ -241,7 +263,7 @@ export function createApiRouter(db) {
     const currency = req.body.currency === undefined ? 'EUR' : String(req.body.currency).toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({ error: 'currency must be a three-letter code' });
     const id = `account_${randomUUID()}`;
-    db.prepare('INSERT INTO accounts (id, name, currency) VALUES (?, ?, ?)').run(id, name, currency);
+    db.prepare('INSERT INTO accounts (id, name, currency, workspace_id) VALUES (?, ?, ?, ?)').run(id, name, currency, req.ws);
     res.status(201).json(accountRow(db, id));
   });
 
@@ -272,9 +294,14 @@ export function createApiRouter(db) {
     res.json(accountRow(db, req.params.id));
   });
 
+  // The client always has an account selected, so a household keeps at least one; and db.js
+  // seeds 'default' at every boot, so that one stays too.
   router.delete('/accounts/:id', requireAccount, (req, res) => {
     if (req.params.id === 'default') {
       return res.status(400).json({ error: 'The default account cannot be deleted' });
+    }
+    if (db.prepare('SELECT COUNT(*) AS n FROM accounts WHERE workspace_id = ?').get(req.ws).n < 2) {
+      return res.status(400).json({ error: 'The last account cannot be deleted' });
     }
     db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
     res.status(204).end();
@@ -328,13 +355,10 @@ export function createApiRouter(db) {
     let applied = null;
     if (learnRule && next.description.trim().length >= MIN_RULE_PATTERN && next.category && next.category !== 'Uncategorized') {
       const pattern = next.description.toLowerCase().trim();
-      db.prepare(`
-        INSERT INTO category_rules (pattern, category) VALUES (?, ?)
-        ON CONFLICT(pattern) DO UPDATE SET category = excluded.category
-      `).run(pattern, next.category);
+      saveRule(db, req.ws, pattern, next.category);
       rule = { pattern, category: next.category };
 
-      const matches = db.prepare("SELECT id, description FROM transactions WHERE category = 'Uncategorized'").all()
+      const matches = db.prepare(`SELECT id, description FROM transactions WHERE category = 'Uncategorized' AND ${IN_WORKSPACE}`).all(req.ws)
         .filter(t => autoCategorize(t.description, [rule]) === rule.category);
       const update = db.prepare("UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE id = ?");
       db.transaction(() => {
@@ -355,11 +379,11 @@ export function createApiRouter(db) {
     }
     const revert = db.prepare(`
       UPDATE transactions SET category = 'Uncategorized', updated_at = datetime('now')
-      WHERE id = ? AND category = ?
+      WHERE id = ? AND category = ? AND ${IN_WORKSPACE}
     `);
     let reverted = 0;
     db.transaction(() => {
-      for (const id of ids) reverted += revert.run(id, category).changes;
+      for (const id of ids) reverted += revert.run(id, category, req.ws).changes;
     })();
     res.json({ reverted });
   });
@@ -418,7 +442,7 @@ export function createApiRouter(db) {
 
   // applies every rule across all transactions, overwriting where a rule matches
   router.post('/accounts/:id/autocategorize', requireAccount, (req, res) => {
-    const rules = allRules(db);
+    const rules = allRules(db, req.ws);
     const transactions = db.prepare(
       'SELECT id, description, category FROM transactions WHERE account_id = ?'
     ).all(req.params.id);
@@ -439,7 +463,7 @@ export function createApiRouter(db) {
   // --- Rules ---
 
   router.get('/rules', (req, res) => {
-    res.json(allRules(db));
+    res.json(allRules(db, req.ws));
   });
 
   router.post('/rules', (req, res) => {
@@ -448,44 +472,41 @@ export function createApiRouter(db) {
     if (pattern.length < MIN_RULE_PATTERN || !category) {
       return res.status(400).json({ error: `pattern of at least ${MIN_RULE_PATTERN} characters and category required` });
     }
-    db.prepare(`
-      INSERT INTO category_rules (pattern, category) VALUES (?, ?)
-      ON CONFLICT(pattern) DO UPDATE SET category = excluded.category
-    `).run(pattern, category);
+    saveRule(db, req.ws, pattern, category);
     res.status(201).json({ pattern, category });
   });
 
   router.post('/rules/batch', (req, res) => {
     const { patterns = [], category } = req.body;
     if (!patterns.length || !category) return res.status(400).json({ error: 'patterns and category required' });
-    const update = db.prepare('UPDATE category_rules SET category = ? WHERE pattern = ?');
+    const update = db.prepare('UPDATE category_rules SET category = ? WHERE pattern = ? AND workspace_id = ?');
     let updated = 0;
     db.transaction(() => {
-      for (const pattern of patterns) updated += update.run(category, pattern).changes;
+      for (const pattern of patterns) updated += update.run(category, pattern, req.ws).changes;
     })();
     res.json({ updated });
   });
 
   router.post('/rules/delete', (req, res) => {
     const { patterns = [] } = req.body;
-    const del = db.prepare('DELETE FROM category_rules WHERE pattern = ?');
+    const del = db.prepare('DELETE FROM category_rules WHERE pattern = ? AND workspace_id = ?');
     let deleted = 0;
     db.transaction(() => {
-      for (const pattern of patterns) deleted += del.run(pattern).changes;
+      for (const pattern of patterns) deleted += del.run(pattern, req.ws).changes;
     })();
     res.json({ deleted });
   });
 
-  // --- Categories: global, so a rename or delete reaches every budget account (atomic propagation) ---
+  // --- Categories: the household's, so a rename or delete reaches each of its budget accounts ---
 
   router.get('/categories', (req, res) => {
-    res.json(categoryList(db));
+    res.json(categoryList(db, req.ws));
   });
 
   router.post('/categories', (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name required' });
-    db.prepare('INSERT OR IGNORE INTO custom_categories (name) VALUES (?)').run(name);
+    db.prepare('INSERT OR IGNORE INTO custom_categories (workspace_id, name) VALUES (?, ?)').run(req.ws, name);
     res.status(201).json({ name });
   });
 
@@ -497,12 +518,12 @@ export function createApiRouter(db) {
     let rules = 0;
     db.transaction(() => {
       transactions = db.prepare(
-        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ?"
-      ).run(target, from).changes;
-      rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ?').run(target, from).changes;
-      db.prepare('UPDATE savings_accounts SET category = ? WHERE category = ?').run(target, from);
+        `UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ? AND ${IN_WORKSPACE}`
+      ).run(target, from, req.ws).changes;
+      rules = db.prepare('UPDATE category_rules SET category = ? WHERE category = ? AND workspace_id = ?').run(target, from, req.ws).changes;
+      db.prepare('UPDATE savings_accounts SET category = ? WHERE category = ? AND workspace_id = ?').run(target, from, req.ws);
       // OR REPLACE: renaming onto an existing custom entry merges into it instead of hitting the PK
-      db.prepare('UPDATE OR REPLACE custom_categories SET name = ? WHERE name = ?').run(target, from);
+      db.prepare('UPDATE OR REPLACE custom_categories SET name = ? WHERE name = ? AND workspace_id = ?').run(target, from, req.ws);
     })();
     res.json({ transactions, rules });
   });
@@ -517,14 +538,15 @@ export function createApiRouter(db) {
     let transactions = 0;
     let rules = 0;
     db.transaction(() => {
-      const net = fedNet(db, category);
+      const net = fedNet(db, req.ws, category);
       transactions = db.prepare(
-        "UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ?"
-      ).run(target, category).changes;
-      rules = db.prepare('DELETE FROM category_rules WHERE category = ?').run(category).changes;
-      db.prepare('DELETE FROM custom_categories WHERE name = ?').run(category);
+        `UPDATE transactions SET category = ?, updated_at = datetime('now') WHERE category = ? AND ${IN_WORKSPACE}`
+      ).run(target, category, req.ws).changes;
+      rules = db.prepare('DELETE FROM category_rules WHERE category = ? AND workspace_id = ?').run(category, req.ws).changes;
+      db.prepare('DELETE FROM custom_categories WHERE name = ? AND workspace_id = ?').run(category, req.ws);
       // the category is gone everywhere, so a savings account it fed turns manual at the balance it showed
-      db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2), category = NULL WHERE category = ?').run(net, category);
+      db.prepare('UPDATE savings_accounts SET balance = ROUND(balance + ?, 2), category = NULL WHERE category = ? AND workspace_id = ?')
+        .run(net, category, req.ws);
     })();
     res.json({ transactions, rules });
   });
@@ -532,7 +554,7 @@ export function createApiRouter(db) {
   // --- Savings ---
 
   router.get('/savings', (req, res) => {
-    res.json(savingsPayload(db));
+    res.json(savingsPayload(db, req.ws));
   });
 
   router.post('/savings', (req, res) => {
@@ -543,14 +565,14 @@ export function createApiRouter(db) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     const id = `savings_${randomUUID()}`;
-    db.prepare('INSERT INTO savings_accounts (id, name, balance, category) VALUES (?, ?, ?, ?)')
-      .run(id, name, round2(balance - fedNet(db, category)), category);
-    res.status(201).json(savingsRow(db, id));
+    db.prepare('INSERT INTO savings_accounts (id, name, balance, category, workspace_id) VALUES (?, ?, ?, ?, ?)')
+      .run(id, name, round2(balance - fedNet(db, req.ws, category)), category, req.ws);
+    res.status(201).json(savingsRow(db, req.ws, id));
   });
 
   // an omitted balance keeps the one shown, so relinking re-derives the opening rather than the total
   router.patch('/savings/:sid', (req, res) => {
-    const current = savingsRow(db, req.params.sid);
+    const current = savingsRow(db, req.ws, req.params.sid);
     if (!current) return res.status(404).json({ error: 'Savings account not found' });
     const name = req.body.name !== undefined ? String(req.body.name).trim() : current.name;
     const balance = req.body.balance !== undefined ? Number(req.body.balance) : current.balance;
@@ -559,17 +581,17 @@ export function createApiRouter(db) {
       return res.status(400).json({ error: 'name and non-negative balance required' });
     }
     db.prepare('UPDATE savings_accounts SET name = ?, balance = ?, category = ? WHERE id = ?')
-      .run(name, round2(balance - fedNet(db, category)), category, req.params.sid);
-    res.json(savingsRow(db, req.params.sid));
+      .run(name, round2(balance - fedNet(db, req.ws, category)), category, req.params.sid);
+    res.json(savingsRow(db, req.ws, req.params.sid));
   });
 
   router.delete('/savings/:sid', (req, res) => {
-    db.prepare('DELETE FROM savings_accounts WHERE id = ?').run(req.params.sid);
+    db.prepare('DELETE FROM savings_accounts WHERE id = ? AND workspace_id = ?').run(req.params.sid, req.ws);
     res.status(204).end();
   });
 
   router.post('/savings/:sid/recurring', (req, res) => {
-    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ? AND workspace_id = ?').get(req.params.sid, req.ws);
     if (!account) return res.status(404).json({ error: 'Savings account not found' });
     if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
     const amount = Number(req.body.amount);
@@ -588,7 +610,8 @@ export function createApiRouter(db) {
   });
 
   router.delete('/savings/recurring/:rid', (req, res) => {
-    db.prepare('DELETE FROM savings_recurring WHERE id = ?').run(req.params.rid);
+    db.prepare('DELETE FROM savings_recurring WHERE id = ? AND savings_account_id IN (SELECT id FROM savings_accounts WHERE workspace_id = ?)')
+      .run(req.params.rid, req.ws);
     res.status(204).end();
   });
 
@@ -598,7 +621,7 @@ export function createApiRouter(db) {
     if (!['deposit', 'withdrawal'].includes(type) || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: 'type deposit|withdrawal and positive amount required' });
     }
-    const account = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    const account = db.prepare('SELECT id, name, balance, category FROM savings_accounts WHERE id = ? AND workspace_id = ?').get(req.params.sid, req.ws);
     if (!account) return res.status(404).json({ error: 'Savings account not found' });
     if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
     // refused rather than clamped at 0, so removing the entry later puts back exactly what it took
@@ -619,7 +642,7 @@ export function createApiRouter(db) {
   // Manual entries only: a fed account's history is derived from transactions, and a bank entry
   // would be fetched again on the next sync, which also resets the balance.
   router.delete('/savings/:sid/history/:hid', (req, res) => {
-    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ?').get(req.params.sid);
+    const account = db.prepare('SELECT id, category FROM savings_accounts WHERE id = ? AND workspace_id = ?').get(req.params.sid, req.ws);
     if (!account) return res.status(404).json({ error: 'Savings account not found' });
     if (account.category) return res.status(400).json({ error: 'This savings account is fed by a category' });
     const entry = db.prepare('SELECT id, type, amount FROM savings_history WHERE id = ? AND savings_account_id = ?')
@@ -631,7 +654,7 @@ export function createApiRouter(db) {
       db.prepare('UPDATE savings_accounts SET balance = MAX(0, ROUND(balance + ?, 2)) WHERE id = ?')
         .run(entry.type === 'deposit' ? -entry.amount : entry.amount, account.id);
     })();
-    res.json({ account: savingsRow(db, account.id) });
+    res.json({ account: savingsRow(db, req.ws, account.id) });
   });
 
   return router;

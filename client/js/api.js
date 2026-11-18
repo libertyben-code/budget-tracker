@@ -8,15 +8,27 @@ export const net = {
   heardAt: null,
   onDown: () => {},
   onCached: () => {},
+  onSignedOut: () => {},
 };
 
+// The server sets this readable cookie at login; echoing it in a header proves the request came
+// from our own page (double-submit CSRF).
+function csrfToken() {
+  const cookie = document.cookie.split('; ').find(c => c.startsWith('budget_csrf='));
+  return cookie ? decodeURIComponent(cookie.slice('budget_csrf='.length)) : '';
+}
+
+// Logging in is how a paused device gets going again, and its 401 means a wrong password, so the
+// /auth calls skip the pause, the down-detection and the sign-out.
 async function request(method, path, body, type = 'application/json') {
   const write = method !== 'GET';
-  if (write && net.paused) {
+  const auth = path.startsWith('/auth/');
+  if (write && net.paused && !auth) {
     net.failedWrites++;
     throw Object.assign(new Error(net.message), { network: true });
   }
   const opts = { method, headers: {} };
+  if (write) opts.headers['X-CSRF-Token'] = csrfToken();
   if (body !== undefined) {
     opts.headers['Content-Type'] = type;
     opts.body = type === 'application/json' ? JSON.stringify(body) : body;
@@ -25,9 +37,14 @@ async function request(method, path, body, type = 'application/json') {
   try {
     res = await fetch('/api' + path, opts);
   } catch {
+    if (auth) throw Object.assign(new Error(net.message), { network: true });
     if (write) net.failedWrites++;
     net.onDown(net.heardAt);
     throw Object.assign(new Error(net.message), { network: true });
+  }
+  if (res.status === 401 && !auth) {
+    net.onSignedOut();
+    throw Object.assign(new Error('unauthenticated'), { status: 401, signedOut: true });
   }
   const stamp = res.headers.get('X-BT-Cached-At');
   if (!write) net.cachedAt = stamp ? Date.parse(stamp) : null;
@@ -43,6 +60,11 @@ async function request(method, path, body, type = 'application/json') {
 }
 
 export const api = {
+  login: (username, password) => request('POST', '/auth/login', { username, password }),
+  activate: (username, code, newPassword) => request('POST', '/auth/activate', { username, code, newPassword }),
+  logout: () => request('POST', '/auth/logout'),
+  logoutAll: () => request('POST', '/auth/logout-all'),
+
   bootstrap: () => request('GET', '/bootstrap'),
   accountData: (id) => request('GET', `/accounts/${id}/data`),
   createAccount: (name, currency) => request('POST', '/accounts', { name, currency }),

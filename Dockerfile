@@ -14,6 +14,7 @@ COPY --from=deps /app/server/node_modules server/node_modules
 COPY shared/ shared/
 COPY client/ client/
 COPY server/src/ server/src/
+COPY server/scripts/ server/scripts/
 ENV NODE_ENV=production PORT=3000 DB_PATH=/data/budget.db
 EXPOSE 3000
 # drop root — the /data volume must be writable by uid 1000 (see docs/V2-SETUP.md)
