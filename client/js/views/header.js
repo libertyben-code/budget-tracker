@@ -1,9 +1,9 @@
 import { esc, icons, money, navIcons, toast, confirmDialog } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
-import { accountBalance, categories } from '../derive.js';
+import { accountBalance, categories, dayTitle } from '../derive.js';
 import { loadAccount, refreshBootstrap, refreshCategories, forgetSession } from '../app.js';
-import { loadStatus as loadBankStatus, plural } from './bank-sync.js';
+import { loadStatus as loadBankStatus } from './bank-sync.js';
 import { todayIso } from '/shared/dates.js';
 
 const VERSION = 'v2.4.0';
@@ -47,19 +47,73 @@ darkQuery.addEventListener('change', () => {
   setUi({});
 });
 
-function renderAccountRow(account, state, t) {
-  const active = account.id === state.activeAccountId;
-  // The bootstrap's figure for the active account goes stale as its transactions are edited.
-  const balance = active ? accountBalance(state).amount : account.balance;
+// The bootstrap's figure for the active account goes stale as its transactions are edited.
+export function balanceOf(account, state) {
+  return account.id === state.activeAccountId
+    ? accountBalance(state)
+    : { amount: account.balance, asOf: account.balanceAsOf, source: account.balanceSource };
+}
+
+export function accountTiles(state, t) {
+  const lang = state.ui.lang;
+  return state.accounts.map(account => {
+    const active = account.id === state.activeAccountId;
+    const { amount, asOf, source } = balanceOf(account, state);
+    const hint = source === 'bank' ? t('dashboard.tileBank') : source === 'manual' ? t('dashboard.tileManual') : t('dashboard.tileNoBalance');
+    const when = amount === null ? '' : asOf === todayIso() ? t('dashboard.tileToday') : dayTitle(asOf, lang);
+    return `
+    <button class="account-tile ${active ? 'active' : ''}" data-action="switch-account" data-id="${esc(account.id)}"${active ? ' aria-current="true"' : ''}>
+      <span class="account-tile-name">${esc(account.name)}</span>
+      <span class="account-tile-amount ${amount < 0 ? 'neg' : ''}">${amount === null ? '—' : money(amount, { currency: account.currency })}</span>
+      <span class="account-tile-meta">${esc([hint, when].filter(Boolean).join(' · '))}</span>
+    </button>`;
+  }).join('');
+}
+
+export function renderAccountSheet(state, t) {
+  if (state.ui.panel !== 'accounts') return '';
+  const activeAccount = state.accounts.find(a => a.id === state.activeAccountId) || state.accounts[0];
   return `
-  <button class="menu-item account-item ${active ? 'active' : ''}" data-action="switch-account" data-id="${esc(account.id)}"${active ? ' aria-current="true"' : ''}>
-    <span class="account-avatar">${account.balanceSource === 'bank' ? icons.bank : icons.wallet}</span>
-    <span class="account-text">
-      <span class="account-text-name">${esc(account.name)}</span>
-      <span class="account-text-sub ${balance < 0 ? 'neg' : ''}">${balance === null ? esc(plural(t, 'header.accountTx', account.txCount)) : money(balance, { currency: account.currency })}</span>
-    </span>
-    ${active ? icons.check : ''}
-  </button>`;
+  <div class="modal-backdrop" data-action="close-accounts" data-self-only>
+    <div class="modal" id="account-sheet" role="dialog" aria-modal="true" aria-labelledby="account-sheet-title" tabindex="-1">
+      <div class="modal-head">
+        <h2 id="account-sheet-title" style="margin:0">${esc(t('header.accounts'))}</h2>
+        <button class="icon-btn" data-action="close-accounts" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
+      </div>
+      <div class="account-grid">${accountTiles(state, t)}</div>
+      ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
+      <div class="account-form" role="group" aria-labelledby="balance-form-title">
+        <div class="menu-heading" id="balance-form-title">${esc(t('header.balanceOf', { name: activeAccount.name }))}</div>
+        <div class="field">
+          <label for="opening-balance">${esc(t('header.balanceAmount'))}</label>
+          <input id="opening-balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00"
+                 value="${esc(activeAccount.openingBalance ?? '')}" data-action-key="save-balance">
+        </div>
+        <div class="field">
+          <label for="opening-balance-date">${esc(t('header.balanceAsOf'))}</label>
+          <input id="opening-balance-date" type="date" value="${esc(activeAccount.openingBalanceDate || todayIso())}" data-action-key="save-balance">
+        </div>
+        <div class="account-form-row">
+          <button class="btn small grow" data-action="cancel-balance">${esc(t('common.cancel'))}</button>
+          <button class="btn small primary grow" data-action="save-balance">${esc(t('common.save'))}</button>
+        </div>
+      </div>` : `
+      <button class="menu-item" data-action="open-balance-form">${icons.edit} ${esc(t('header.setBalanceOf', { name: activeAccount.name }))}</button>`}
+      ${state.addingAccount ? `
+      <div class="account-form-row">
+        <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" aria-label="${esc(t('header.accountName'))}" data-action-key="create-account">
+        <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
+      </div>` : `
+      <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
+      ${activeAccount.id !== 'default' && state.accounts.length > 1 ? `
+      <button class="menu-item account-delete" data-action="delete-account" data-id="${esc(activeAccount.id)}">${icons.trash} ${esc(t('header.deleteAccountNamed', { name: activeAccount.name }))}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function closeAccountSheet() {
+  set({ addingAccount: false });
+  setUi({ panel: null, balanceFormOpen: false });
 }
 
 export function render(state, t) {
@@ -79,47 +133,12 @@ export function render(state, t) {
         </div>
       </div>
       <div class="account-switcher">
-        <div class="dropdown">
-          <button class="btn select-btn account-btn" id="account-toggle" data-action="toggle-account-menu" aria-expanded="${state.ui.accountMenuOpen}">
-            <span class="account-label">${esc(t('header.account'))}</span>
-            <span class="account-name">${esc(activeAccount.name)}</span>
-          </button>
-          ${state.ui.accountMenuOpen ? `
-          <div class="dropdown-menu left" data-keep-open>
-            ${state.accounts.map(a => renderAccountRow(a, state, t)).join('')}
-            <div class="menu-sep"></div>
-            ${activeAccount.balanceSource === 'bank' ? '' : state.ui.balanceFormOpen ? `
-            <div role="group" aria-labelledby="balance-form-title">
-              <div class="menu-heading" id="balance-form-title">${esc(t('header.balanceOf', { name: activeAccount.name }))}</div>
-              <div class="account-add">
-                <div class="field grow">
-                  <label for="opening-balance">${esc(t('header.balanceAmount'))}</label>
-                  <input id="opening-balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00"
-                         value="${esc(activeAccount.openingBalance ?? '')}" data-action-key="save-balance">
-                </div>
-              </div>
-              <div class="account-add">
-                <div class="field grow">
-                  <label for="opening-balance-date">${esc(t('header.balanceAsOf'))}</label>
-                  <input id="opening-balance-date" type="date" value="${esc(activeAccount.openingBalanceDate || todayIso())}" data-action-key="save-balance">
-                </div>
-              </div>
-              <div class="account-add">
-                <button class="btn small grow" data-action="cancel-balance">${esc(t('common.cancel'))}</button>
-                <button class="btn small primary grow" data-action="save-balance">${esc(t('common.save'))}</button>
-              </div>
-            </div>` : `
-            <button class="menu-item" data-action="open-balance-form">${icons.edit} ${esc(t('header.setBalance'))}</button>`}
-            ${state.addingAccount ? `
-            <div class="account-add">
-              <input id="new-account-name" class="grow" placeholder="${esc(t('header.accountName'))}" aria-label="${esc(t('header.accountName'))}" data-action-key="create-account">
-              <button class="btn small primary" data-action="create-account">${esc(t('common.save'))}</button>
-            </div>` : `
-            <button class="menu-item" data-action="start-add-account">＋ ${esc(t('header.newAccount'))}</button>`}
-            ${activeAccount.id && activeAccount.id !== 'default' && state.accounts.length > 1 ? `
-            <button class="menu-item account-delete" data-action="delete-account" data-id="${esc(activeAccount.id)}">${icons.trash} ${esc(t('header.deleteAccountNamed', { name: activeAccount.name }))}</button>` : ''}
-          </div>` : ''}
-        </div>
+        <button class="account-btn" id="account-toggle" data-action="open-accounts" aria-haspopup="dialog" aria-expanded="${state.ui.panel === 'accounts'}"
+                aria-label="${esc(t('header.account'))}: ${esc(activeAccount.name)}">
+          <span class="account-label">${esc(t('header.account'))}</span>
+          <span class="account-name">${esc(activeAccount.name)}</span>
+          ${icons.chevronDown}
+        </button>
       </div>
       <div class="dropdown">
         <button class="icon-btn" id="settings-toggle" data-action="toggle-settings" aria-label="${esc(t('header.openSettings'))}" aria-expanded="${state.ui.settingsOpen}">${icons.gear}</button>
@@ -220,14 +239,11 @@ export const actions = {
   },
   'toggle-settings': () => {
     const { settingsOpen, bankStatus } = get().ui;
-    setUi({ settingsOpen: !settingsOpen, accountMenuOpen: false });
+    setUi({ settingsOpen: !settingsOpen });
     if (!settingsOpen && !bankStatus) loadBankStatus();
   },
-  'toggle-account-menu': () => {
-    const open = get().ui.accountMenuOpen;
-    if (open) set({ addingAccount: false });
-    setUi({ accountMenuOpen: !open, settingsOpen: false, balanceFormOpen: false });
-  },
+  'open-accounts': () => setUi({ panel: 'accounts', settingsOpen: false }),
+  'close-accounts': closeAccountSheet,
   'open-balance-form': () => {
     setUi({ balanceFormOpen: true });
     document.getElementById('opening-balance').focus();
@@ -239,7 +255,7 @@ export const actions = {
     if (amount === '' || !Number.isFinite(Number(amount)) || !date) return toast(t('header.balanceInvalid'));
     const state = get();
     const account = await api.patchAccountSettings(state.activeAccountId, { openingBalance: Number(amount), openingBalanceDate: date });
-    setUi({ accountMenuOpen: false, balanceFormOpen: false });
+    closeAccountSheet();
     set({ accounts: state.accounts.map(a => a.id === account.id ? account : a) });
     toast(t('header.balanceSaved'), { type: 'success' });
   },
@@ -247,7 +263,7 @@ export const actions = {
     location.hash = `#/${el.dataset.tab}`;
   },
   'switch-account': async (el) => {
-    setUi({ accountMenuOpen: false });
+    closeAccountSheet();
     if (el.dataset.id === get().activeAccountId) return;
     localStorage.setItem('activeAccountId', el.dataset.id);
     await loadAccount(el.dataset.id);
@@ -259,8 +275,8 @@ export const actions = {
     if (!name) return;
     const account = await api.createAccount(name);
     localStorage.setItem('activeAccountId', account.id);
-    setUi({ accountMenuOpen: false });
-    set({ addingAccount: false, accounts: [...get().accounts, account] });
+    closeAccountSheet();
+    set({ accounts: [...get().accounts, account] });
     await loadAccount(account.id);
   },
   'delete-account': async (el, ev, t) => {
@@ -268,7 +284,7 @@ export const actions = {
     const state = get();
     const account = state.accounts.find(a => a.id === el.dataset.id);
     if (!(await confirmDialog(t('header.confirmDeleteAccount', { name: account?.name || '' }), { confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true }))) return;
-    setUi({ accountMenuOpen: false });
+    closeAccountSheet();
     await api.deleteAccount(el.dataset.id);
     const remaining = state.accounts.filter(a => a.id !== el.dataset.id);
     localStorage.setItem('activeAccountId', remaining[0].id);

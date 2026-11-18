@@ -133,7 +133,7 @@ function render() {
     modalsEl.innerHTML = '';
   } else {
     appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-    modalsEl.innerHTML = batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
+    modalsEl.innerHTML = header.renderAccountSheet(state, t) + batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
   }
 
   const fields = fieldsByKey();
@@ -208,8 +208,6 @@ function closeMenus() {
   const state = get();
   if (state.ui.settingsOpen) setUi({ settingsOpen: false });
   if (state.ui.categoryDropdownOpen) setUi({ categoryDropdownOpen: null });
-  if (state.ui.accountMenuOpen) setUi({ accountMenuOpen: false });
-  if (state.addingAccount) set({ addingAccount: false });
 }
 
 document.addEventListener('click', (ev) => {
@@ -251,11 +249,10 @@ function closeTopmost(ev) {
     layer.click();
     return;
   }
-  const { settingsOpen, accountMenuOpen } = get().ui;
-  if (!settingsOpen && !accountMenuOpen) return;
+  if (!get().ui.settingsOpen) return;
   ev.preventDefault();
   closeMenus();
-  document.getElementById(settingsOpen ? 'settings-toggle' : 'account-toggle')?.focus();
+  document.getElementById('settings-toggle').focus();
 }
 
 // Tab past either end of the topmost dialog comes back round. Inside it the browser's own order
