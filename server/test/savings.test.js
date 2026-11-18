@@ -6,28 +6,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { openDb } from '../src/db.js';
-import { createApp } from '../src/app.js';
+import { startApp } from './helpers.js';
 
-function startApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-savings-'));
-  const db = openDb(path.join(dir, 'test.db'));
-  const app = createApp(db, { bank: { config: { configured: false }, client: null } });
-  return new Promise((resolve) => {
-    const server = app.listen(0, '127.0.0.1', () => {
-      resolve({
-        db,
-        base: `http://127.0.0.1:${server.address().port}`,
-        close: () => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); },
-      });
-    });
-  });
-}
 
 const headers = { 'Content-Type': 'application/json' };
 const json = async (res) => ({ status: res.status, body: await res.json() });
-const get = (base, url) => fetch(`${base}${url}`).then(json);
-const post = (base, url, body) => fetch(`${base}${url}`, { method: 'POST', headers, body: JSON.stringify(body) });
-const patch = (base, url, body) => fetch(`${base}${url}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+const get = (app, url) => app.fetch(url).then(json);
+const post = (app, url, body) => app.fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+const patch = (app, url, body) => app.fetch(url, { method: 'PATCH', headers, body: JSON.stringify(body) });
 
 function addTx(db, accountId, date, category, amount) {
   db.prepare("INSERT INTO transactions (account_id, date, description, category, amount) VALUES (?, ?, 'transfer', ?, ?)")
@@ -35,7 +21,7 @@ function addTx(db, accountId, date, category, amount) {
 }
 
 async function addJoint(app) {
-  return (await json(await post(app.base, '/api/accounts', { name: 'Joint' }))).body.id;
+  return (await json(await post(app, '/api/accounts', { name: 'Joint' }))).body.id;
 }
 
 test('a category-fed account sums the category across every budget account', async (t) => {
@@ -47,16 +33,16 @@ test('a category-fed account sums the category across every budget account', asy
   addTx(app.db, joint, '2026-09-10', 'Savings: Vacation', 30);
 
   // the balance sent is the one shown; the server stores the opening the movements add to
-  const created = await json(await post(app.base, '/api/savings', { name: 'Vacation', balance: 300, category: 'Savings: Vacation' }));
+  const created = await json(await post(app, '/api/savings', { name: 'Vacation', balance: 300, category: 'Savings: Vacation' }));
   assert.equal(created.status, 201);
   const sid = created.body.id;
   assert.deepEqual(created.body, { id: sid, name: 'Vacation', balance: 300, category: 'Savings: Vacation' });
   assert.equal(app.db.prepare('SELECT balance FROM savings_accounts WHERE id = ?').get(sid).balance, 30);
 
   // the same savings whichever budget account is loaded
-  const fromJoint = await get(app.base, `/api/accounts/${joint}/data`);
-  const fromDefault = await get(app.base, '/api/accounts/default/data');
-  const global = await get(app.base, '/api/savings');
+  const fromJoint = await get(app, `/api/accounts/${joint}/data`);
+  const fromDefault = await get(app, '/api/accounts/default/data');
+  const global = await get(app, '/api/savings');
   for (const data of [fromJoint, fromDefault]) {
     assert.deepEqual(data.body.savingsAccounts, global.body.savingsAccounts);
     assert.deepEqual(data.body.savingsHistory, global.body.savingsHistory);
@@ -67,10 +53,10 @@ test('a category-fed account sums the category across every budget account', asy
     ['2026-09-01', 'deposit', 200],
   ]);
 
-  assert.equal((await post(app.base, `/api/savings/${sid}/transactions`, { type: 'deposit', amount: 10 })).status, 400);
-  assert.equal((await post(app.base, `/api/savings/${sid}/recurring`, { amount: 10, day: 1 })).status, 400);
-  assert.equal((await post(app.base, '/api/savings', { name: 'Nope', balance: -50 })).status, 400);
-  assert.equal((await patch(app.base, `/api/savings/${sid}`, { balance: -1 })).status, 400);
+  assert.equal((await post(app, `/api/savings/${sid}/transactions`, { type: 'deposit', amount: 10 })).status, 400);
+  assert.equal((await post(app, `/api/savings/${sid}/recurring`, { amount: 10, day: 1 })).status, 400);
+  assert.equal((await post(app, '/api/savings', { name: 'Nope', balance: -50 })).status, 400);
+  assert.equal((await patch(app, `/api/savings/${sid}`, { balance: -1 })).status, 400);
 });
 
 test('a rename carries the link; a delete turns it manual at the balance it showed', async (t) => {
@@ -79,19 +65,19 @@ test('a rename carries the link; a delete turns it manual at the balance it show
   const joint = await addJoint(app);
   addTx(app.db, 'default', '2026-09-01', 'Pocket', -200);
   addTx(app.db, joint, '2026-09-02', 'Pocket', -70);
-  const sid = (await json(await post(app.base, '/api/savings', { name: 'Pocket', balance: 270, category: 'Pocket' }))).body.id;
-  const account = async () => (await get(app.base, '/api/savings')).body.savingsAccounts[0];
+  const sid = (await json(await post(app, '/api/savings', { name: 'Pocket', balance: 270, category: 'Pocket' }))).body.id;
+  const account = async () => (await get(app, '/api/savings')).body.savingsAccounts[0];
 
   // both accounts' rows move to the new name, so the balance holds
-  await post(app.base, '/api/categories/rename', { from: 'Pocket', to: 'Pocket Vacation' });
+  await post(app, '/api/categories/rename', { from: 'Pocket', to: 'Pocket Vacation' });
   assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 270, category: 'Pocket Vacation' });
 
   // relinking without a balance keeps the one shown
-  await patch(app.base, `/api/savings/${sid}`, { category: 'Pocket' });
+  await patch(app, `/api/savings/${sid}`, { category: 'Pocket' });
   assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 270, category: 'Pocket' });
 
   addTx(app.db, joint, '2026-09-03', 'Pocket', -50);
-  await post(app.base, '/api/categories/delete', { category: 'Pocket', replacement: 'Savings' });
+  await post(app, '/api/categories/delete', { category: 'Pocket', replacement: 'Savings' });
   assert.deepEqual(await account(), { id: sid, name: 'Pocket', balance: 320, category: null });
 });
 
@@ -100,14 +86,14 @@ test('savings outlive a budget account; due recurring deposits apply globally, s
   t.after(app.close);
   const joint = await addJoint(app);
   addTx(app.db, joint, '2026-09-01', 'Savings', -40);
-  app.db.prepare("INSERT INTO savings_accounts (id, name, balance, category) VALUES ('fed', 'Fed', 100, 'Savings')").run();
-  app.db.prepare("INSERT INTO savings_accounts (id, name, balance) VALUES ('manual', 'Manual', 100)").run();
+  app.db.prepare("INSERT INTO savings_accounts (id, name, balance, category, workspace_id) VALUES ('fed', 'Fed', 100, 'Savings', 'home')").run();
+  app.db.prepare("INSERT INTO savings_accounts (id, name, balance, workspace_id) VALUES ('manual', 'Manual', 100, 'home')").run();
   for (const sid of ['fed', 'manual']) {
     app.db.prepare("INSERT INTO savings_recurring (id, savings_account_id, amount, day, next_date) VALUES (?, ?, 25, 1, '2026-01-01')").run(`rec_${sid}`, sid);
   }
 
-  assert.equal((await fetch(`${app.base}/api/accounts/${joint}`, { method: 'DELETE' })).status, 204);
-  const data = await get(app.base, '/api/savings');
+  assert.equal((await app.fetch(`/api/accounts/${joint}`, { method: 'DELETE' })).status, 204);
+  const data = await get(app, '/api/savings');
   const byId = Object.fromEntries(data.body.savingsAccounts.map(s => [s.id, s]));
   assert.equal(byId.fed.balance, 100, 'the deleted account no longer feeds it, and recurring skips it');
   assert.ok(byId.manual.balance > 100);
@@ -116,7 +102,6 @@ test('savings outlive a budget account; due recurring deposits apply globally, s
 
 test('v3 migration drops the savings owner and keeps history, recurring and bank links', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-savings-v3-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const dbPath = path.join(dir, 'old.db');
   // a v2 database: today's schema with the per-account savings table it replaced
   const schema = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/schema.sql'), 'utf8')
@@ -133,6 +118,7 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   old.exec(schema);
   old.exec(`
     UPDATE meta SET value = '2' WHERE key = 'schema_version';
+    INSERT INTO accounts (id, name) VALUES ('default', 'Main Account');
     INSERT INTO savings_accounts (id, account_id, name, balance) VALUES ('sav1', 'default', 'Livret', 500);
     INSERT INTO savings_history (id, savings_account_id, date, type, amount, timestamp) VALUES ('h1', 'sav1', '2026-09-01', 'deposit', 500, 1);
     INSERT INTO savings_recurring (id, savings_account_id, amount, day, next_date) VALUES ('r1', 'sav1', 25, 1, '2999-01-01');
@@ -142,13 +128,13 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
   old.close();
 
   const db = openDb(dbPath);
-  t.after(() => db.close());
-  assert.deepEqual(db.pragma('table_info(savings_accounts)').map(c => c.name), ['id', 'name', 'balance', 'category']);
+  t.after(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  assert.deepEqual(db.pragma('table_info(savings_accounts)').map(c => c.name), ['id', 'name', 'balance', 'category', 'workspace_id']);
   assert.deepEqual(db.prepare('SELECT id, name, balance, category FROM savings_accounts').all(), [{ id: 'sav1', name: 'Livret', balance: 500, category: null }]);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM savings_recurring').get().n, 1);
   assert.equal(db.prepare("SELECT savings_account_id AS sid FROM bank_accounts WHERE id = 'b1'").get().sid, 'sav1');
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '7');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '8');
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
 
   // the rebuilt table is still the parent: deleting it cascades and unlinks as before
@@ -160,9 +146,9 @@ test('v3 migration drops the savings owner and keeps history, recurring and bank
 test('deposits in the same millisecond each get their own history entry', async (t) => {
   const app = await startApp();
   t.after(app.close);
-  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 0 }))).body;
+  const { id } = (await json(await post(app, '/api/savings', { name: 'Pot', balance: 0 }))).body;
   const deposits = await Promise.all(
-    Array.from({ length: 5 }, () => post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 10 }))
+    Array.from({ length: 5 }, () => post(app, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 10 }))
   );
   assert.deepEqual(deposits.map(r => r.status), [200, 200, 200, 200, 200]);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 5);
@@ -171,50 +157,50 @@ test('deposits in the same millisecond each get their own history entry', async 
 test('removing a history entry reverts its effect on the balance', async (t) => {
   const app = await startApp();
   t.after(app.close);
-  const del = (url) => fetch(`${app.base}${url}`, { method: 'DELETE' }).then(json);
-  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 100 }))).body;
-  const deposit = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 50.25 }))).body;
-  const withdrawal = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 30 }))).body;
+  const del = (url) => app.fetch(`${url}`, { method: 'DELETE' }).then(json);
+  const { id } = (await json(await post(app, '/api/savings', { name: 'Pot', balance: 100 }))).body;
+  const deposit = (await json(await post(app, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 50.25 }))).body;
+  const withdrawal = (await json(await post(app, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 30 }))).body;
   assert.equal(withdrawal.account.balance, 120.25);
 
   const removed = await del(`/api/savings/${id}/history/${deposit.entry.id}`);
   assert.equal(removed.status, 200);
   assert.deepEqual(removed.body.account, { id, name: 'Pot', balance: 70, category: null });
-  const history = (await get(app.base, '/api/savings')).body.savingsHistory[id];
+  const history = (await get(app, '/api/savings')).body.savingsHistory[id];
   assert.deepEqual(history.map(h => h.id), [withdrawal.entry.id]);
 
   assert.equal((await del(`/api/savings/${id}/history/${withdrawal.entry.id}`)).body.account.balance, 100);
-  assert.deepEqual((await get(app.base, '/api/savings')).body.savingsHistory[id], []);
+  assert.deepEqual((await get(app, '/api/savings')).body.savingsHistory[id], []);
   assert.equal((await del(`/api/savings/${id}/history/${withdrawal.entry.id}`)).status, 404);
 });
 
 test('a removed deposit floors the balance at 0; a withdrawal above the balance is refused', async (t) => {
   const app = await startApp();
   t.after(app.close);
-  const { id } = (await json(await post(app.base, '/api/savings', { name: 'Pot', balance: 0 }))).body;
-  const deposit = (await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 80 }))).body;
-  await patch(app.base, `/api/savings/${id}`, { balance: 20 });
+  const { id } = (await json(await post(app, '/api/savings', { name: 'Pot', balance: 0 }))).body;
+  const deposit = (await json(await post(app, `/api/savings/${id}/transactions`, { type: 'deposit', amount: 80 }))).body;
+  await patch(app, `/api/savings/${id}`, { balance: 20 });
 
-  const refused = await json(await post(app.base, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 20.01 }));
+  const refused = await json(await post(app, `/api/savings/${id}/transactions`, { type: 'withdrawal', amount: 20.01 }));
   assert.equal(refused.status, 400);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM savings_history').get().n, 1);
 
-  const removed = await fetch(`${app.base}/api/savings/${id}/history/${deposit.entry.id}`, { method: 'DELETE' }).then(json);
+  const removed = await app.fetch(`/api/savings/${id}/history/${deposit.entry.id}`, { method: 'DELETE' }).then(json);
   assert.equal(removed.body.account.balance, 0);
 });
 
 test('fed accounts, bank entries and other accounts\' entries cannot be removed', async (t) => {
   const app = await startApp();
   t.after(app.close);
-  const del = (url) => fetch(`${app.base}${url}`, { method: 'DELETE' }).then(json);
+  const del = (url) => app.fetch(`${url}`, { method: 'DELETE' }).then(json);
   addTx(app.db, 'default', '2026-09-01', 'Savings', -40);
-  const fed = (await json(await post(app.base, '/api/savings', { name: 'Fed', balance: 40, category: 'Savings' }))).body.id;
-  const fedEntry = (await get(app.base, '/api/savings')).body.savingsHistory[fed][0].id;
+  const fed = (await json(await post(app, '/api/savings', { name: 'Fed', balance: 40, category: 'Savings' }))).body.id;
+  const fedEntry = (await get(app, '/api/savings')).body.savingsHistory[fed][0].id;
   assert.equal((await del(`/api/savings/${fed}/history/${fedEntry}`)).status, 400);
 
-  const a = (await json(await post(app.base, '/api/savings', { name: 'A', balance: 0 }))).body.id;
-  const b = (await json(await post(app.base, '/api/savings', { name: 'B', balance: 0 }))).body.id;
-  const entryOfA = (await json(await post(app.base, `/api/savings/${a}/transactions`, { type: 'deposit', amount: 10 }))).body.entry.id;
+  const a = (await json(await post(app, '/api/savings', { name: 'A', balance: 0 }))).body.id;
+  const b = (await json(await post(app, '/api/savings', { name: 'B', balance: 0 }))).body.id;
+  const entryOfA = (await json(await post(app, `/api/savings/${a}/transactions`, { type: 'deposit', amount: 10 }))).body.entry.id;
   assert.equal((await del(`/api/savings/${b}/history/${entryOfA}`)).status, 404);
   assert.equal((await del(`/api/savings/missing/history/${entryOfA}`)).status, 404);
 

@@ -4,6 +4,31 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.5.0 — 2026-11-18
+
+### What's new
+
+- **Every account on the Dashboard.** With two or more accounts, the Dashboard shows them all as cards, two per row on a phone: each one's balance, whether it comes from the bank or was set by hand, and how recent it is. Tap a card to switch to that account.
+- **Total balance.** The card at the top of the Dashboard now adds up all your accounts, with the last bank sync and how many accounts still have no balance. Accounts in different currencies are not converted: you get one total per currency. With a single account it shows that account's balance, as before.
+- **A new account switcher.** The account button in the header keeps the same width whatever the account is called, and opens a sheet with the same account cards plus *Set balance*, *New account* and *Delete*.
+
+---
+
+## 2.4.0 — 2026-11-18
+
+### What's new
+
+- **Logins.** Everyone now has their own account. There is no sign-up: the owner creates each account on the server and hands over a one-time code, and the person picks their own password in the app (*First time here?* on the login page). English and French.
+- **Households.** A couple shares one household: every budget account, savings account, category, rule, joint split and bank connection. Anyone else gets a household of their own, starting empty, and links their own bank. Nobody sees another household's data.
+- **Log out** and **Log out on every device** at the bottom of the Settings menu. Logging out also clears what the phone kept for offline use, so a shared phone keeps nothing of the last person.
+
+### Before you update
+
+- **Updating logs every phone out.** The app opens on the login page until accounts exist, so create yours right after the redeploy. The first account created with `--admin` takes all the existing data. The commands are in [docs/V2-SETUP.md](docs/V2-SETUP.md#accounts-and-logins).
+- Someone in another household who wants bank sync first authorises their bank in your Enable Banking Control Panel (*Link accounts*), then links it in the app under their own login.
+
+---
+
 ## 2.3.0 — 2026-11-08
 
 ### What's new

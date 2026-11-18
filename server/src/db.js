@@ -16,8 +16,7 @@ export function openDb(dbPath) {
 }
 
 function ensureColumn(db, table, column, ddl) {
-  const present = db.pragma(`table_info(${table})`).some(c => c.name === column);
-  if (!present) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  if (!hasColumn(db, table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
 }
 
 // schema.sql only creates what is missing, so columns added to an existing table have to be
@@ -45,16 +44,84 @@ function migrate(db) {
   ensureColumn(db, 'bank_accounts', 'balance_date', 'TEXT');
   ensureColumn(db, 'accounts', 'opening_balance', 'REAL');
   ensureColumn(db, 'accounts', 'opening_balance_date', 'TEXT');
-  db.prepare("UPDATE meta SET value = '7' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 7").run();
+  // v8: households. What existed before logins belongs to 'home' (seeded by schema.sql).
+  db.transaction(() => {
+    for (const table of ['accounts', 'savings_accounts', 'bank_connections']) {
+      if (hasColumn(db, table, 'workspace_id')) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN workspace_id TEXT`);
+      db.prepare(`UPDATE ${table} SET workspace_id = 'home'`).run();
+    }
+    if (!hasColumn(db, 'category_rules', 'workspace_id')) addRuleOwner(db);
+    if (!hasColumn(db, 'custom_categories', 'workspace_id')) addCategoryOwner(db);
+    if (!hasColumn(db, 'settings', 'workspace_id')) addSettingsOwner(db);
+  })();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_accounts_workspace ON accounts(workspace_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_savings_workspace ON savings_accounts(workspace_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bank_connections_workspace ON bank_connections(workspace_id)');
+  db.prepare("INSERT OR IGNORE INTO accounts (id, name, workspace_id) VALUES ('default', 'Main Account', 'home')").run();
+  db.prepare("UPDATE meta SET value = '8' WHERE key = 'schema_version' AND CAST(value AS INTEGER) < 8").run();
+}
+
+function hasColumn(db, table, column) {
+  return db.pragma(`table_info(${table})`).some(c => c.name === column);
+}
+
+// Rules and custom categories were unique by pattern and name alone; each household now has its
+// own, so the key gains workspace_id. Nothing references either table, nor settings.
+function addRuleOwner(db) {
+  db.exec(`
+    CREATE TABLE category_rules_v8 (
+      id           INTEGER PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      pattern      TEXT NOT NULL,
+      category     TEXT NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (workspace_id, pattern)
+    );
+    INSERT INTO category_rules_v8 (id, workspace_id, pattern, category, created_at)
+      SELECT id, 'home', pattern, category, created_at FROM category_rules;
+    DROP TABLE category_rules;
+    ALTER TABLE category_rules_v8 RENAME TO category_rules;
+  `);
+}
+
+function addCategoryOwner(db) {
+  db.exec(`
+    CREATE TABLE custom_categories_v8 (
+      workspace_id TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (workspace_id, name)
+    );
+    INSERT INTO custom_categories_v8 (workspace_id, name, created_at)
+      SELECT 'home', name, created_at FROM custom_categories;
+    DROP TABLE custom_categories;
+    ALTER TABLE custom_categories_v8 RENAME TO custom_categories;
+  `);
+}
+
+function addSettingsOwner(db) {
+  db.exec(`
+    CREATE TABLE settings_v8 (
+      workspace_id TEXT NOT NULL,
+      key          TEXT NOT NULL,
+      value        TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, key)
+    );
+    INSERT INTO settings_v8 (workspace_id, key, value) SELECT 'home', key, value FROM settings;
+    DROP TABLE settings;
+    ALTER TABLE settings_v8 RENAME TO settings;
+  `);
 }
 
 // The joint split starts from the budget account whose salaries were filled in, else the default.
+// A new database has no account yet at this point, and starts empty.
 function createSettings(db) {
   const source = db.prepare(`
     SELECT salary_person1, salary_person2, joint_target_amount FROM accounts
     ORDER BY (CAST(salary_person1 AS REAL) > 0 OR CAST(salary_person2 AS REAL) > 0) DESC, id = 'default' DESC, created_at
     LIMIT 1
-  `).get();
+  `).get() ?? {};
   const amount = (text) => {
     const n = parseFloat(text);
     return Number.isFinite(n) ? n : null;
@@ -67,8 +134,8 @@ function createSettings(db) {
     name2: '',
   };
   db.transaction(() => {
-    db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
-    db.prepare("INSERT INTO settings (key, value) VALUES ('joint', ?)").run(JSON.stringify(joint));
+    db.exec('CREATE TABLE settings (workspace_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (workspace_id, key))');
+    db.prepare("INSERT INTO settings (workspace_id, key, value) VALUES ('home', 'joint', ?)").run(JSON.stringify(joint));
   })();
 }
 

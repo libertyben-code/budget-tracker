@@ -5,7 +5,7 @@
 - **Frontend**: plain HTML/CSS/JS, native ES modules, no build step. Chart.js v4 vendored in `client/vendor/`.
 - **Backend**: Express 5 + better-sqlite3. App routes in `routes/api.js`, bank sync in `routes/bank.js`. No other runtime dependencies — the Enable Banking JWT is signed with Node's `crypto`.
 - **Database**: SQLite (WAL mode), single file at `data/budget.db`, bind-mounted into the container from the absolute host path in `DATA_DIR` (a required stack variable — the compose file has no default, so a missing value fails the deploy rather than mounting the wrong folder).
-- **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). No application-layer auth — Tailscale is the security perimeter.
+- **Deployment**: a Portainer stack deployed from this git repository (Portainer clones the repo on the server and builds the Dockerfile — no registry, no CI), exposed over the tailnet via `tailscale serve` (HTTPS, required for PWA install). Tailscale stays the perimeter; inside it, server-side sessions decide who sees which household.
 
 ## Repository layout
 
@@ -36,10 +36,14 @@ budget-tracker/
 │   │   ├── schema.sql
 │   │   ├── enablebanking.js              — Enable Banking client (RS256 JWT, AIS endpoints)
 │   │   ├── bank-sync.js                  — bank row mapping + per-account sync
+│   │   ├── auth/                         — passwords, tokens, cookies, sessions, users, workspaces
+│   │   ├── middleware/auth.js            — requireSession: session cookie + CSRF, sets req.user
 │   │   └── routes/
-│   │       ├── api.js                    — ~25 REST endpoints
+│   │       ├── api.js                    — ~25 REST endpoints, scoped to the household
+│   │       ├── auth.js                   — /api/auth/* (login, activate, me, logout, logout-all)
 │   │       └── bank.js                   — /api/bank/* (link, callback, sync, mapping, unlink)
-│   ├── test/                             — node:test suites (`npm test`), mock provider inline
+│   ├── scripts/create-user.js            — the only way an account is made (CLI)
+│   ├── test/                             — node:test suites (`npm test`); helpers.js signs in
 │   ├── tools/dev-harness.mjs             — fake provider + the app, for clicking through bank sync
 │   └── package.json
 ├── shared/                               — pure ESM, imported by both Node and the browser
@@ -121,7 +125,9 @@ Consequence for handlers: these are `data-action` (click), not `data-action-chan
 
 ### Server
 
-`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category create/rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Categories, category rules and savings accounts are global; everything else is per budget account.
+`server/src/routes/api.js` holds every REST endpoint: transactions (CRUD, batch ops, CSV import/export), rules, category create/rename/delete propagation, savings (incl. recurring deposits), and multi-account management. `server/src/schema.sql` is the source of truth for the DB schema. Dates are stored ISO (`YYYY-MM-DD`) in the DB and API, displayed `dd/mm/yy` client-side. Amounts: negative = spending, positive = income. Categories, category rules, savings accounts, the joint split and bank connections belong to the household; transactions belong to a budget account.
+
+**Accounts and households.** Every `/api` route but `/api/health`, `/api/auth/login|activate` and `/api/bank/callback` sits behind `requireSession` (`middleware/auth.js`), which looks the session cookie up (`auth/session.js`: SHA-256 of the token, idle 14 d / absolute 90 d, `last_seen` slid at most every 5 min), checks the CSRF double-submit on writes, and sets `req.user` with its `workspaceId`. A workspace is a household; `workspace_members` holds one row per account (unique on `user_id`), and pairing a couple is a second member row. `workspace_id` sits on the top-level tables — `accounts`, `savings_accounts`, `bank_connections`, `category_rules` (unique per workspace and pattern), `custom_categories` (key: workspace and name) and `settings` (key: workspace and key) — and children reach theirs through the parent: transactions through `account_id` (`IN_WORKSPACE` in `api.js`), savings history and recurring rules through the savings account, bank accounts through their connection (`OWN_CONNECTION` in `bank.js`). Another household's id answers like a missing one (404, or nothing changed). The bank callback has no session check (the redirect may land in a browser without the cookie); the `state` of the link, created behind a login, carries the workspace. `bank_accounts.id` is the provider's hash and global, so linking an account another household holds skips it. Accounts are made only by `server/scripts/create-user.js`: pending, with a one-time activation code (stored hashed); the person sets the password on the login page. v8 of `migrate()` puts every existing row in the seeded `home` workspace, which the first `--admin` account takes; any other account gets a new workspace with an empty "Main Account". `db.js` seeds `'default'` in `home` at every boot, which is why that account cannot be deleted; a household's last account cannot be deleted either. Client side: `views/login.js` replaces the whole page while `state.signedOut`; `api.js` sends `X-CSRF-Token` on every write and calls `net.onSignedOut` on a 401 (except on `/auth/*`); logout and a login as a different person clear the `/api` entries from Cache Storage and the per-person `localStorage` keys, then reload.
 
 **Categories** are global and not a first-class table of record — `categoryList()` in `api.js` derives them as the union of the categories used by transactions of **every** budget account plus the user-defined names in `custom_categories` (no owner), each with its transaction count across all accounts. This lets a brand-new category with zero transactions exist and be selectable. The list rides along on `GET /accounts/:id/data` as `categories` and is also `GET /categories`; the client re-reads it when the category manager opens, since its counts span accounts it does not hold. `client/js/derive.js` `categories()` unions it with the active account's transactions, so a name typed inline shows up before any reload. `POST /categories` adds one; `POST /categories/rename` and `/categories/delete` rewrite transactions in every account, rules, savings links and `custom_categories` in one transaction (rename uses `UPDATE OR REPLACE` so renaming onto an existing custom name merges; delete refuses a replacement equal to the category). CSV and bank imports guess against the global list. `POST /accounts/:id/autocategorize` ("Apply Rules to All" in the UI) re-applies every rule across **all** transactions, overwriting where a rule matches the description (rule patterns are matched as case-insensitive substrings — see `shared/categorize.js`).
 
@@ -141,7 +147,7 @@ Schema changes that touch an existing table cannot live in `schema.sql` (it is `
 
 ### Tests
 
-`cd server && npm test` runs the `node:test` suites in `server/test/` — no test dependencies. `enablebanking.test.js` checks the JWT (signature verified with the public key), key decoding and the HTTP client against a fake `fetch`; `bank-sync.test.js` checks the row mapping and then drives the real Express app on an ephemeral port against an in-process mock provider: link → callback → initial sync → idempotent resync → renewal → remap → unlink, plus provider outages. `node server/tools/dev-harness.mjs` starts the same kind of mock plus the app on :3055 with a throwaway DB and key, for clicking through the UI without a bank.
+`cd server && npm test` runs the `node:test` suites in `server/test/` — no test dependencies. `test/helpers.js` starts the app with an admin `owner` signed in (`app.fetch` sends its cookies and CSRF header; `app.as(signIn(db, 'brother'))` another account's); `accounts.test.js` covers login, activation, lockout, CSRF, household isolation and the v8 migration. `enablebanking.test.js` checks the JWT (signature verified with the public key), key decoding and the HTTP client against a fake `fetch`; `bank-sync.test.js` checks the row mapping and then drives the real Express app on an ephemeral port against an in-process mock provider: link → callback → initial sync → idempotent resync → renewal → remap → unlink, plus provider outages. `node server/tools/dev-harness.mjs` starts the same kind of mock plus the app on :3055 with a throwaway DB and key, for clicking through the UI without a bank; it seeds three logins (`owner`, `partner` paired with it, `brother` on his own) whose password it prints.
 
 ### PWA
 
@@ -164,7 +170,8 @@ The app is called **Ça Compte ?**, written with a plain space before the "?", t
 - `client/manifest.webmanifest`: `name` and `short_name`, which is the home-screen label.
 - `client/index.html`: `<title>`.
 - `client/js/views/header.js` `render()`: the `<h1>`.
-- `client/js/i18n.js`, in English and French: `dashboard.welcomeTitle` and `bank.openInApp`. These two use ` ` before the "?" so it cannot wrap onto a line by itself.
+- `client/js/views/login.js`: the name above the sign-in form.
+- `client/js/i18n.js`, in English and French: `dashboard.welcomeTitle` and `bank.openInApp`. These two use `\u00a0` before the "?" so it cannot wrap onto a line by itself.
 - `server/tools/dev-harness.mjs`: the mock bank's consent page.
 
 The name a real bank shows on its consent screen comes from the application registered in the Enable Banking Control Panel. Nothing in this repo sets it.

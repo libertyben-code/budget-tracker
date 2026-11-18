@@ -1,12 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import express from 'express';
-import { openDb } from '../src/db.js';
-import { createApp } from '../src/app.js';
+import { startApp } from './helpers.js';
 import { EnableBankingClient } from '../src/enablebanking.js';
 import { mapTransaction, buildDescription, syncWindow, shiftDays, isBooked, pickBalance } from '../src/bank-sync.js';
 
@@ -185,20 +181,6 @@ function startMockProvider({ accounts = defaultAccounts } = {}) {
   });
 }
 
-function startApp(bank) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-bank-'));
-  const db = openDb(path.join(dir, 'test.db'));
-  const app = createApp(db, { bank });
-  return new Promise((resolve) => {
-    const server = app.listen(0, '127.0.0.1', () => {
-      resolve({
-        db,
-        base: `http://127.0.0.1:${server.address().port}`,
-        close: () => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); },
-      });
-    });
-  });
-}
 
 const json = async (res) => ({ status: res.status, body: await res.json() });
 
@@ -212,9 +194,9 @@ function linkSummary(res) {
 test('unconfigured server: status says so and every other bank route is 503', async (t) => {
   const app = await startApp({ config: { configured: false }, client: null });
   t.after(app.close);
-  const status = await json(await fetch(`${app.base}/api/bank/status`));
+  const status = await json(await app.fetch(`/api/bank/status`));
   assert.deepEqual(status.body, { configured: false, redirectUrl: '', connections: [], savingsAccounts: [] });
-  const sync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST' }));
+  const sync = await json(await app.fetch(`/api/bank/sync`, { method: 'POST' }));
   assert.equal(sync.status, 503);
 });
 
@@ -230,13 +212,13 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   // a CSV-era row that the first bank fetch overlaps with: must not double up
   app.db.prepare("INSERT INTO transactions (account_id, date, description, amount, type, state, source) VALUES ('default', '2026-09-10', 'EDF', -40, 'DBIT', 'COMPLETED', 'csv')").run();
 
-  const aspsps = await json(await fetch(`${app.base}/api/bank/aspsps?country=fr`));
+  const aspsps = await json(await app.fetch(`/api/bank/aspsps?country=fr`));
   assert.deepEqual(aspsps.body.aspsps.map(a => [a.name, a.maxConsentDays, a.psuTypes.length]), [['Crédit Agricole', 180, 1], ['Revolut', 90, 2]]);
 
-  const bad = await json(await fetch(`${app.base}/api/bank/link`, { method: 'POST', headers, body: JSON.stringify({ aspspName: 'Nope', country: 'FR', accountId: 'default' }) }));
+  const bad = await json(await app.fetch(`/api/bank/link`, { method: 'POST', headers, body: JSON.stringify({ aspspName: 'Nope', country: 'FR', accountId: 'default' }) }));
   assert.equal(bad.status, 400);
 
-  const link = await json(await fetch(`${app.base}/api/bank/link`, {
+  const link = await json(await app.fetch(`/api/bank/link`, {
     method: 'POST', headers,
     body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', psuType: 'personal', accountId: 'default', syncFrom: '2026-09-01', language: 'fr' }),
   }));
@@ -252,11 +234,11 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   const validDays = (Date.parse(auth.access.valid_until) - Date.now()) / 86400000;
   assert.ok(validDays > 89 && validDays <= 90, `consent capped by the bank's maximum, got ${validDays}`);
 
-  const unknown = await fetch(`${app.base}/api/bank/callback?code=x&state=nope`, { redirect: 'manual' });
+  const unknown = await app.fetch(`/api/bank/callback?code=x&state=nope`, { redirect: 'manual' });
   assert.equal(unknown.status, 302);
   assert.equal(unknown.headers.get('location'), '/?bank=error&reason=expired');
 
-  const cb = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
+  const cb = await app.fetch(`/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
   const summary = linkSummary(cb);
   assert.deepEqual(summary.accounts, [{ id: 'hashA', imported: 3, skipped: 0 }], 'the savings-type account is not synced into the budget');
   assert.deepEqual(summary.created, []);
@@ -271,7 +253,7 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
     { date: '2026-09-28', description: 'RATP', amount: -3.2, type: 'DBIT', ext: 'hashA:t3', source: 'bank' },
   ]);
 
-  let status = await json(await fetch(`${app.base}/api/bank/status`));
+  let status = await json(await app.fetch(`/api/bank/status`));
   assert.equal(status.body.connections.length, 1);
   const conn = status.body.connections[0];
   assert.equal(conn.aspspName, 'Revolut');
@@ -284,18 +266,18 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   assert.equal(conn.accounts[1].syncedTo, null, 'an unmapped account has no cursor yet');
 
   // resync: everything already stored, nothing added
-  const resync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  const resync = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.deepEqual(resync.body.results.map(r => [r.bankAccountId, r.imported, r.skippedDuplicates, r.error]), [['hashA', 0, 3, undefined]]);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4);
 
   // renewal: same bank again, accounts matched by hash, one connection survives, mapping kept
-  const relink = await json(await fetch(`${app.base}/api/bank/link`, {
+  const relink = await json(await app.fetch(`/api/bank/link`, {
     method: 'POST', headers, body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', accountId: 'default' }),
   }));
   const state2 = new URL(relink.body.url).searchParams.get('state');
-  const cb2 = await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state2}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
+  const cb2 = await app.fetch(`/api/bank/callback?code=good-code&state=${state2}`, { redirect: 'manual', headers: { 'User-Agent': 'test-agent' } });
   assert.deepEqual(linkSummary(cb2).accounts, [{ id: 'hashA', imported: 0, skipped: 3 }]);
-  status = await json(await fetch(`${app.base}/api/bank/status`));
+  status = await json(await app.fetch(`/api/bank/status`));
   assert.equal(status.body.connections.length, 1);
   assert.notEqual(status.body.connections[0].id, conn.id);
   assert.equal(linkSummary(cb2).connection, status.body.connections[0].id);
@@ -309,8 +291,8 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
   assert.deepEqual(mock.state.deleted, ['sess-1'], 'the superseded session is revoked at the provider');
 
   // re-mapping a bank account to another budget account carries its imported rows along
-  const joint = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Joint' }) }));
-  const moved = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
+  const joint = await json(await app.fetch(`/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Joint' }) }));
+  const moved = await json(await app.fetch(`/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
   assert.equal(moved.body.moved, 3);
   assert.equal(moved.body.connections[0].accounts[0].accountId, joint.body.id);
   assert.deepEqual(
@@ -318,51 +300,51 @@ test('link → callback → initial sync → idempotent resync → renewal keeps
     [{ a: joint.body.id, n: 3 }, { a: 'default', n: 1 }],
     'bank rows moved, the CSV row stayed'
   );
-  const again = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
+  const again = await json(await app.fetch(`/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: joint.body.id }) }));
   assert.equal(again.body.moved, 0, 'same target moves nothing');
 
   // a bank account can feed a savings account instead: balance from the bank, movements as history
   assert.equal(status.body.connections[0].accounts[1].kind, 'SVGS');
-  const livret = await json(await fetch(`${app.base}/api/savings`, { method: 'POST', headers, body: JSON.stringify({ name: 'Livret', balance: 10 }) }));
-  const toSavings = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: livret.body.id }) }));
+  const livret = await json(await app.fetch(`/api/savings`, { method: 'POST', headers, body: JSON.stringify({ name: 'Livret', balance: 10 }) }));
+  const toSavings = await json(await app.fetch(`/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: livret.body.id }) }));
   assert.equal(toSavings.status, 200);
   assert.deepEqual(toSavings.body.savingsAccounts.map(s => s.name), ['Livret']);
   const mappedB = toSavings.body.connections[0].accounts[1];
   assert.equal(mappedB.savingsAccountId, livret.body.id);
   assert.equal(mappedB.accountId, null, 'a savings target clears the budget-account target');
   assert.equal(mappedB.syncedTo, null, 'a new savings target restarts from the cutover');
-  const savingsSync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  const savingsSync = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   const savingsResult = savingsSync.body.results.find(r => r.bankAccountId === 'hashB');
   assert.deepEqual([savingsResult.mode, savingsResult.balance, savingsResult.historyAdded, savingsResult.error], ['savings', 1234.56, 1, undefined]);
   assert.equal(app.db.prepare('SELECT balance FROM savings_accounts WHERE id = ?').get(livret.body.id).balance, 1234.56, 'closing booked balance wins over interim available');
   assert.deepEqual(app.db.prepare('SELECT id, date, type, amount FROM savings_history WHERE savings_account_id = ?').all(livret.body.id),
     [{ id: 'bank_hashB:t9', date: '2026-09-10', type: 'withdrawal', amount: 40 }]);
-  const savingsAgain = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  const savingsAgain = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.equal(savingsAgain.body.results.find(r => r.bankAccountId === 'hashB').historyAdded, 0, 'history ids are deterministic');
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4, 'a savings target adds no transactions');
-  const badSavings = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: 'ghost' }) }));
+  const badSavings = await json(await app.fetch(`/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ savingsAccountId: 'ghost' }) }));
   assert.equal(badSavings.status, 400);
-  const backToAccount = await json(await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
+  const backToAccount = await json(await app.fetch(`/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
   assert.equal(backToAccount.body.connections[0].accounts[1].savingsAccountId, null, 'a budget-account target clears the savings target');
 
   // remap one account away, disable the other: sync has nothing left to do
-  const patched = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: '' }) }));
+  const patched = await json(await app.fetch(`/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: '' }) }));
   assert.equal(patched.body.connections[0].accounts[0].accountId, null);
   assert.equal(patched.body.moved, 0);
-  await fetch(`${app.base}/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ enabled: false, syncFrom: '' }) });
-  const idle = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  await app.fetch(`/api/bank/accounts/hashB`, { method: 'PATCH', headers, body: JSON.stringify({ enabled: false, syncFrom: '' }) });
+  const idle = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.deepEqual(idle.body.results, []);
   assert.equal(idle.body.status.connections[0].accounts[1].syncFrom, null);
 
-  const badPatch = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'ghost' }) }));
+  const badPatch = await json(await app.fetch(`/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'ghost' }) }));
   assert.equal(badPatch.status, 400);
 
   // unlink revokes and cascades, transactions stay
   const currentId = status.body.connections[0].id;
-  const del = await fetch(`${app.base}/api/bank/connections/${currentId}`, { method: 'DELETE', headers: { 'User-Agent': 'test-agent' } });
+  const del = await app.fetch(`/api/bank/connections/${currentId}`, { method: 'DELETE', headers: { 'User-Agent': 'test-agent' } });
   assert.equal(del.status, 204);
   assert.ok(mock.state.deleted.includes('sess-2'));
-  status = await json(await fetch(`${app.base}/api/bank/status`));
+  status = await json(await app.fetch(`/api/bank/status`));
   assert.deepEqual(status.body.connections, []);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM bank_accounts').get().n, 0);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4);
@@ -376,20 +358,20 @@ test('a provider error during sync is reported per account, not thrown', async (
   t.after(app.close);
   const headers = { 'Content-Type': 'application/json' };
 
-  const link = await json(await fetch(`${app.base}/api/bank/link`, { method: 'POST', headers, body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', accountId: 'default' }) }));
+  const link = await json(await app.fetch(`/api/bank/link`, { method: 'POST', headers, body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', accountId: 'default' }) }));
   assert.equal(link.body.redirectUrl, 'https://budget.example.ts.net/api/bank/callback', 'explicit redirect URL wins');
   const state = new URL(link.body.url).searchParams.get('state');
-  await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual' });
+  await app.fetch(`/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual' });
 
   // provider goes away: mark the row failed, keep serving
   mock.close();
-  const sync = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
+  const sync = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: '{}' }));
   assert.equal(sync.status, 200);
   assert.equal(sync.body.results.length, 1, 'only the mapped current account is synced');
   assert.ok(sync.body.results.every(r => r.error && r.imported === 0));
   assert.match(sync.body.status.connections[0].accounts[0].lastSyncStatus, /^error: /);
 
-  const failedCallback = await fetch(`${app.base}/api/bank/callback?code=bad&state=nope`, { redirect: 'manual' });
+  const failedCallback = await app.fetch(`/api/bank/callback?code=bad&state=nope`, { redirect: 'manual' });
   assert.equal(failedCallback.headers.get('location'), '/?bank=error&reason=expired');
 });
 
@@ -405,12 +387,12 @@ function multiCurrency(n) {
 
 async function linkAndReturn(app, body) {
   const headers = { 'Content-Type': 'application/json', 'User-Agent': 'test-agent' };
-  const link = await json(await fetch(`${app.base}/api/bank/link`, {
+  const link = await json(await app.fetch(`/api/bank/link`, {
     method: 'POST', headers, body: JSON.stringify({ aspspName: 'Revolut', country: 'FR', accountId: 'default', ...body }),
   }));
   assert.equal(link.status, 200);
   const state = new URL(link.body.url).searchParams.get('state');
-  return linkSummary(await fetch(`${app.base}/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers }));
+  return linkSummary(await app.fetch(`/api/bank/callback?code=good-code&state=${state}`, { redirect: 'manual', headers }));
 }
 
 async function multiCurrencyApp(t) {
@@ -422,7 +404,7 @@ async function multiCurrencyApp(t) {
   return app;
 }
 
-const mappingOf = async (app) => Object.fromEntries((await json(await fetch(`${app.base}/api/bank/status`))).body
+const mappingOf = async (app) => Object.fromEntries((await json(await app.fetch(`/api/bank/status`))).body
   .connections.flatMap(c => c.accounts).map(a => [a.id, [a.accountId, a.syncFrom]]));
 const rowsByAccount = (app) => app.db.prepare(`
   SELECT a.name, a.currency, substr(t.external_id, 1, 5) AS bank, COUNT(*) AS n
@@ -448,31 +430,31 @@ test('other-currency accounts go into a budget account of their own by default, 
     { name: 'Main Account', currency: 'EUR', bank: 'hashA', n: 3 },
     { name: 'Revolut GBP', currency: 'GBP', bank: 'hashG', n: 3 },
   ]);
-  const boot = await json(await fetch(`${app.base}/api/bootstrap`));
+  const boot = await json(await app.fetch(`/api/bootstrap`));
   assert.deepEqual(boot.body.accounts.map(a => [a.name, a.currency]), [['Main Account', 'EUR'], ['Revolut GBP', 'GBP']]);
 
   // re-mapping across currencies is refused both ways and changes nothing
-  const intoEur = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
+  const intoEur = await json(await app.fetch(`/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: 'default' }) }));
   assert.equal(intoEur.status, 400);
   assert.equal(intoEur.body.error, 'Revolut GBP is in GBP, Main Account is in EUR');
-  const intoGbp = await json(await fetch(`${app.base}/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
+  const intoGbp = await json(await app.fetch(`/api/bank/accounts/hashA`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
   assert.equal(intoGbp.status, 400);
   assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
 
   // a budget account created in the right currency is a valid target; rows follow it there and back
-  const badCurrency = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'pounds' }) }));
+  const badCurrency = await json(await app.fetch(`/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'pounds' }) }));
   assert.equal(badCurrency.status, 400);
-  const pounds = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'gbp' }) }));
+  const pounds = await json(await app.fetch(`/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Pounds', currency: 'gbp' }) }));
   assert.equal(pounds.body.currency, 'GBP');
-  const plain = await json(await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Plain' }) }));
+  const plain = await json(await app.fetch(`/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Plain' }) }));
   assert.equal(plain.body.currency, 'EUR', 'currency defaults to EUR');
-  const moved = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: pounds.body.id }) }));
+  const moved = await json(await app.fetch(`/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: pounds.body.id }) }));
   assert.equal(moved.body.moved, 3);
-  const back = await json(await fetch(`${app.base}/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
+  const back = await json(await app.fetch(`/api/bank/accounts/hashG`, { method: 'PATCH', headers, body: JSON.stringify({ accountId: gbp[0].id }) }));
   assert.equal(back.body.moved, 3);
 
   // one bank account can be synced alone (the panel's "Add to Savings" shortcut does this)
-  const one = await json(await fetch(`${app.base}/api/bank/sync`, { method: 'POST', headers, body: JSON.stringify({ bankAccountId: 'hashG' }) }));
+  const one = await json(await app.fetch(`/api/bank/sync`, { method: 'POST', headers, body: JSON.stringify({ bankAccountId: 'hashG' }) }));
   assert.deepEqual(one.body.results.map(r => [r.bankAccountId, r.imported, r.skippedDuplicates]), [['hashG', 0, 3]]);
 
   // renewal: mappings kept, nothing created
@@ -482,8 +464,8 @@ test('other-currency accounts go into a budget account of their own by default, 
   assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
 
   // linking again after an unlink finds the budget account it made the first time
-  const connection = (await json(await fetch(`${app.base}/api/bank/status`))).body.connections[0].id;
-  await fetch(`${app.base}/api/bank/connections/${connection}`, { method: 'DELETE' });
+  const connection = (await json(await app.fetch(`/api/bank/status`))).body.connections[0].id;
+  await app.fetch(`/api/bank/connections/${connection}`, { method: 'DELETE' });
   const relinked = await linkAndReturn(app, {});
   assert.deepEqual(relinked.created, []);
   assert.deepEqual((await mappingOf(app)).hashG, [gbp[0].id, null]);
@@ -501,9 +483,9 @@ test('"don\'t import" leaves other-currency accounts unmapped; the chosen accoun
   assert.deepEqual(rowsByAccount(app), [{ name: 'Main Account', currency: 'EUR', bank: 'hashA', n: 3 }]);
 
   // linked into a GBP budget account, the EUR account is the one in another currency
-  const connection = (await json(await fetch(`${app.base}/api/bank/status`))).body.connections[0].id;
-  await fetch(`${app.base}/api/bank/connections/${connection}`, { method: 'DELETE' });
-  const sterling = await json(await fetch(`${app.base}/api/accounts`, {
+  const connection = (await json(await app.fetch(`/api/bank/status`))).body.connections[0].id;
+  await app.fetch(`/api/bank/connections/${connection}`, { method: 'DELETE' });
+  const sterling = await json(await app.fetch(`/api/accounts`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Sterling', currency: 'GBP' }),
   }));
   await linkAndReturn(app, { accountId: sterling.body.id, otherCurrencies: 'skip' });

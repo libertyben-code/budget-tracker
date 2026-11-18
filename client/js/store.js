@@ -35,7 +35,6 @@ const state = {
     accent: localStorage.getItem('accent') || 'indigo',
     lang: localStorage.getItem('language') || 'en',
     settingsOpen: false,
-    accountMenuOpen: false,
     categoryDropdownOpen: null,
     chartMode: 'stacked',
     chartRange: '6m',

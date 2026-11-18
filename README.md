@@ -1,10 +1,16 @@
 # Ça Compte ?
 
-**Ça Compte ?** is a self-hosted personal finance app: a plain HTML/CSS/JS frontend and a Node/Express + SQLite backend, installed as a PWA on your phone over Tailscale. No login, no cloud dependency — your data stays on your own server.
+**Ça Compte ?** is a self-hosted personal finance app: a plain HTML/CSS/JS frontend and a Node/Express + SQLite backend, installed as a PWA on your phone over Tailscale. Everyone has their own login; a household (a couple, say) shares its data and sees nobody else's. No cloud dependency — your data stays on your own server.
 
 It used to be called Budget Tracker, and the project still is: the repository, folders, Docker image and service, database file and storage keys all keep the `budget-tracker` name. Only what you see in the app changed. The places that show the name are listed in [docs/MAINTAINER.md](docs/MAINTAINER.md#app-name).
 
 ## Features
+
+### Accounts
+
+- **One login per person**, created by the owner from the server's command line — no sign-up page. The person gets a one-time activation code and picks their own password in the app.
+- **Households**: a couple shares one (every budget account, savings, category, rule and bank connection); anyone else gets their own, empty, and links their own bank.
+- *Log out* and *Log out on every device* in the Settings menu. Logging out also clears what the phone kept for offline use.
 
 ### Transactions
 

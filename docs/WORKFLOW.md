@@ -236,11 +236,24 @@ SQLite cannot `DROP COLUMN` a column with a `REFERENCES` clause, so the table ha
 
 ---
 
+### 2026-11-18 — Every row belongs to one household
+
+Since logins, a household (workspace) only ever sees its own rows, and the server is the only thing enforcing it. **Rules:** a new top-level table gets a `workspace_id` column, set from `req.ws` on insert and filtered on every read, update and delete; a child table reaches its household through its parent (`IN_WORKSPACE` in `routes/api.js`, `OWN_CONNECTION` in `routes/bank.js`), never on its own; another household's id answers like a missing one. A uniqueness rule is per household (`UNIQUE (workspace_id, …)`), since two households may name a category or a rule alike. Pre-login data is stamped `home` once, by the v8 step of `migrate()` — not by a column default, which would quietly hand a forgotten `workspace_id` to the owner's household. `accounts.test.js` has the isolation tests to extend.
+
 ## Dated development log
 
 <!-- Add an entry at the end of every session. -->
 <!-- Format: ### YYYY-MM-DD — Short description (branch name if applicable) -->
 <!-- Body: bullet points of what was done. -->
+
+### 2026-11-18 — Logins and households (branch: feature/accounts)
+
+- Asked for: a login so the owner's partner (shared data) and brother (his own data, his own Enable Banking connection) can use the app, still over Tailscale. That is S8 and S9 of `docs/AUTH_ROLLOUT_PLAN.md` together: sessions alone would have shown the brother everything.
+- **Ported from score-counter** (S4/S5) in better-sqlite3 idiom: `auth/` (Argon2id with scrypt fallback, hashed opaque sessions, activation codes, lockout), `requireSession` with CSRF double-submit, `/api/auth/*`, the `create-user` CLI. Not ported: Cloudflare Access (Tailscale stays), the Bearer-only client.
+- **Households:** `workspace_id` on six tables, v8 migration to a seeded `home` workspace that the first admin takes; every route in `api.js` and `bank.js` scoped. The bank callback stays reachable without a session, its `state` carrying the workspace. A bank account another household already holds is skipped at link time.
+- **Client:** `views/login.js` (sign in, activate with code, EN/FR, autocomplete hints for password managers); `api.js` CSRF header and 401 → login page; Settings menu *Log out* / *Log out on every device*; logout clears the `/api` cache entries (closes the Bugs.md item) and the per-person `localStorage` keys. A household's last account cannot be deleted, so the delete item is hidden then.
+- The offline-mode work found uncommitted in the main checkout (based on 2.1.0, 94 commits behind) was stashed, not dropped: `stash@{0}`, "offline-mode WIP based on 2.1.0".
+- Verified: `npm test` 52/56 — the four failures are the Windows-only cleanup errors master has too. On `dev-harness`: wrong password, login, write with CSRF, bank link through the public callback, logout (cookies and API cache gone), brother's empty household, activation in French at 375px (mismatched passwords, lowercase code), session ended under a running app, then another person's login. Not tried: an installed phone, a real bank, the Docker image (the `scripts/` copy is new), a password manager actually saving the password.
 
 ### 2026-11-08 — Auto-sync on open, account picker, slimmer balance card (branch: fix/center-dashboard-figures)
 

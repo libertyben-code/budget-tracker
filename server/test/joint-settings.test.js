@@ -6,27 +6,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { openDb } from '../src/db.js';
-import { createApp } from '../src/app.js';
+import { startApp } from './helpers.js';
 
-function startApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-joint-'));
-  const db = openDb(path.join(dir, 'test.db'));
-  const app = createApp(db, { bank: { config: { configured: false }, client: null } });
-  return new Promise((resolve) => {
-    const server = app.listen(0, '127.0.0.1', () => {
-      resolve({
-        db,
-        base: `http://127.0.0.1:${server.address().port}`,
-        close: () => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); },
-      });
-    });
-  });
-}
 
 const headers = { 'Content-Type': 'application/json' };
 const json = async (res) => ({ status: res.status, body: await res.json() });
-const bootstrap = (app) => fetch(`${app.base}/api/bootstrap`).then(json).then(r => r.body);
-const patchJoint = (app, body) => fetch(`${app.base}/api/settings/joint`, { method: 'PATCH', headers, body: JSON.stringify(body) }).then(json);
+const bootstrap = (app) => app.fetch(`/api/bootstrap`).then(json).then(r => r.body);
+const patchJoint = (app, body) => app.fetch(`/api/settings/joint`, { method: 'PATCH', headers, body: JSON.stringify(body) }).then(json);
 
 const empty = { wanted: null, salary1: null, salary2: null, name1: '', name2: '' };
 
@@ -39,7 +25,7 @@ test('a new install starts with an empty joint split, not 2100', async (t) => {
 test('the joint split is one setting, saved field by field', async (t) => {
   const app = await startApp();
   t.after(app.close);
-  await fetch(`${app.base}/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Joint' }) });
+  await app.fetch(`/api/accounts`, { method: 'POST', headers, body: JSON.stringify({ name: 'Joint' }) });
 
   assert.deepEqual((await patchJoint(app, { wanted: '2100.50', salary1: 3000 })).body,
     { ...empty, wanted: 2100.5, salary1: 3000 });
@@ -72,9 +58,8 @@ test('a joint split patch with a bad value changes nothing', async (t) => {
 });
 
 // a v4 database: today's schema before the settings table, with the per-account values it replaced
-function v4Db(t, accounts) {
+function v4Db(accounts) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-joint-v5-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const dbPath = path.join(dir, 'old.db');
   const old = new Database(dbPath);
   old.exec(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/schema.sql'), 'utf8'));
@@ -90,20 +75,20 @@ function v4Db(t, accounts) {
 }
 
 test('v5 migration takes the joint split from the account whose salaries were set', (t) => {
-  const dbPath = v4Db(t, [
+  const dbPath = v4Db([
     { id: 'default', salary1: '', salary2: '', wanted: '2100' },
     { id: 'joint', salary1: '3000', salary2: '2000.5', wanted: '1800', createdAt: '2026-02-01 00:00:00' },
   ]);
   const db = openDb(dbPath);
-  t.after(() => db.close());
+  t.after(() => { db.close(); fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); });
   assert.deepEqual(JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value),
     { wanted: 1800, salary1: 3000, salary2: 2000.5, name1: '', name2: '' });
-  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '7');
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '8');
   assert.equal(db.prepare("SELECT salary_person1 FROM accounts WHERE id = 'joint'").get().salary_person1, '3000', 'old columns stay');
 });
 
 test('v5 migration falls back to the default account, and runs once', (t) => {
-  const dbPath = v4Db(t, [
+  const dbPath = v4Db([
     { id: 'default', salary1: '', salary2: '', wanted: '2100' },
     { id: 'other', salary1: '', salary2: '', wanted: '999' },
   ]);
@@ -114,6 +99,6 @@ test('v5 migration falls back to the default account, and runs once', (t) => {
   db.close();
 
   const reopened = openDb(dbPath);
-  t.after(() => reopened.close());
+  t.after(() => { reopened.close(); fs.rmSync(path.dirname(dbPath), { recursive: true, force: true }); });
   assert.equal(JSON.parse(reopened.prepare("SELECT value FROM settings WHERE key = 'joint'").get().value).wanted, 500);
 });

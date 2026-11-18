@@ -1,6 +1,6 @@
 // Manual-testing harness: a fake Enable Banking on one port and the real app on another,
 // with a throwaway database and key. Lets you click through link → bank page → callback →
-// sync without credentials or a real bank.
+// sync without credentials or a real bank. Seeds three logins (printed at start).
 //
 //   node server/tools/dev-harness.mjs        # app on http://localhost:3055, mock on :4545
 //
@@ -127,4 +127,23 @@ process.env.EB_APP_ID = 'app-dev';
 process.env.EB_PRIVATE_KEY_FILE = keyPath;
 process.env.EB_API_BASE = `http://127.0.0.1:${MOCK_PORT}`;
 delete process.env.EB_REDIRECT_URL;
+process.env.COOKIE_SECURE = 'false';
+
+// Three logins, one per kind of account: the owner (takes the existing household), a partner
+// paired with them, and someone with a household of their own. Same throwaway password for all.
+const DEV_PASSWORD = 'dev-password';
+const { openDb } = await import('../src/db.js');
+const { createUser, activateUser } = await import('../src/auth/users.js');
+const seed = openDb(process.env.DB_PATH);
+for (const [username, displayName, options] of [
+  ['owner', 'Owner', { role: 'admin' }],
+  ['partner', 'Partner', { pairWith: 'owner' }],
+  ['brother', 'Brother', {}],
+]) {
+  const { code } = createUser(seed, { username, displayName, ...options });
+  await activateUser(seed, { username, code, newPassword: DEV_PASSWORD });
+}
+seed.close();
+console.log(`[dev] logins: owner, partner (same household), brother (own household) — password "${DEV_PASSWORD}"`);
+
 await import('../src/index.js');
