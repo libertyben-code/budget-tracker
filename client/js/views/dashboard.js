@@ -156,8 +156,8 @@ export function render(state, t) {
   if (!state.transactions.length) {
     return `
   <section class="view">
-    ${renderAccountGrid(state, t)}
     ${state.accounts.length > 1 ? renderTotal(state, t) : accountBalance(state).amount !== null ? renderBalance(state, t) : ''}
+    ${renderAccountGrid(state, t)}
     ${renderWelcome(state, t)}
   </section>`;
   }
@@ -166,8 +166,8 @@ export function render(state, t) {
 
   return `
   <section class="view">
-    ${renderAccountGrid(state, t)}
     ${state.accounts.length > 1 ? renderTotal(state, t) : renderBalance(state, t)}
+    ${renderAccountGrid(state, t)}
     ${renderMonthStepper(state, t, month)}
     ${renderMonth(monthTransactions(state, month), t, accountCurrency(state))}
     ${renderToCategorise(state, t)}
