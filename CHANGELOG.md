@@ -4,6 +4,16 @@ Release notes for Budget Tracker. Versions before 2.0.1 were released without a 
 
 ---
 
+## 2.5.0 — 2026-11-18
+
+### What's new
+
+- **Every account on the Dashboard.** With two or more accounts, the Dashboard shows them all as cards, two per row on a phone: each one's balance, whether it comes from the bank or was set by hand, and how recent it is. Tap a card to switch to that account.
+- **Total balance.** The card at the top of the Dashboard now adds up all your accounts, with the last bank sync and how many accounts still have no balance. Accounts in different currencies are not converted: you get one total per currency. With a single account it shows that account's balance, as before.
+- **A new account switcher.** The account button in the header keeps the same width whatever the account is called, and opens a sheet with the same account cards plus *Set balance*, *New account* and *Delete*.
+
+---
+
 ## 2.4.0 — 2026-11-18
 
 ### What's new
