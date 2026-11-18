@@ -1,4 +1,4 @@
-const CACHE = 'bt-static-v7';
+const CACHE = 'bt-static-v8';
 
 const SHELL = [
   '/',
@@ -26,6 +26,7 @@ const SHELL = [
   '/js/views/dashboard.js',
   '/js/views/joint-split.js',
   '/js/views/savings.js',
+  '/js/views/login.js',
   '/shared/dates.js',
   '/shared/categorize.js',
   '/shared/csv.js',
