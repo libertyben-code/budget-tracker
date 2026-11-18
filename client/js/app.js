@@ -133,7 +133,7 @@ function render() {
     modalsEl.innerHTML = '';
   } else {
     appEl.innerHTML = header.render(state, t) + connectionBanner(state.connection, t, state.ui.lang) + `<main>${view.render(state, t)}</main>` + header.renderNav(state, t);
-    modalsEl.innerHTML = header.renderAccountSheet(state, t) + batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
+    modalsEl.innerHTML = header.renderAccountSheet(state, t) + batchEditModal.render(state, t) + rulesPanel.render(state, t) + categoryManager.render(state, t) + bankSync.render(state, t) + filters.renderSheet(state, t) + dashboard.renderSheet(state, t) + transactions.renderSheet(state, t) + categoryPicker.render(state, t);
   }
 
   const fields = fieldsByKey();

@@ -1,7 +1,8 @@
-import { esc, money, categoryName, chartColors, icons } from '../dom.js';
+import { esc, money, categoryName, chartColors, checkRow, icons } from '../dom.js';
 import { get, set, setUi } from '../store.js';
 import { api } from '../api.js';
 import { renderStarterOffer } from './category-manager.js';
+import { slidersIcon } from './filters.js';
 import { openInbox } from './categorise.js';
 import { accountTiles, balanceOf } from './header.js';
 import { plural } from './bank-sync.js';
@@ -152,6 +153,34 @@ function renderWelcome(state, t) {
   </div>`;
 }
 
+const seriesLabel = (name, t) => (name === OTHER ? t('dashboard.other') : categoryName(name, t));
+
+// The choices are the charts' own series: a category folded into Other has no colour of its own
+// to be drawn in alone. A pick that no longer names a series (another account) is dropped.
+function chartFilter(state, palette = categoryPalette(state)) {
+  const options = [...palette.slotIndex.keys(), ...(palette.fold.size ? [OTHER] : [])];
+  const picked = state.ui.chartCategories.filter(c => options.includes(c));
+  return { options, picked, shows: name => !picked.length || picked.includes(name) };
+}
+
+function renderChartFilter(state, t) {
+  const { options, picked } = chartFilter(state);
+  if (options.length < 2) return '';
+  const label = !picked.length ? t('dashboard.allCategories')
+    : picked.length === 1 ? seriesLabel(picked[0], t)
+    : t('dashboard.selectedCount', { count: picked.length });
+  return `
+    <div class="row" style="margin-bottom:var(--space-3)">
+      <div class="filter-pill ${picked.length ? 'active' : ''}">
+        <button id="chart-filter-open" class="filter-btn" data-action="chart-filter-open" aria-haspopup="dialog"
+                aria-label="${esc(t('dashboard.chartFilterOpen', { summary: label }))}">
+          ${slidersIcon}<span class="filter-cats">${esc(label)}</span>
+        </button>
+        ${picked.length ? `<button class="filter-clear" data-action="chart-filter-clear" title="${esc(t('filters.clear'))}" aria-label="${esc(t('filters.clear'))}">✕</button>` : ''}
+      </div>
+    </div>`;
+}
+
 export function render(state, t) {
   if (!state.transactions.length) {
     return `
@@ -171,6 +200,7 @@ export function render(state, t) {
     ${renderMonthStepper(state, t, month)}
     ${renderMonth(monthTransactions(state, month), t, accountCurrency(state))}
     ${renderToCategorise(state, t)}
+    ${renderChartFilter(state, t)}
     <div class="charts">
       <div class="card">
         <h2 style="margin:0 0 8px">${esc(t('dashboard.spendingByCategory'))}</h2>
@@ -223,7 +253,8 @@ export function afterRender(state, t) {
   const colors = chartColors();
   const palette = categoryPalette(state);
   const colorFor = (name) => name === OTHER ? colors.other : colors.palette[palette.slotIndex.get(name) % colors.palette.length];
-  const labelFor = (name) => name === OTHER ? t('dashboard.other') : categoryName(name, t);
+  const labelFor = (name) => seriesLabel(name, t);
+  const { shows } = chartFilter(state, palette);
   const currency = accountCurrency(state);
   const axisTick = (value) => money(value, { currency, compact: true });
   const monthCount = RANGE_MONTHS[state.ui.chartRange] || 6;
@@ -235,8 +266,10 @@ export function afterRender(state, t) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? { animation: false } : {};
   const shared = [colors, Chart.defaults.font.family, state.ui.lang, currency, motion];
 
-  const hbar = categoryData(monthTransactions(state, month), [], palette);
-  const hbarTotal = hbar.reduce((sum, d) => sum + d.value, 0);
+  // Percentages stay a share of the whole month's spending, so hiding a category doesn't inflate the rest.
+  const monthSpending = categoryData(monthTransactions(state, month), palette);
+  const hbar = monthSpending.filter(d => shows(d.name));
+  const hbarTotal = monthSpending.reduce((sum, d) => sum + d.value, 0);
   const hbarData = {
     labels: hbar.map(d => labelFor(d.name)),
     datasets: [{
@@ -247,7 +280,7 @@ export function afterRender(state, t) {
       maxBarThickness: 22,
     }],
   };
-  keepOrBuild('chart-hbar', JSON.stringify([shared, hbarData]), (canvas) => {
+  keepOrBuild('chart-hbar', JSON.stringify([shared, hbarData, hbarTotal]), (canvas) => {
     canvas.parentElement.style.height = `${Math.max(hbar.length * 36 + 24, 120)}px`;
     const valueLabels = {
       id: 'valueLabels',
@@ -321,7 +354,8 @@ export function afterRender(state, t) {
     });
   });
 
-  const { monthKeys, categories: barCats, byMonth } = categoryByMonthData(trendTx, palette);
+  const { monthKeys, categories, byMonth } = categoryByMonthData(trendTx, palette);
+  const barCats = categories.filter(shows);
   const shownMonths = monthKeys.slice(Math.max(monthKeys.length - monthCount, 0));
   const stacked = state.ui.chartMode === 'stacked';
   const barData = {
@@ -363,9 +397,61 @@ export function afterRender(state, t) {
   });
 }
 
+// Drawn in #modals with the other dialogs.
+export function renderSheet(state, t) {
+  if (!state.ui.chartFilterSheet || state.ui.tab !== 'dashboard') return '';
+  const { options, picked } = chartFilter(state);
+  return `
+  <div class="modal-backdrop" data-action="chart-filter-close" data-self-only>
+    <div class="modal filter-sheet" id="chart-filter-sheet" role="dialog" aria-modal="true" aria-labelledby="chart-filter-title" tabindex="-1">
+      <div class="modal-head">
+        <h2 id="chart-filter-title">${esc(t('dashboard.chartFilterTitle'))}</h2>
+        <button class="icon-btn" data-action="chart-filter-close" title="${esc(t('common.close'))}" aria-label="${esc(t('common.close'))}">✕</button>
+      </div>
+      <div class="filter-sheet-body">
+        <p class="muted" style="margin:0 0 var(--space-2);font-size:0.85rem">${esc(t('dashboard.chartFilterHint'))}</p>
+        ${checkRow({ on: picked.length === 0, action: 'chart-cat-all', label: t('dashboard.allCategories'), data: 'id="chart-cat-all"' })}
+        ${options.map((c, i) => checkRow({ on: picked.includes(c), action: 'chart-cat', label: seriesLabel(c, t), data: `id="chart-cat-${i}" data-cat="${esc(c)}"` })).join('')}
+      </div>
+      <div class="filter-sheet-foot">
+        <button class="btn ghost" data-action="chart-filter-clear">${esc(t('filters.reset'))}</button>
+        <button class="btn primary" data-action="chart-filter-close">${esc(t('common.done'))}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Every change re-renders the sheet from a string, which would jump its list back to the top.
+function setChartCategories(chartCategories) {
+  const top = document.querySelector('.filter-sheet-body')?.scrollTop || 0;
+  setUi({ chartCategories });
+  const body = document.querySelector('.filter-sheet-body');
+  if (body) body.scrollTop = top;
+}
+
 export const actions = {
   'chart-mode': (el) => setUi({ chartMode: el.dataset.mode }),
   'chart-range': (el) => setUi({ chartRange: el.dataset.range }),
+  'chart-filter-open': () => {
+    setUi({ chartFilterSheet: true });
+    document.querySelector('#chart-filter-sheet .check-row.on')?.focus();
+  },
+  'chart-filter-close': () => {
+    setUi({ chartFilterSheet: false });
+    document.getElementById('chart-filter-open')?.focus();
+  },
+  'chart-filter-clear': () => {
+    setChartCategories([]);
+    if (!get().ui.chartFilterSheet) document.getElementById('chart-filter-open')?.focus();
+  },
+  'chart-cat-all': () => setChartCategories([]),
+  // Ticking the last one left out means every category again, so "All" comes back on.
+  'chart-cat': (el) => {
+    const { options, picked } = chartFilter(get());
+    const cat = el.dataset.cat;
+    const next = picked.includes(cat) ? picked.filter(c => c !== cat) : [...picked, cat];
+    setChartCategories(next.length === options.length ? [] : next);
+  },
   'dash-month-step': (el) => {
     const next = addMonths(dashboardMonth(get()), Number(el.dataset.step));
     setUi({ dashMonth: next >= monthKey(todayIso()) ? '' : next });
